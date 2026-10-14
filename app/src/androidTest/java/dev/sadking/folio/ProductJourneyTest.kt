@@ -328,7 +328,7 @@ class ProductJourneyTest {
             .performClick()
         waitText("Hardcover reading")
         compose.onNodeWithText("1 · Manual progress").assertIsDisplayed()
-        compose.onNodeWithText("Get latest from Kindle").assertDoesNotExist()
+        compose.onNodeWithText("Get latest from e-reader").assertDoesNotExist()
         capture("hardcover-record-dark")
     }
 }

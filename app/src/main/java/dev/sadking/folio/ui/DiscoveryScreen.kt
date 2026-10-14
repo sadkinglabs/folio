@@ -16,12 +16,14 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 import java.io.File
 
@@ -41,6 +43,7 @@ fun DiscoveryScreen(
     var connect by rememberSaveable { mutableStateOf(false) }
     var cameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<MetadataCandidate?>(null) }
+    val noCamera = stringResource(R.string.discovery_no_camera)
     val photoPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) model.photo(uri)
@@ -57,15 +60,21 @@ fun DiscoveryScreen(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
-                    title = { Text("Discover books") },
+                    title = { Text(stringResource(R.string.discovery_title)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                stringResource(R.string.discovery_back),
+                            )
                         }
                     },
                     actions = {
                         TextButton(onClick = { connect = true }, enabled = !state.busy) {
-                            Text(if (username.isBlank()) "Connect Hardcover" else "@$username")
+                            Text(
+                                if (username.isBlank()) stringResource(R.string.hardcover_connect)
+                                else stringResource(R.string.hardcover_username, username)
+                            )
                         }
                     },
                 )
@@ -91,11 +100,11 @@ fun DiscoveryScreen(
                 ) {
                     item {
                         Text(
-                            "A book caught your eye?",
+                            stringResource(R.string.discovery_heading),
                             style = MaterialTheme.typography.headlineMedium,
                         )
                         Text(
-                            "Photograph the cover, check the recognised text, then confirm a catalogue match. No EPUB needed.",
+                            stringResource(R.string.discovery_intro),
                             Modifier.padding(top = 8.dp),
                         )
                         Row(
@@ -117,14 +126,14 @@ fun DiscoveryScreen(
                                     try {
                                         camera.launch(Uri.parse(cameraUri))
                                     } catch (e: android.content.ActivityNotFoundException) {
-                                        model.report("No camera app found; choose a photo instead")
+                                        model.report(noCamera)
                                     }
                                 },
                                 enabled = !state.busy,
                             ) {
                                 Icon(Icons.Outlined.PhotoCamera, null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Take photo")
+                                Text(stringResource(R.string.discovery_take_photo))
                             }
                             OutlinedButton(
                                 onClick = {
@@ -136,7 +145,7 @@ fun DiscoveryScreen(
                                 },
                                 enabled = !state.busy,
                             ) {
-                                Text("Choose photo")
+                                Text(stringResource(R.string.discovery_choose_photo))
                             }
                         }
                     }
@@ -144,7 +153,7 @@ fun DiscoveryScreen(
                         OutlinedTextField(
                             query,
                             model::setQuery,
-                            label = { Text("Title, author or ISBN") },
+                            label = { Text(stringResource(R.string.discovery_query_label)) },
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 2,
                             maxLines = 4,
@@ -155,7 +164,7 @@ fun DiscoveryScreen(
                             enabled = !state.busy && query.isNotBlank(),
                             modifier = Modifier.padding(top = 8.dp),
                         ) {
-                            Text("Find book")
+                            Text(stringResource(R.string.discovery_find))
                         }
                         if (username.isNotBlank())
                             TextButton(
@@ -164,10 +173,10 @@ fun DiscoveryScreen(
                                 },
                                 enabled = !state.busy && query.isNotBlank(),
                             ) {
-                                Text("Find directly on Hardcover")
+                                Text(stringResource(R.string.discovery_find_on_hardcover))
                             }
                         Text(
-                            "Text recognition stays on your phone. Searching sends the text to Open Library; linking searches Hardcover.",
+                            stringResource(R.string.discovery_privacy),
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 8.dp),
                         )
@@ -184,7 +193,7 @@ fun DiscoveryScreen(
                                     onClick = { selected = candidate },
                                     enabled = !state.busy,
                                 ) {
-                                    Text("Choose this book")
+                                    Text(stringResource(R.string.discovery_choose_book))
                                 }
                             }
                         }
@@ -196,10 +205,14 @@ fun DiscoveryScreen(
     selected?.let { candidate ->
         AlertDialog(
             onDismissRequest = { selected = null },
-            title = { Text("Save this book?") },
+            title = { Text(stringResource(R.string.discovery_save_title)) },
             text = {
                 Text(
-                    "${candidate.title}\n${candidate.authors.joinToString(", ")}\n\nYou can confirm its Hardcover match separately. Nothing is published yet."
+                    stringResource(
+                        R.string.discovery_save_body,
+                        candidate.title,
+                        candidate.authors.joinToString(", "),
+                    )
                 )
             },
             confirmButton = {
@@ -209,10 +222,14 @@ fun DiscoveryScreen(
                         selected = null
                     }
                 ) {
-                    Text("Add to Want to Read")
+                    Text(stringResource(R.string.discovery_add_want_to_read))
                 }
             },
-            dismissButton = { TextButton(onClick = { selected = null }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { selected = null }) {
+                    Text(stringResource(R.string.discovery_cancel))
+                }
+            },
         )
     }
     if (connect) HardcoverAccountDialog(model) { connect = false }

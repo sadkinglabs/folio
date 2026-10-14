@@ -9,9 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 @Composable
@@ -38,11 +40,14 @@ fun HardcoverBookSearchSheet(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
-                    Text("Look up on Hardcover", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        stringResource(R.string.hardcover_lookup_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
                     OutlinedTextField(
                         query,
                         { query = it.take(300) },
-                        label = { Text("Book title or author") },
+                        label = { Text(stringResource(R.string.hardcover_lookup_query)) },
                         singleLine = true,
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth(),
@@ -51,7 +56,7 @@ fun HardcoverBookSearchSheet(
                         onClick = { model.searchTitle(query) },
                         enabled = !state.busy && query.isNotBlank(),
                     ) {
-                        Text("Search Hardcover")
+                        Text(stringResource(R.string.hardcover_lookup_search))
                     }
                     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (state.failed) Text(state.message, color = MaterialTheme.colorScheme.error)
@@ -92,13 +97,22 @@ fun HardcoverBookSearchSheet(
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
                                 if (book.series.isNotBlank())
-                                    DetailLine("Series", "${book.series} ${book.seriesIndex}")
+                                    DetailLine(
+                                        stringResource(R.string.discovery_series),
+                                        "${book.series} ${book.seriesIndex}",
+                                    )
                                 if (book.publisher.isNotBlank())
-                                    DetailLine("Publisher", book.publisher)
+                                    DetailLine(
+                                        stringResource(R.string.discovery_publisher),
+                                        book.publisher,
+                                    )
                                 if (book.language.isNotBlank())
-                                    DetailLine("Language", book.language)
+                                    DetailLine(
+                                        stringResource(R.string.discovery_language),
+                                        book.language,
+                                    )
                                 Text(
-                                    "Edition fields come from Hardcover's default ebook or print edition. You can edit them after saving, then attach your own EPUB.",
+                                    stringResource(R.string.hardcover_lookup_source),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 Button(
@@ -106,10 +120,10 @@ fun HardcoverBookSearchSheet(
                                     enabled = !state.busy,
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    Text("Add to library")
+                                    Text(stringResource(R.string.hardcover_lookup_add))
                                 }
                                 Text(
-                                    "Saves locally with its Hardcover match. No reading status or public update is published.",
+                                    stringResource(R.string.hardcover_lookup_add_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -124,7 +138,7 @@ fun HardcoverBookSearchSheet(
                                 onClick = { model.selectTitle(match) },
                                 enabled = !state.busy,
                             ) {
-                                Text("Fetch book details")
+                                Text(stringResource(R.string.hardcover_lookup_details))
                             }
                         }
                     }

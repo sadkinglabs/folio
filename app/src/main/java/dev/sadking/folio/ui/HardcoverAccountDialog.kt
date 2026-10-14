@@ -8,11 +8,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 
 /** One account flow for settings, discovery and book tracking. Token never enters saved state. */
 @Composable
@@ -25,15 +27,20 @@ internal fun HardcoverAccountDialog(
     val state by model.state.collectAsStateWithLifecycle()
     var token by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val noBrowser = stringResource(R.string.hardcover_no_browser)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (username.isBlank()) "Connect Hardcover" else "Hardcover account") },
+        title = {
+            Text(
+                if (username.isBlank()) stringResource(R.string.hardcover_connect)
+                else stringResource(R.string.hardcover_account)
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    if (username.isBlank())
-                        "Connect to share selected books and reviewed reading updates."
-                    else "Connected as @$username. Changes are published only when you confirm."
+                    if (username.isBlank()) stringResource(R.string.hardcover_account_intro)
+                    else stringResource(R.string.hardcover_account_connected, username)
                 )
                 TextButton(
                     onClick = {
@@ -45,16 +52,16 @@ internal fun HardcoverAccountDialog(
                                 )
                             )
                         } catch (_: android.content.ActivityNotFoundException) {
-                            model.report("Install a browser to open Hardcover settings")
+                            model.report(noBrowser)
                         }
                     }
                 ) {
-                    Text("Get your API token ↗")
+                    Text(stringResource(R.string.hardcover_get_token))
                 }
                 OutlinedTextField(
                     token,
                     { token = it },
-                    label = { Text("Personal API token") },
+                    label = { Text(stringResource(R.string.hardcover_token_label)) },
                     singleLine = true,
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -69,7 +76,7 @@ internal fun HardcoverAccountDialog(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 Text(
-                    "Encrypted on this phone and excluded from backups. New books use your account privacy setting; existing privacy is retained.",
+                    stringResource(R.string.hardcover_token_privacy),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (username.isNotBlank())
@@ -81,7 +88,7 @@ internal fun HardcoverAccountDialog(
                         },
                         enabled = !state.busy,
                     ) {
-                        Text("Disconnect Hardcover")
+                        Text(stringResource(R.string.hardcover_disconnect))
                     }
             }
         },
@@ -96,9 +103,14 @@ internal fun HardcoverAccountDialog(
                 },
                 enabled = token.isNotBlank() && !state.busy,
             ) {
-                Text(if (username.isBlank()) "Connect" else "Replace token")
+                Text(
+                    if (username.isBlank()) stringResource(R.string.hardcover_connect_button)
+                    else stringResource(R.string.hardcover_replace_token)
+                )
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.discovery_cancel)) }
+        },
     )
 }

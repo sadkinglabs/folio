@@ -8,9 +8,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 @Composable
@@ -37,10 +40,11 @@ fun HardcoverImportSheet(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
-                    Text("Import Hardcover library", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Choose books to save on this phone. Confirmed matches are retained. EPUB suggestions need your review. Nothing is written to Hardcover or Kindle."
+                        stringResource(R.string.hardcover_import_title),
+                        style = MaterialTheme.typography.headlineSmall,
                     )
+                    Text(stringResource(R.string.hardcover_import_intro))
                     Row {
                         TextButton(
                             onClick = {
@@ -54,7 +58,7 @@ fun HardcoverImportSheet(
                             },
                             enabled = !state.busy,
                         ) {
-                            Text("Select loaded books")
+                            Text(stringResource(R.string.hardcover_import_select_loaded))
                         }
                         TextButton(
                             onClick = {
@@ -64,13 +68,13 @@ fun HardcoverImportSheet(
                             },
                             enabled = !state.busy,
                         ) {
-                            Text("Refresh")
+                            Text(stringResource(R.string.hardcover_import_refresh))
                         }
                     }
                     OutlinedTextField(
                         query,
                         { query = it },
-                        label = { Text("Search loaded books") },
+                        label = { Text(stringResource(R.string.hardcover_import_search)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -106,8 +110,18 @@ fun HardcoverImportSheet(
                                     )
                                     Text(row.book.authors.joinToString(", "))
                                     Text(
-                                        "${hardcoverStatus(row.status)} · Hardcover" +
-                                            (row.pages?.let { " · $it pages" } ?: ""),
+                                        row.pages?.let {
+                                            pluralStringResource(
+                                                R.plurals.hardcover_import_status_pages,
+                                                it,
+                                                it,
+                                                hardcoverStatus(row.status),
+                                            )
+                                        }
+                                            ?: stringResource(
+                                                R.string.hardcover_import_status,
+                                                hardcoverStatus(row.status),
+                                            ),
                                         style = MaterialTheme.typography.labelMedium,
                                     )
                                 }
@@ -115,10 +129,12 @@ fun HardcoverImportSheet(
                             Text(
                                 when {
                                     existing.size > 1 ->
-                                        "Multiple local matches: resolve before import"
-                                    target != null -> "EPUB: ${target.title}"
-                                    existing.isNotEmpty() -> "Update existing catalogue entry"
-                                    else -> "Save without EPUB"
+                                        stringResource(R.string.hardcover_import_duplicate)
+                                    target != null ->
+                                        stringResource(R.string.hardcover_import_epub, target.title)
+                                    existing.isNotEmpty() ->
+                                        stringResource(R.string.hardcover_import_update_existing)
+                                    else -> stringResource(R.string.hardcover_import_no_epub)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -128,11 +144,13 @@ fun HardcoverImportSheet(
                                     books.isNotEmpty()
                             )
                                 TextButton(onClick = { matching = row }, enabled = !state.busy) {
-                                    Text("Review an EPUB match")
+                                    Text(stringResource(R.string.hardcover_import_match_epub))
                                 }
                             if (targets[row.userBookId] != null)
                                 TextButton(onClick = { targets = targets - row.userBookId }) {
-                                    Text("Keep without EPUB")
+                                    Text(
+                                        stringResource(R.string.hardcover_import_keep_without_epub)
+                                    )
                                 }
                         }
                     }
@@ -140,10 +158,10 @@ fun HardcoverImportSheet(
                 item {
                     if (more)
                         TextButton(onClick = { model.loadProfile(false) }, enabled = !state.busy) {
-                            Text("Load next 50 books")
+                            Text(stringResource(R.string.hardcover_import_load_more))
                         }
                     Text(
-                        "${rows.size} loaded · ${selected.size} selected",
+                        stringResource(R.string.hardcover_import_counts, rows.size, selected.size),
                         style = MaterialTheme.typography.labelMedium,
                     )
                     Button(
@@ -151,7 +169,7 @@ fun HardcoverImportSheet(
                         enabled = !state.busy && selected.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Review import")
+                        Text(stringResource(R.string.hardcover_import_review))
                     }
                     Spacer(Modifier.height(32.dp))
                 }
@@ -167,14 +185,15 @@ fun HardcoverImportSheet(
                 contentPadding = PaddingValues(24.dp),
             ) {
                 item {
-                    Text("Match ${row.book.title}", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Choose the correct edition. This links the file; it does not replace metadata or reading data."
+                        stringResource(R.string.hardcover_import_match_title, row.book.title),
+                        style = MaterialTheme.typography.headlineSmall,
                     )
+                    Text(stringResource(R.string.hardcover_import_match_intro))
                     OutlinedTextField(
                         matchQuery,
                         { matchQuery = it },
-                        label = { Text("Search phone EPUBs") },
+                        label = { Text(stringResource(R.string.hardcover_import_match_search)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -194,7 +213,13 @@ fun HardcoverImportSheet(
                             matching = null
                         }
                     ) {
-                        Text("Confirm ${book.title} · ${book.authorLabel}")
+                        Text(
+                            stringResource(
+                                R.string.hardcover_import_match_option,
+                                book.title,
+                                book.authorLabel,
+                            )
+                        )
                     }
                 }
             }
@@ -203,10 +228,23 @@ fun HardcoverImportSheet(
     if (confirm)
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Save ${selected.size} books?") },
-            text = {
+            title = {
                 Text(
-                    "${targets.count { it.key in selected }} reviewed EPUB attachments. Other books keep their existing attachment or are saved without a file. Status and pages remain labelled Hardcover observations. Phone metadata and Kindle activity stay intact."
+                    pluralStringResource(
+                        R.plurals.hardcover_import_confirm_title,
+                        selected.size,
+                        selected.size,
+                    )
+                )
+            },
+            text = {
+                val attached = targets.count { it.key in selected }
+                Text(
+                    pluralStringResource(
+                        R.plurals.hardcover_import_confirm_body,
+                        attached,
+                        attached,
+                    )
                 )
             },
             confirmButton = {
@@ -217,11 +255,13 @@ fun HardcoverImportSheet(
                     },
                     enabled = !state.busy,
                 ) {
-                    Text("Import to phone")
+                    Text(stringResource(R.string.hardcover_import_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirm = false }) { Text("Back to review") }
+                TextButton(onClick = { confirm = false }) {
+                    Text(stringResource(R.string.hardcover_import_back))
+                }
             },
         )
 }

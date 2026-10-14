@@ -15,10 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 @Composable
@@ -76,18 +79,21 @@ fun HardcoverReadingSheet(
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Hardcover reading", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    stringResource(R.string.hardcover_reading_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 Text(book.title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Changes are sent only when you confirm. Phone and KOReader reading data stay intact.",
+                    stringResource(R.string.hardcover_reading_intro),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 SectionHeading(
-                    if (book.currentPath.isEmpty()) "1 · Manual progress"
-                    else "1 · Kindle progress",
+                    if (book.currentPath.isEmpty()) stringResource(R.string.hardcover_step_manual)
+                    else stringResource(R.string.hardcover_step_device),
                     if (book.currentPath.isEmpty())
-                        "Track this book on Hardcover now, or attach an EPUB to read it on Kindle."
-                    else "Close the book in KOReader so its latest progress is saved.",
+                        stringResource(R.string.hardcover_step_manual_hint)
+                    else stringResource(R.string.hardcover_step_device_hint),
                 )
                 if (book.currentPath.isNotEmpty()) {
                     OutlinedButton(
@@ -103,45 +109,48 @@ fun HardcoverReadingSheet(
                                 !state.busy,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Get latest from Kindle")
+                        Text(stringResource(R.string.hardcover_get_from_device))
                     }
                     if (requestedDevice && (deviceOperation.busy || deviceOperation.failed))
                         StatusSurface(deviceOperation)
                     if (snapshot == null)
                         Text(
-                            "No cached Kindle progress yet. Retrieve it, or enter a page/percentage manually below.",
+                            stringResource(R.string.hardcover_no_device_progress),
                             style = MaterialTheme.typography.bodySmall,
                         )
                 }
-                SectionHeading("2 · Review & update Hardcover")
+                SectionHeading(stringResource(R.string.hardcover_step_review))
                 if (state.busy) {
                     Text(state.message)
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 if (username.isBlank()) {
                     FeatureRow(
-                        "Connect Hardcover",
-                        "Link a book, then review status and progress updates.",
+                        stringResource(R.string.hardcover_connect),
+                        stringResource(R.string.hardcover_connect_hint),
                         androidx.compose.material.icons.Icons.Outlined.AccountCircle,
                         onClick = { account = true },
                     )
                 } else {
-                    Text("Connected as @$username", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        stringResource(R.string.hardcover_connected_as, username),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                     OutlinedButton(onClick = { model.openReading(book) }, enabled = !state.busy) {
-                        Text("Reload Hardcover tracking")
+                        Text(stringResource(R.string.hardcover_reload))
                     }
                     if (reading == null) {
                         OutlinedTextField(
                             search,
                             { search = it.take(300) },
-                            label = { Text("Title and author") },
+                            label = { Text(stringResource(R.string.hardcover_title_and_author)) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Button(
                             onClick = { model.searchHardcoverText(search) },
                             enabled = !state.busy && search.isNotBlank(),
                         ) {
-                            Text("Find Hardcover book")
+                            Text(stringResource(R.string.hardcover_find))
                         }
                         matches.forEach { match ->
                             OutlinedCard(
@@ -153,7 +162,7 @@ fun HardcoverReadingSheet(
                                     Text(match.title, style = MaterialTheme.typography.titleMedium)
                                     Text(match.authors.joinToString(", "))
                                     Text(
-                                        "Confirm this match",
+                                        stringResource(R.string.hardcover_link_match),
                                         style = MaterialTheme.typography.labelMedium,
                                     )
                                 }
@@ -161,21 +170,24 @@ fun HardcoverReadingSheet(
                         }
                     } else {
                         Text(
-                            "Status: ${when(reading?.status) { 1->"Want to Read"
-2->"Currently Reading"
-3->"Read"
-4->"Paused"
-5->"Did Not Finish"
-else->"Not in your Hardcover library" }}"
+                            stringResource(
+                                R.string.hardcover_status_line,
+                                hardcoverStatusLabel(reading?.status),
+                            )
                         )
-                        reading?.pages?.let { Text("Last recorded: $it pages") }
+                        reading?.pages?.let {
+                            Text(stringResource(R.string.hardcover_last_page, it))
+                        }
                         FilledTonalButton(
                             onClick = { confirmStatus = true },
                             enabled = !state.busy && reading?.status != 2,
                         ) {
-                            Text("Mark Currently Reading")
+                            Text(stringResource(R.string.hardcover_mark_reading))
                         }
-                        Text("Choose your edition", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.hardcover_choose_edition),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         OutlinedButton(
                             onClick = { chooseEdition = true },
                             enabled = !state.busy && editions.any { it.pages > 0 },
@@ -183,14 +195,17 @@ else->"Not in your Hardcover library" }}"
                         ) {
                             Text(
                                 edition?.let {
-                                    "${it.pages} pages · ${it.label.ifBlank { it.title }}"
-                                } ?: "Select a page-count edition"
+                                    pluralStringResource(
+                                        R.plurals.hardcover_edition_option,
+                                        it.pages,
+                                        it.pages,
+                                        it.label.ifBlank { it.title },
+                                    )
+                                } ?: stringResource(R.string.hardcover_choose_edition_button)
                             )
                         }
                         if (editions.none { it.pages > 0 })
-                            Text(
-                                "No page-count edition was found. Reading status can still be updated; progress needs a page-count edition."
-                            )
+                            Text(stringResource(R.string.hardcover_no_page_edition))
                         if (edition != null) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(
@@ -199,7 +214,7 @@ else->"Not in your Hardcover library" }}"
                                         percentage = false
                                         input = ""
                                     },
-                                    label = { Text("Pages") },
+                                    label = { Text(stringResource(R.string.hardcover_mode_pages)) },
                                 )
                                 FilterChip(
                                     selected = percentage,
@@ -207,7 +222,9 @@ else->"Not in your Hardcover library" }}"
                                         percentage = true
                                         input = ""
                                     },
-                                    label = { Text("Percentage estimate") },
+                                    label = {
+                                        Text(stringResource(R.string.hardcover_mode_percent))
+                                    },
                                 )
                             }
                             OutlinedTextField(
@@ -216,7 +233,13 @@ else->"Not in your Hardcover library" }}"
                                     useDevice = false
                                     input = it.take(12)
                                 },
-                                label = { Text(if (percentage) "Progress %" else "Current page") },
+                                label = {
+                                    Text(
+                                        if (percentage)
+                                            stringResource(R.string.hardcover_percent_label)
+                                        else stringResource(R.string.hardcover_page_label)
+                                    )
+                                },
                                 keyboardOptions =
                                     KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
@@ -224,7 +247,19 @@ else->"Not in your Hardcover library" }}"
                             )
                             if (percentage)
                                 Text(
-                                    "Estimated against ${edition.pages} pages${page?.let { " → page $it" }.orEmpty()}. EPUB pagination and printed pages differ.",
+                                    page?.let {
+                                        pluralStringResource(
+                                            R.plurals.hardcover_estimate_page,
+                                            edition.pages,
+                                            edition.pages,
+                                            it,
+                                        )
+                                    }
+                                        ?: pluralStringResource(
+                                            R.plurals.hardcover_estimate,
+                                            edition.pages,
+                                            edition.pages,
+                                        ),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             phoneReading
@@ -239,11 +274,17 @@ else->"Not in your Hardcover library" }}"
                                         }
                                     ) {
                                         Text(
-                                            "Use phone position · ${"%.1f".format(fraction * 100)}%"
+                                            stringResource(
+                                                R.string.hardcover_use_phone_position,
+                                                fraction * 100,
+                                            )
                                         )
                                     }
                                     Text(
-                                        "Saved on phone ${java.time.Instant.ofEpochMilli(phoneReading.updatedAt)}. Review before publishing.",
+                                        stringResource(
+                                            R.string.hardcover_phone_saved,
+                                            observationDate(phoneReading.updatedAt),
+                                        ),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -259,10 +300,20 @@ else->"Not in your Hardcover library" }}"
                                         },
                                         enabled = !state.busy,
                                     ) {
-                                        Text("Use KOReader snapshot · ${"%.1f".format(percent)}%")
+                                        Text(
+                                            stringResource(
+                                                R.string.hardcover_use_device_position,
+                                                percent,
+                                            )
+                                        )
                                     }
                                     Text(
-                                        "Snapshot fetched ${java.time.Instant.ofEpochMilli(snapshot.fetchedAt)}${if(snapshot.documentHash!=book.currentHash) "; from a previous EPUB revision" else ""}. Refresh reading data from Kindle if needed.",
+                                        stringResource(
+                                            if (snapshot.documentHash != book.currentHash)
+                                                R.string.hardcover_device_fetched_old
+                                            else R.string.hardcover_device_fetched,
+                                            observationDate(snapshot.fetchedAt),
+                                        ),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -275,7 +326,7 @@ else->"Not in your Hardcover library" }}"
                                 enabled = !state.busy && !deviceOperation.busy && page != null,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("Review progress update")
+                                Text(stringResource(R.string.hardcover_review_progress))
                             }
                         }
                     }
@@ -289,7 +340,7 @@ else->"Not in your Hardcover library" }}"
     if (chooseEdition)
         AlertDialog(
             onDismissRequest = { chooseEdition = false },
-            title = { Text("Choose Hardcover edition") },
+            title = { Text(stringResource(R.string.hardcover_choose_edition_title)) },
             text = {
                 LazyColumn(
                     Modifier.heightIn(max = 400.dp),
@@ -305,7 +356,11 @@ else->"Not in your Hardcover library" }}"
                         ) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(
-                                    "${item.pages} pages",
+                                    pluralStringResource(
+                                        R.plurals.hardcover_pages,
+                                        item.pages,
+                                        item.pages,
+                                    ),
                                     style = MaterialTheme.typography.titleSmall,
                                 )
                                 Text(item.label.ifBlank { item.title })
@@ -314,16 +369,18 @@ else->"Not in your Hardcover library" }}"
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { chooseEdition = false }) { Text("Close") } },
+            confirmButton = {
+                TextButton(onClick = { chooseEdition = false }) {
+                    Text(stringResource(R.string.discovery_close))
+                }
+            },
         )
     if (confirmStatus)
         AlertDialog(
             onDismissRequest = { confirmStatus = false },
-            title = { Text("Mark Currently Reading?") },
+            title = { Text(stringResource(R.string.hardcover_mark_reading_title)) },
             text = {
-                Text(
-                    "Update ${book.title} on Hardcover. Prior completed reads, ratings, reviews and privacy are retained."
-                )
+                Text(stringResource(R.string.hardcover_mark_reading_body, book.title))
             },
             confirmButton = {
                 TextButton(
@@ -333,30 +390,41 @@ else->"Not in your Hardcover library" }}"
                     },
                     enabled = !state.busy,
                 ) {
-                    Text("Update Hardcover")
+                    Text(stringResource(R.string.hardcover_update))
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmStatus = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { confirmStatus = false }) {
+                    Text(stringResource(R.string.discovery_cancel))
+                }
+            },
         )
     val expected = reading
     if (confirm && expected != null && edition != null && page != null)
         AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Publish reading progress?") },
+            title = { Text(stringResource(R.string.hardcover_send_progress_title)) },
             text = {
                 Column {
                     Text(
-                        "${book.title}\n$page of ${edition.pages} pages${if(percentage) " (estimated)" else ""}\n${edition.label}\nThis also marks the book Currently Reading."
+                        stringResource(
+                            if (percentage) R.string.hardcover_send_progress_body_estimated
+                            else R.string.hardcover_send_progress_body,
+                            book.title,
+                            page,
+                            edition.pages,
+                            edition.label,
+                        )
                     )
                     if (expected.readId == null)
                         Row {
                             Checkbox(allowNew, { allowNew = it })
-                            Text("Start a new reading session; keep completed read history")
+                            Text(stringResource(R.string.hardcover_start_new_read))
                         }
                     if (expected.pages != null && page < expected.pages)
                         Row {
                             Checkbox(allowDecrease, { allowDecrease = it })
-                            Text("Allow progress to decrease")
+                            Text(stringResource(R.string.hardcover_allow_decrease))
                         }
                 }
             },
@@ -371,9 +439,25 @@ else->"Not in your Hardcover library" }}"
                             (expected.readId != null || allowNew) &&
                             (expected.pages == null || page >= expected.pages || allowDecrease),
                 ) {
-                    Text("Update Hardcover")
+                    Text(stringResource(R.string.hardcover_update))
                 }
             },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { confirm = false }) {
+                    Text(stringResource(R.string.discovery_cancel))
+                }
+            },
         )
 }
+
+/** Hardcover status ids mapped to the names Hardcover shows. */
+@Composable
+internal fun hardcoverStatusLabel(status: Int?): String =
+    when (status) {
+        1 -> stringResource(R.string.hardcover_status_want_to_read)
+        2 -> stringResource(R.string.hardcover_status_currently_reading)
+        3 -> stringResource(R.string.hardcover_status_read)
+        4 -> stringResource(R.string.hardcover_status_paused)
+        5 -> stringResource(R.string.hardcover_status_did_not_finish)
+        else -> stringResource(R.string.hardcover_status_none)
+    }

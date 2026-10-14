@@ -13,9 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 @Composable
@@ -39,6 +41,7 @@ fun CatalogueBookDetails(
     }
     val snackbar = rememberOperationSnackbar(model.notices)
     val context = LocalContext.current
+    val noBrowser = stringResource(R.string.discovery_no_browser_search)
     var attaching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var candidate by remember { mutableStateOf<Book?>(null) }
@@ -57,7 +60,7 @@ fun CatalogueBookDetails(
             }
             item {
                 BookPrimaryActions(
-                    "Add EPUB",
+                    stringResource(R.string.discovery_add_epub),
                     {
                         picker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
                     },
@@ -67,9 +70,11 @@ fun CatalogueBookDetails(
                 Spacer(Modifier.height(FolioSpace.gap))
                 BookStateSummary(catalogueSignals(wish, observed))
                 observed?.let { value ->
+                    val checked = observationDate(value.fetchedAt)
                     Text(
-                        "Hardcover snapshot · ${java.time.Instant.ofEpochMilli(value.fetchedAt)}" +
-                            (value.pages?.let { " · $it recorded pages" } ?: ""),
+                        value.pages?.let {
+                            stringResource(R.string.discovery_hardcover_checked_page, checked, it)
+                        } ?: stringResource(R.string.discovery_hardcover_checked, checked),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -84,7 +89,7 @@ fun CatalogueBookDetails(
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Add to Hardcover Want to Read")
+                        Text(stringResource(R.string.discovery_add_to_hardcover_want_to_read))
                     }
                 TextButton(
                     onClick = {
@@ -101,19 +106,19 @@ fun CatalogueBookDetails(
                                 )
                             )
                         } catch (_: android.content.ActivityNotFoundException) {
-                            model.report("Install a browser to search for this book")
+                            model.report(noBrowser)
                         }
                     }
                 ) {
-                    Text("Search Anna’s Archive ↗")
+                    Text(stringResource(R.string.discovery_search_annas_archive))
                 }
                 Text(
-                    "Opens a title and author query in your browser. Return here to attach an EPUB.",
+                    stringResource(R.string.discovery_search_annas_archive_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (books.isNotEmpty())
                     TextButton(onClick = { attaching = !attaching }) {
-                        Text("Choose an EPUB already in Folio")
+                        Text(stringResource(R.string.discovery_choose_existing_epub))
                     }
             }
             if (attaching) {
@@ -121,7 +126,7 @@ fun CatalogueBookDetails(
                     OutlinedTextField(
                         query,
                         { query = it },
-                        label = { Text("Search imported EPUBs") },
+                        label = { Text(stringResource(R.string.discovery_search_epubs)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -134,8 +139,13 @@ fun CatalogueBookDetails(
                 ) { book ->
                     TextButton(onClick = { candidate = book }, enabled = !state.busy) {
                         Text(
-                            "${book.title} · ${book.authorLabel}" +
-                                if (BookDiscovery.suggests(wish, book)) " · Suggested" else ""
+                            stringResource(
+                                if (BookDiscovery.suggests(wish, book))
+                                    R.string.discovery_book_line_suggested
+                                else R.string.discovery_book_line,
+                                book.title,
+                                book.authorLabel,
+                            )
                         )
                     }
                 }
@@ -154,13 +164,20 @@ fun CatalogueBookDetails(
             item {
                 val metadata = wish.displayBook()
                 if (metadata.description.isNotBlank()) {
-                    ExpandableSection("Description", "About this book") {
+                    ExpandableSection(
+                        stringResource(R.string.discovery_description),
+                        stringResource(R.string.discovery_about),
+                    ) {
                         Text(metadata.description, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
                 if (metadata.series.isNotBlank())
-                    DetailLine("Series", "${metadata.series} ${metadata.seriesIndex}")
-                if (metadata.publisher.isNotBlank()) DetailLine("Publisher", metadata.publisher)
+                    DetailLine(
+                        stringResource(R.string.discovery_series),
+                        "${metadata.series} ${metadata.seriesIndex}",
+                    )
+                if (metadata.publisher.isNotBlank())
+                    DetailLine(stringResource(R.string.discovery_publisher), metadata.publisher)
             }
             if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             item {
@@ -173,7 +190,7 @@ fun CatalogueBookDetails(
                                 contentColor = MaterialTheme.colorScheme.error
                             ),
                     ) {
-                        Text("Remove from library")
+                        Text(stringResource(R.string.discovery_remove))
                     }
                 Spacer(Modifier.height(32.dp))
             }
@@ -183,10 +200,15 @@ fun CatalogueBookDetails(
     candidate?.let { book ->
         AlertDialog(
             onDismissRequest = { candidate = null },
-            title = { Text("Attach this edition?") },
+            title = { Text(stringResource(R.string.discovery_attach_title)) },
             text = {
                 Text(
-                    "${book.title}\n${book.authorLabel}\n\nConfirm this EPUB belongs to ${wish.title}. Files, annotations and reading history are retained. Cancelling keeps the EPUB as a separate library entry."
+                    stringResource(
+                        R.string.discovery_attach_body,
+                        book.title,
+                        book.authorLabel,
+                        wish.title,
+                    )
                 )
             },
             confirmButton = {
@@ -197,10 +219,14 @@ fun CatalogueBookDetails(
                     },
                     enabled = !state.busy,
                 ) {
-                    Text("Confirm attachment")
+                    Text(stringResource(R.string.discovery_attach_confirm))
                 }
             },
-            dismissButton = { TextButton(onClick = { candidate = null }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { candidate = null }) {
+                    Text(stringResource(R.string.discovery_cancel))
+                }
+            },
         )
     }
 }
