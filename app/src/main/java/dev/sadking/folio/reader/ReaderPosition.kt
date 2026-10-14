@@ -45,3 +45,16 @@ fun xpointerSpineIndex(pointer: String, spineSize: Int): Int? {
     val index = (match.groupValues[1].ifBlank { "1" }.toIntOrNull() ?: return null) - 1
     return index.takeIf { it in 0 until spineSize }
 }
+
+/** Decoded resource path of a publication href, without query, fragment or leading slash. */
+fun resourcePath(href: String): String =
+    (runCatching { java.net.URI(href).path }.getOrNull() ?: href.substringBefore('#')).trimStart(
+        '/'
+    )
+
+/**
+ * Zero-based KOReader `DocFragment` index of [href] in the full package [spine] (see `Epub.spine`),
+ * or null when the resource is not a spine item.
+ */
+fun docFragmentIndex(href: String, spine: List<String>): Int? =
+    spine.indexOf(resourcePath(href)).takeIf { it >= 0 }

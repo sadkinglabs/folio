@@ -1,5 +1,6 @@
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     org.readium.r2.shared.ExperimentalReadiumApi::class,
 )
 
@@ -7,19 +8,32 @@ package dev.sadking.folio.reader
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.*
@@ -28,8 +42,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
@@ -44,6 +67,7 @@ import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -52,6 +76,7 @@ class ReaderActivity : FragmentActivity() {
     private val model: ReaderViewModel by viewModels()
     private var navigator: EpubNavigatorFragment? = null
     private var controls by mutableStateOf(true)
+    private var panelOpen = false
     private var positionNavigation = false
     private var closing by mutableStateOf(false)
     private var navigationError by mutableStateOf<String?>(null)
@@ -65,6 +90,7 @@ class ReaderActivity : FragmentActivity() {
         // Publication is asynchronous. Rebuild its fragment from the Room locator, including after
         // process death, rather than letting FragmentManager restore an uninitialised navigator.
         super.onCreate(null)
+        enableEdgeToEdge()
         model.open(intent.getStringExtra(BOOK_ID).orEmpty())
         setContent {
             val appearance = remember { getSharedPreferences("appearance", MODE_PRIVATE) }
@@ -83,6 +109,35 @@ class ReaderActivity : FragmentActivity() {
         super.onPause()
     }
 
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val nav = navigator
+        if (nav != null && model.volumeKeys && !panelOpen) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    nav.goForward(animated = false)
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    nav.goBackward(animated = false)
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        // Swallow the matching key-up so the system volume panel does not appear.
+        if (
+            navigator != null &&
+                model.volumeKeys &&
+                !panelOpen &&
+                keyCode in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
+        )
+            return true
+        return super.onKeyUp(keyCode, event)
+    }
+
     private fun closeReader() {
         if (closing) return
         closing = true
@@ -90,9 +145,11 @@ class ReaderActivity : FragmentActivity() {
             try {
                 savePosition()
                 finish()
+            } catch (cancel: CancellationException) {
+                throw cancel
             } catch (_: Exception) {
                 closing = false
-                navigationError = "Could not save your place. Try again before closing."
+                navigationError = getString(R.string.reader_save_failed)
             }
         }
     }
@@ -108,8 +165,7 @@ class ReaderActivity : FragmentActivity() {
                     listener =
                         object : EpubNavigatorFragment.Listener {
                             override fun onExternalLinkActivated(url: AbsoluteUrl) {
-                                navigationError =
-                                    "External links are disabled while reading. Open them separately in your browser."
+                                navigationError = getString(R.string.reader_external_link)
                             }
                         },
                     configuration =
@@ -126,11 +182,13 @@ class ReaderActivity : FragmentActivity() {
             .commitNow()
         navigator = fragment
         harden(fragment.requireView())
+        // Listeners run in order until one consumes the event: the middle third toggles
+        // controls, then the edges (30% each side) turn pages, as do arrow/page keys.
         fragment.addInputListener(
             object : InputListener {
                 override fun onTap(event: TapEvent): Boolean {
                     val width = fragment.view?.width ?: return false
-                    if (event.point.x in width * 0.25f..width * 0.75f) {
+                    if (event.point.x in width * 0.3f..width * 0.7f) {
                         controls = !controls
                         return true
                     }
@@ -138,32 +196,30 @@ class ReaderActivity : FragmentActivity() {
                 }
             }
         )
+        fragment.addInputListener(DirectionalNavigationAdapter(fragment))
         lifecycleScope.launch {
             if (model.automaticKindleResume) {
                 try {
                     if (resumeKindle()) {
                         model.completedIncoming()
                     }
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (_: Exception) {
-                    navigationError =
-                        "Could not resolve the queued Kindle position. Your phone position is retained."
+                    navigationError = getString(R.string.reader_kindle_resolve_failed)
                 }
             }
             fragment.currentLocator.collectLatest { locator ->
                 if (positionNavigation) return@collectLatest
                 model.location(locator)
-                // Save the native locator immediately; translated anchors are optional and follow.
-                try {
-                    model.save(locator)
-                } catch (_: Exception) {
-                    navigationError = "Position could not be saved. Check phone storage."
-                }
-                delay(450)
+                // One durable write per settled page: a further page turn cancels this one.
+                delay(SAVE_DEBOUNCE_MS)
                 try {
                     savePosition()
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (_: Exception) {
-                    navigationError =
-                        "Position translation is unavailable on this page. Phone reading is saved."
+                    navigationError = getString(R.string.reader_position_save_failed)
                 }
             }
         }
@@ -193,22 +249,38 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /** Runs a bridge call, injecting the 15 KB position scripts only once per chapter document. */
+    private suspend fun EpubNavigatorFragment.bridge(call: String): String? {
+        val ready =
+            evaluateJavascript(
+                "typeof FolioReader !== 'undefined' && typeof FolioPositions !== 'undefined'"
+            )
+        if (ready != "true") evaluateJavascript("$scripts\ntrue;")
+        return evaluateJavascript(call)
+    }
+
+    /**
+     * Saves the current locator together with its KOReader pointer when one can be computed. A page
+     * without translatable text still saves its native locator.
+     */
     private suspend fun savePosition() {
         val nav = navigator ?: return
         val locator = nav.currentLocator.value
-        val index =
-            model.publication?.readingOrder?.indexOfFirst { it.url().isEquivalent(locator.href) }
-                ?: -1
-        if (index < 0) {
-            model.save(locator)
-            return
-        }
-        val raw = nav.evaluateJavascript("$scripts\nJSON.stringify(FolioReader.capture($index));")
-        val quoted = raw?.let { JSONTokener(it).nextValue() as? String }
+        val index = docFragmentIndex(locator.href.toString(), model.spine)
         val pointer =
-            quoted
-                ?.let { runCatching { JSONTokener(it).nextValue() as? String }.getOrNull() }
-                .orEmpty()
+            if (index == null) ""
+            else
+                try {
+                    val raw = nav.bridge("JSON.stringify(FolioReader.capture($index));")
+                    val quoted = raw?.let { JSONTokener(it).nextValue() as? String }
+                    quoted
+                        ?.let { runCatching { JSONTokener(it).nextValue() as? String }.getOrNull() }
+                        .orEmpty()
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    ""
+                }
         if (nav.currentLocator.value == locator) model.save(locator, pointer)
     }
 
@@ -218,40 +290,45 @@ class ReaderActivity : FragmentActivity() {
         val snapshot = model.kindle ?: return false
         val book = model.book ?: return false
         if (snapshot.documentHash != book.currentHash) {
-            navigationError =
-                "This Kindle position belongs to another EPUB revision. Transfer the matching file first."
+            navigationError = getString(R.string.reader_kindle_other_revision)
             return false
         }
-        val index = xpointerSpineIndex(snapshot.position, publication.readingOrder.size)
+        val index = xpointerSpineIndex(snapshot.position, model.spine.size)
         if (index == null) {
-            navigationError =
-                "This KOReader position format cannot be translated safely. Your phone position is retained."
+            navigationError = getString(R.string.reader_kindle_unsupported)
+            return false
+        }
+        // KOReader numbers every spine item; Readium's reading order may omit non-linear ones.
+        val link =
+            publication.readingOrder.firstOrNull {
+                resourcePath(it.url().toString()) == model.spine[index]
+            }
+        if (link == null) {
+            navigationError = getString(R.string.reader_kindle_not_in_reading_order)
             return false
         }
         positionNavigation = true
         try {
             val previous = nav.currentLocator.value
-            val link = publication.readingOrder[index]
             val locator =
                 Locator(
                     link.url(),
                     link.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.XHTML,
                 )
             if (!nav.go(locator, animated = false)) {
-                navigationError = "Could not open the Kindle chapter"
+                navigationError = getString(R.string.reader_kindle_chapter_failed)
                 return false
             }
             // evaluateJavascript waits for Readium's page to load; no delay guesses.
             val raw =
-                nav.evaluateJavascript(
-                    "$scripts\nJSON.stringify(FolioReader.resolve(${JSONObject.quote(snapshot.position)}));"
+                nav.bridge(
+                    "JSON.stringify(FolioReader.resolve(${JSONObject.quote(snapshot.position)}));"
                 )
             val serialized = raw?.let { JSONTokener(it).nextValue() as? String }
             val resolved = serialized?.takeIf { it != "null" }?.let { JSONObject(it) }
             if (resolved == null) {
                 nav.go(previous, animated = false)
-                navigationError =
-                    "This Kindle anchor cannot be resolved in the EPUB. Your phone position is retained."
+                navigationError = getString(R.string.reader_kindle_anchor_failed)
                 return false
             }
             val target =
@@ -264,7 +341,7 @@ class ReaderActivity : FragmentActivity() {
                 )
             if (!nav.go(target, animated = false)) {
                 nav.go(previous, animated = false)
-                navigationError = "Could not navigate to the Kindle passage"
+                navigationError = getString(R.string.reader_kindle_passage_failed)
                 return false
             }
             nav.evaluateJavascript("true")
@@ -282,6 +359,8 @@ class ReaderActivity : FragmentActivity() {
         var panel by rememberSaveable { mutableStateOf("") }
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
+        val pageDark = model.pageDark(dark)
+        SideEffect { panelOpen = panel.isNotBlank() }
         BackHandler { if (panel.isNotBlank()) panel = "" else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
@@ -291,89 +370,56 @@ class ReaderActivity : FragmentActivity() {
                 model.dismissMessage()
             }
         }
-        LaunchedEffect(model.fontSize, model.pageTheme, model.serif, model.scrolling, dark) {
+        LaunchedEffect(
+            model.fontSize,
+            model.pageTheme,
+            model.serif,
+            model.scrolling,
+            model.lineHeight,
+            model.margins,
+            model.publisherStyles,
+            dark,
+        ) {
             navigator?.submitPreferences(model.preferences(dark))
         }
-        Scaffold(
-            topBar = {
-                if (controls)
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(
-                                    book?.title ?: "Reader",
-                                    maxLines = 1,
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                book?.let {
-                                    Text(
-                                        it.authorLabel,
-                                        maxLines = 1,
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                            }
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = ::closeReader, enabled = !closing) {
-                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Return to book")
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { panel = "Contents" }, enabled = book != null) {
-                                Icon(Icons.Outlined.FormatListBulleted, "Contents and bookmarks")
-                            }
-                            IconButton(onClick = { panel = "Appearance" }, enabled = book != null) {
-                                Icon(Icons.Outlined.TextFields, "Reading appearance")
-                            }
-                            IconButton(onClick = { panel = "Kindle" }, enabled = book != null) {
-                                Icon(Icons.Outlined.Devices, "Continue between phone and Kindle")
-                            }
-                        },
+        // Immersive reading: hiding controls also hides the system bars (API 30+, where the
+        // reading area below is sized to ignore their visibility and so never re-paginates).
+        LaunchedEffect(controls, pageDark, dark) {
+            val bars = WindowCompat.getInsetsController(window, window.decorView)
+            bars.isAppearanceLightStatusBars = !(if (controls) dark else pageDark)
+            bars.isAppearanceLightNavigationBars = !(if (controls) dark else pageDark)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                bars.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
+                else bars.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        // Controls are drawn over the page. The page area itself never changes size when they
+        // appear or disappear, so Readium does not re-paginate and the reading position holds.
+        Box(Modifier.fillMaxSize().background(Color(model.pageColor(dark)))) {
+            Box(
+                Modifier.fillMaxSize()
+                    .windowInsetsPadding(
+                        WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
                     )
-            },
-            bottomBar = {
-                if (controls && book != null)
-                    Surface(tonalElevation = 2.dp) {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .navigationBarsPadding()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (model.error != null)
+                    Surface(Modifier.fillMaxSize()) {
+                        Column(
+                            Modifier.fillMaxSize().padding(24.dp),
+                            verticalArrangement =
+                                Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                         ) {
-                            IconButton(onClick = { navigator?.goBackward(animated = false) }) {
-                                Icon(Icons.AutoMirrored.Outlined.NavigateBefore, "Previous page")
-                            }
                             Text(
-                                model.lastLocation?.title.orEmpty(),
-                                Modifier.weight(1f),
-                                maxLines = 1,
-                                style = MaterialTheme.typography.labelMedium,
+                                stringResource(R.string.reader_open_failed),
+                                style = MaterialTheme.typography.headlineSmall,
                             )
-                            Text(
-                                "${((model.lastLocation?.locations?.totalProgression ?: 0.0) * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            IconButton(onClick = model::bookmark) {
-                                Icon(Icons.Outlined.BookmarkAdd, "Bookmark this page")
-                            }
-                            IconButton(onClick = { navigator?.goForward(animated = false) }) {
-                                Icon(Icons.AutoMirrored.Outlined.NavigateNext, "Next page")
+                            Text(model.error.orEmpty())
+                            Button(onClick = ::closeReader) {
+                                Text(stringResource(R.string.reader_back_to_details))
                             }
                         }
-                    }
-            },
-            snackbarHost = { SnackbarHost(snackbar) },
-        ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                if (model.error != null)
-                    Column(
-                        Modifier.align(Alignment.Center).padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Text("Unable to open book", style = MaterialTheme.typography.headlineSmall)
-                        Text(model.error.orEmpty())
-                        Button(onClick = ::closeReader) { Text("Back to book details") }
                     }
                 else if (model.publication == null)
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -392,6 +438,28 @@ class ReaderActivity : FragmentActivity() {
                         modifier = Modifier.fillMaxSize(),
                     )
             }
+            AnimatedVisibility(
+                visible = controls || model.error != null,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+            ) {
+                TopBar(book?.title, book?.authorLabel, enabled = book != null) { panel = it }
+            }
+            AnimatedVisibility(
+                visible = controls && book != null && model.error == null,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn() + slideInVertically { it },
+                exit = fadeOut() + slideOutVertically { it },
+            ) {
+                BottomBar()
+            }
+            SnackbarHost(
+                snackbar,
+                Modifier.align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (controls) 72.dp else 16.dp),
+            )
         }
         if (panel.isNotBlank())
             ModalBottomSheet(onDismissRequest = { panel = "" }) {
@@ -404,6 +472,7 @@ class ReaderActivity : FragmentActivity() {
                                 ?: remember { mutableStateOf(emptyList<PhoneBookmark>()) }
                         ContentsPanel(
                             model.publication?.tableOfContents.orEmpty(),
+                            model.lastLocation?.href?.toString()?.let(::resourcePath),
                             bookmarks,
                             onLink = {
                                 navigator?.go(it, animated = false)
@@ -417,74 +486,178 @@ class ReaderActivity : FragmentActivity() {
                             onDelete = { model.deleteBookmark(it.id) },
                         )
                     }
-                    "Kindle" ->
-                        Column(
-                            Modifier.fillMaxWidth().padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                "Continue on another device",
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                            Text(
-                                "Positions are kept separately. Choose when to replace your current place. Both devices must have the same EPUB."
-                            )
-                            model.kindle?.let {
-                                Text(
-                                    "Last retrieved Kindle progress · ${((it.percent ?: 0.0) * 100).toInt()}%",
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { scope.launch { model.refreshKindle() } },
-                                enabled = !model.busy,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("Retrieve saved Kindle position")
-                            }
-                            FilledTonalButton(
-                                onClick = {
-                                    scope.launch { resumeKindle() }
-                                    panel = ""
-                                },
-                                enabled = !model.busy && model.kindle != null,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("Resume from Kindle on phone")
-                            }
-                            HorizontalDivider()
-                            Text("Phone → Kindle", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Requires the updated Folio bridge on KOReader. Send the EPUB first. The bridge asks before moving your position; bookmarks and highlights are preserved.",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        try {
-                                            savePosition()
-                                            model.sendPosition()
-                                        } catch (_: Exception) {
-                                            navigationError =
-                                                "Could not prepare this position. Try another text page."
-                                        }
-                                    }
-                                },
-                                enabled = !model.busy,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    if (model.busy) "Working…" else "Send phone position for review"
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
-                        }
+                    "Kindle" -> DevicesPanel(scope) { panel = "" }
                 }
             }
     }
 
+    @Composable
+    private fun TopBar(
+        title: String?,
+        author: String?,
+        enabled: Boolean,
+        onPanel: (String) -> Unit,
+    ) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text(
+                        title ?: stringResource(R.string.reader_title_fallback),
+                        maxLines = 1,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    author?.let {
+                        Text(it, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            navigationIcon = {
+                IconButton(onClick = ::closeReader, enabled = !closing) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.ArrowBack,
+                        stringResource(R.string.reader_back),
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = { onPanel("Contents") }, enabled = enabled) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.FormatListBulleted,
+                        stringResource(R.string.reader_contents),
+                    )
+                }
+                IconButton(onClick = { onPanel("Appearance") }, enabled = enabled) {
+                    Icon(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance))
+                }
+                IconButton(onClick = { onPanel("Kindle") }, enabled = enabled) {
+                    Icon(Icons.Outlined.Devices, stringResource(R.string.reader_devices))
+                }
+            },
+        )
+    }
+
+    @Composable
+    private fun BottomBar() {
+        val location = model.lastLocation
+        val percent = ((location?.locations?.totalProgression ?: 0.0) * 100).toInt()
+        val page = location?.locations?.position
+        Surface(tonalElevation = 2.dp) {
+            Row(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { navigator?.goBackward(animated = false) }) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.NavigateBefore,
+                        stringResource(R.string.reader_previous_page),
+                    )
+                }
+                Text(
+                    location?.title.orEmpty(),
+                    Modifier.weight(1f),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    if (page != null && model.positionCount > 0)
+                        stringResource(
+                            R.string.reader_progress_pages,
+                            page,
+                            model.positionCount,
+                            percent,
+                        )
+                    else stringResource(R.string.reader_progress_percent, percent),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                IconButton(onClick = model::bookmark) {
+                    Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.reader_bookmark))
+                }
+                IconButton(onClick = { navigator?.goForward(animated = false) }) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.NavigateNext,
+                        stringResource(R.string.reader_next_page),
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun DevicesPanel(scope: CoroutineScope, close: () -> Unit) {
+        Column(
+            Modifier.fillMaxWidth().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.devices_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(stringResource(R.string.devices_body))
+            model.kindle?.let {
+                Text(
+                    stringResource(
+                        R.string.devices_last_kindle,
+                        ((it.percent ?: 0.0) * 100).toInt(),
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            OutlinedButton(
+                onClick = { scope.launch { model.refreshKindle() } },
+                enabled = !model.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.devices_retrieve))
+            }
+            FilledTonalButton(
+                onClick = {
+                    scope.launch { resumeKindle() }
+                    close()
+                },
+                enabled = !model.busy && model.kindle != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.devices_resume))
+            }
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.devices_phone_to_kindle),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                stringResource(R.string.devices_phone_to_kindle_body),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val sendFailed = stringResource(R.string.reader_send_failed)
+            Button(
+                onClick = {
+                    scope.launch {
+                        try {
+                            savePosition()
+                            model.sendPosition()
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            navigationError = sendFailed
+                        }
+                    }
+                },
+                enabled = !model.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    stringResource(
+                        if (model.busy) R.string.devices_working else R.string.devices_send
+                    )
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+
     companion object {
         private const val BOOK_ID = "book_id"
+        private const val SAVE_DEBOUNCE_MS = 1000L
 
         fun open(context: Context, bookId: String) {
             context.startActivity(
@@ -495,39 +668,121 @@ class ReaderActivity : FragmentActivity() {
 }
 
 @Composable
-private fun AppearancePanel(model: ReaderViewModel) {
-    Column(
-        Modifier.fillMaxWidth().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text("Make yourself comfortable", style = MaterialTheme.typography.headlineSmall)
-        Text("Text size · ${model.fontSize.toInt()}%", style = MaterialTheme.typography.labelLarge)
-        Slider(
-            model.fontSize.toFloat(),
-            { model.appearance(size = it.toDouble()) },
-            valueRange = 75f..200f,
-        )
+private fun ChoiceRow(
+    label: String,
+    options: List<Pair<String, Double>>,
+    selected: Double,
+    enabled: Boolean = true,
+    onSelect: (Double) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("System", "Light", "Paper", "Dark").forEach { name ->
+            options.forEach { (name, value) ->
                 FilterChip(
-                    model.pageTheme == name,
-                    { model.appearance(theme = name) },
-                    { Text(name) },
+                    selected = kotlin.math.abs(selected - value) < 0.01,
+                    onClick = { onSelect(value) },
+                    label = { Text(name) },
+                    enabled = enabled,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppearancePanel(model: ReaderViewModel) {
+    // The slider previews locally and applies once on release: every intermediate value would
+    // otherwise re-paginate the whole chapter.
+    var size by remember(model.fontSize) { mutableFloatStateOf(model.fontSize.toFloat()) }
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            stringResource(R.string.appearance_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(
+            stringResource(R.string.appearance_text_size, size.toInt()),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Slider(
+            size,
+            { size = it },
+            valueRange = 75f..200f,
+            onValueChangeFinished = { model.appearance(size = size.toDouble()) },
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                    "System" to R.string.appearance_theme_system,
+                    "Light" to R.string.appearance_theme_light,
+                    "Paper" to R.string.appearance_theme_paper,
+                    "Dark" to R.string.appearance_theme_dark,
+                )
+                .forEach { (name, label) ->
+                    FilterChip(
+                        model.pageTheme == name,
+                        { model.appearance(theme = name) },
+                        { Text(stringResource(label)) },
+                    )
+                }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(model.serif, { model.appearance(useSerif = true) }, { Text("Serif") })
-            FilterChip(!model.serif, { model.appearance(useSerif = false) }, { Text("Sans serif") })
+            FilterChip(
+                model.serif,
+                { model.appearance(useSerif = true) },
+                { Text(stringResource(R.string.appearance_serif)) },
+            )
+            FilterChip(
+                !model.serif,
+                { model.appearance(useSerif = false) },
+                { Text(stringResource(R.string.appearance_sans)) },
+            )
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Continuous scrolling", Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.appearance_book_styles))
+                Text(
+                    stringResource(R.string.appearance_book_styles_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(model.publisherStyles, { model.appearance(bookStyles = it) })
+        }
+        ChoiceRow(
+            stringResource(R.string.appearance_spacing),
+            listOf(
+                stringResource(R.string.appearance_compact) to 1.3,
+                stringResource(R.string.appearance_normal) to 1.5,
+                stringResource(R.string.appearance_relaxed) to 1.8,
+            ),
+            model.lineHeight,
+            enabled = !model.publisherStyles,
+        ) {
+            model.appearance(spacing = it)
+        }
+        ChoiceRow(
+            stringResource(R.string.appearance_margins),
+            listOf(
+                stringResource(R.string.appearance_narrow) to 0.5,
+                stringResource(R.string.appearance_normal) to 1.0,
+                stringResource(R.string.appearance_wide) to 1.6,
+            ),
+            model.margins,
+            enabled = !model.publisherStyles,
+        ) {
+            model.appearance(pageMargins = it)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.appearance_scrolling), Modifier.weight(1f))
             Switch(model.scrolling, { model.appearance(scroll = it) })
         }
-        Text(
-            "Your place is saved automatically. Tap the centre of a page to hide or show controls.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.appearance_volume_keys), Modifier.weight(1f))
+            Switch(model.volumeKeys, { model.appearance(turnWithVolume = it) })
+        }
+        Text(stringResource(R.string.appearance_hint), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -539,47 +794,67 @@ private fun flattenContents(links: List<Link>, depth: Int = 0): List<Pair<Link, 
 @Composable
 private fun ContentsPanel(
     links: List<Link>,
+    currentPath: String?,
     bookmarks: List<PhoneBookmark>,
     onLink: (Link) -> Unit,
     onBookmark: (PhoneBookmark) -> Unit,
     onDelete: (PhoneBookmark) -> Unit,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val entries = remember(links) { flattenContents(links) }
+    val current =
+        remember(entries, currentPath) {
+            entries.indexOfLast { (link, _) -> resourcePath(link.url().toString()) == currentPath }
+        }
+    val contentsState =
+        rememberLazyListState(initialFirstVisibleItemIndex = current.coerceAtLeast(0))
+    val bookmarksState = rememberLazyListState()
+    val currentLabel = stringResource(R.string.contents_current)
     Column {
         Text(
-            "Your place in the book",
+            stringResource(R.string.contents_title),
             Modifier.padding(horizontal = 24.dp),
             style = MaterialTheme.typography.headlineSmall,
         )
         PrimaryTabRow(tab) {
-            Tab(tab == 0, { tab = 0 }, text = { Text("Contents") })
-            Tab(tab == 1, { tab = 1 }, text = { Text("Bookmarks · ${bookmarks.size}") })
+            Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.contents_tab)) })
+            Tab(
+                tab == 1,
+                { tab = 1 },
+                text = { Text(stringResource(R.string.contents_bookmarks_tab, bookmarks.size)) },
+            )
         }
         LazyColumn(
             Modifier.fillMaxWidth().heightIn(max = 500.dp),
+            state = if (tab == 0) contentsState else bookmarksState,
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             if (tab == 0) {
                 if (links.isEmpty())
-                    item { Text("This EPUB has no table of contents.", Modifier.padding(24.dp)) }
-                items(flattenContents(links)) { (link, depth) ->
+                    item { Text(stringResource(R.string.contents_empty), Modifier.padding(24.dp)) }
+                items(entries.size) { index ->
+                    val (link, depth) = entries[index]
+                    val isCurrent = index == current
                     TextButton(
                         onClick = { onLink(link) },
                         modifier =
                             Modifier.fillMaxWidth()
-                                .padding(start = (16 + depth * 12).dp, end = 16.dp),
+                                .padding(start = (16 + depth * 12).dp, end = 16.dp)
+                                .semantics {
+                                    selected = isCurrent
+                                    if (isCurrent) stateDescription = currentLabel
+                                },
                     ) {
-                        Text(link.title ?: "Chapter", Modifier.weight(1f))
+                        Text(
+                            link.title ?: stringResource(R.string.contents_chapter_fallback),
+                            Modifier.weight(1f),
+                            fontWeight = if (isCurrent) FontWeight.Bold else null,
+                        )
                     }
                 }
             } else {
                 if (bookmarks.isEmpty())
-                    item {
-                        Text(
-                            "Bookmark a page using the ribbon button while reading.",
-                            Modifier.padding(24.dp),
-                        )
-                    }
+                    item { Text(stringResource(R.string.bookmarks_empty), Modifier.padding(24.dp)) }
                 items(bookmarks, key = { it.id }) { mark ->
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -589,7 +864,10 @@ private fun ContentsPanel(
                             Text(mark.title, Modifier.weight(1f))
                         }
                         IconButton(onClick = { onDelete(mark) }) {
-                            Icon(Icons.Outlined.DeleteOutline, "Delete bookmark")
+                            Icon(
+                                Icons.Outlined.DeleteOutline,
+                                stringResource(R.string.bookmark_delete),
+                            )
                         }
                     }
                 }

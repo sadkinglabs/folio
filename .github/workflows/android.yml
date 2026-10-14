@@ -38,6 +38,8 @@ jobs:
       - run: python3 scripts/check-library-basics.py
       - run: python3 scripts/check-local-removal.py
       - run: python3 scripts/check-plugin.py
+      - name: Reader position interop (DOM fixtures)
+        run: npm ci --prefix tools/reader-interop && npm test --prefix tools/reader-interop
       - name: Hardcover queries match the published schema
         run: python3 scripts/check-hardcover-schema.py
       - uses: actions/upload-artifact@v4

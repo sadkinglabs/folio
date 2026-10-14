@@ -56,6 +56,17 @@ class ReaderPositionTest {
     }
 
     @Test
+    fun docFragmentsFollowTheFullSpineNotTheReadingOrder() {
+        // A non-linear notes page sits between two chapters in the package spine.
+        val spine = listOf("OPS/one.xhtml", "OPS/notes page.xhtml", "OPS/two.xhtml")
+        assertEquals(0, docFragmentIndex("OPS/one.xhtml", spine))
+        assertEquals(2, docFragmentIndex("OPS/two.xhtml#section", spine))
+        assertEquals(1, docFragmentIndex("/OPS/notes%20page.xhtml", spine))
+        assertNull(docFragmentIndex("OPS/cover.jpg", spine))
+        assertEquals("OPS/two.xhtml", resourcePath("OPS/two.xhtml?x=1#y"))
+    }
+
+    @Test
     fun unknownOutOfRangeAndUnboundedAnchorsFailClosed() {
         listOf(
                 "/body/DocFragment[0]/body/p",

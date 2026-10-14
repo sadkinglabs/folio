@@ -102,6 +102,14 @@ class EpubTest {
     }
 
     @Test
+    fun spineKeepsNonLinearItemsInPackageOrder() {
+        val opf =
+            """<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">x</dc:identifier><dc:title>T</dc:title></metadata><manifest><item id="notes" href="text/notes%20page.xhtml" media-type="application/xhtml+xml"/><item id="c1" href="text/one.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="../two.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/><itemref idref="notes" linear="no"/><itemref idref="missing"/><itemref idref="c2"/></spine></package>"""
+        val spine = Epub.spine(epub(extra = mapOf("OPS/package.opf" to opf.toByteArray())))
+        assertEquals(listOf("OPS/text/one.xhtml", "OPS/text/notes page.xhtml", "two.xhtml"), spine)
+    }
+
+    @Test
     fun identicalBytesHaveIdenticalFingerprint() {
         val a = epub()
         val b = target()

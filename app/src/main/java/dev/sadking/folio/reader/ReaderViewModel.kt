@@ -22,6 +22,7 @@ import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
@@ -74,6 +75,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var scrolling by mutableStateOf(settings.getBoolean("scroll", false))
         private set
 
+    var lineHeight by mutableDoubleStateOf(settings.getFloat("lineHeight", 1.5f).toDouble())
+        private set
+
+    var margins by mutableDoubleStateOf(settings.getFloat("margins", 1.0f).toDouble())
+        private set
+
+    var publisherStyles by mutableStateOf(settings.getBoolean("publisherStyles", false))
+        private set
+
+    var volumeKeys by mutableStateOf(settings.getBoolean("volumeKeys", true))
+        private set
+
+    /** Full package spine as ZIP paths; maps KOReader DocFragments to Readium resources. */
+    var spine: List<String> = emptyList()
+        private set
+
+    /** Total Readium positions ("pages" at the current layout), once computed. */
+    var positionCount by mutableIntStateOf(0)
+        private set
+
     var automaticKindleResume = false
         private set
 
@@ -100,6 +121,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         require(Epub.sha256(file) == found.currentHash) {
                             "EPUB changed outside Folio. Reimport it before reading."
                         }
+                        // Positions stay phone-only if the spine cannot be read.
+                        spine = runCatching { Epub.spine(file) }.getOrDefault(emptyList())
                         found to file
                     }
                 // All resource requests through Readium are offline; no book-triggered HTTP
@@ -157,6 +180,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         kindle?.position == queued.optString("position")
                 book = loaded.first
                 publication = opened
+                launch {
+                    positionCount = runCatching { opened.positions().size }.getOrDefault(0)
+                }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
@@ -169,9 +195,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         EpubPreferences(
             fontSize = fontSize,
             fontFamily = if (serif) FontFamily.SERIF else FontFamily.SANS_SERIF,
-            publisherStyles = false,
-            lineHeight = 1.5,
-            pageMargins = 1.0,
+            publisherStyles = publisherStyles,
+            lineHeight = lineHeight,
+            pageMargins = margins,
             scroll = scrolling,
             theme =
                 when (pageTheme) {
@@ -187,19 +213,47 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         theme: String = pageTheme,
         useSerif: Boolean = serif,
         scroll: Boolean = scrolling,
+        spacing: Double = lineHeight,
+        pageMargins: Double = margins,
+        bookStyles: Boolean = publisherStyles,
+        turnWithVolume: Boolean = volumeKeys,
     ) {
         fontSize = size.coerceIn(75.0, 200.0)
         pageTheme = theme
         serif = useSerif
         scrolling = scroll
+        lineHeight = spacing.coerceIn(1.0, 2.0)
+        margins = pageMargins.coerceIn(0.0, 2.0)
+        publisherStyles = bookStyles
+        volumeKeys = turnWithVolume
         settings
             .edit()
             .putFloat("fontSize", fontSize.toFloat())
             .putString("theme", theme)
             .putBoolean("serif", serif)
             .putBoolean("scroll", scrolling)
+            .putFloat("lineHeight", lineHeight.toFloat())
+            .putFloat("margins", margins.toFloat())
+            .putBoolean("publisherStyles", publisherStyles)
+            .putBoolean("volumeKeys", volumeKeys)
             .apply()
     }
+
+    /** Page colour Readium paints for the current theme, so system-bar areas match the page. */
+    fun pageDark(systemDark: Boolean) =
+        when (pageTheme) {
+            "Dark" -> true
+            "Light",
+            "Paper" -> false
+            else -> systemDark
+        }
+
+    fun pageColor(systemDark: Boolean): Long =
+        when {
+            pageTheme == "Paper" -> 0xFFFAF4E8
+            pageDark(systemDark) -> 0xFF000000
+            else -> 0xFFFFFFFF
+        }
 
     fun location(locator: Locator) {
         lastLocation = locator
@@ -237,11 +291,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val locator = lastLocation ?: return
         val pointer =
             lastPhone?.takeIf { it.locator == locator.toJSON().toString() }?.xpointer.orEmpty()
+        // Finishing the activity cancels viewModelScope right after onPause; the write must land.
         viewModelScope.launch {
-            try {
-                save(locator, pointer)
-            } catch (_: Exception) {
-                message = "Position could not be saved. Try again before closing."
+            withContext(NonCancellable) {
+                try {
+                    save(locator, pointer)
+                } catch (_: Exception) {
+                    message = "Position could not be saved. Try again before closing."
+                }
             }
         }
     }
@@ -256,8 +313,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     current.id,
                     current.currentHash,
                     locator.toJSON().toString(),
-                    locator.title
-                        ?: "${((locator.locations.totalProgression ?: 0.0) * 100).toInt()}%",
+                    listOfNotNull(
+                            locator.title,
+                            "${((locator.locations.totalProgression ?: 0.0) * 100).toInt()}%",
+                        )
+                        .joinToString(" · "),
                     System.currentTimeMillis(),
                 )
             )

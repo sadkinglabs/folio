@@ -235,6 +235,23 @@ object Epub {
             ParsedEpub(m, bytes, type, path)
         }
 
+    /**
+     * Every spine item in package order, including `linear="no"` items, as ZIP paths. KOReader's
+     * `DocFragment[N]` counts the full spine, whereas reading systems may omit non-linear items
+     * from their reading order, so positions are mapped through these paths rather than indexes.
+     */
+    fun spine(file: File): List<String> =
+        ZipFile(file).use { z ->
+            validate(z)
+            val path = packagePath(z)
+            val d = xml(read(z, path))
+            val hrefs =
+                nodes(d, OPF, "item").associate { it.getAttribute("id") to it.getAttribute("href") }
+            nodes(d, OPF, "itemref").mapNotNull { ref ->
+                hrefs[ref.getAttribute("idref")]?.let { resolve(path, it) }
+            }
+        }
+
     /** Writes a new revision; preserves all untouched resources and unknown metadata. */
     fun edit(
         source: File,
