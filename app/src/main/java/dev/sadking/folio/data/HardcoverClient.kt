@@ -328,14 +328,15 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
     }
 
-    fun reading(token: String, bookId: Int): HardcoverReading {
+    /** [userId] skips the account lookup when the caller already knows it. */
+    fun reading(token: String, bookId: Int, userId: Int? = null): HardcoverReading {
         require(bookId > 0)
-        val me = account(token)
+        val me = userId ?: account(token).id
         val rows =
             query(
                     token,
                     "query(\$book:Int!,\$user:Int!) { user_books(where:{book_id:{_eq:\$book},user_id:{_eq:\$user}}) { id status_id edition_id user_book_reads(where:{finished_at:{_is_null:true}},order_by:{id:desc},limit:2) { id progress_pages edition_id started_at } } }",
-                    JSONObject().put("book", bookId).put("user", me.id),
+                    JSONObject().put("book", bookId).put("user", me),
                 )
                 .getJSONArray("user_books")
         require(rows.length() <= 1) {
@@ -411,6 +412,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         expected: HardcoverReading,
         allowNewRead: Boolean,
         allowDecrease: Boolean,
+        userId: Int? = null,
     ): String {
         val edition =
             query(
@@ -426,7 +428,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         ) {
             "Choose a matching edition and a valid page count"
         }
-        val current = reading(token, bookId)
+        val current = reading(token, bookId, userId)
         if (
             current.readId != null &&
                 current.pages == pages &&

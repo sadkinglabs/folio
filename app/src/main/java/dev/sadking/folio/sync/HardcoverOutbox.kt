@@ -139,6 +139,8 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
             val settings = HardcoverSettings(app)
             if (!outbox.automatic || !settings.connected) return@withContext Result.success()
             val token = settings.token()
+            // The account id saved at connect time saves one request per book.
+            val user = settings.accountId.takeIf { it > 0 }
             val client = HardcoverClient()
             val dao = app.database.library()
             val books = dao.allBooks()
@@ -166,7 +168,7 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                     continue
                 }
                 try {
-                    val reading = client.reading(token, hardcoverId)
+                    val reading = client.reading(token, hardcoverId, user)
                     val pages = reading.editionId?.let { client.editionPages(token, it) }
                     when (val step = outboxStep(fraction, reading, pages)) {
                         is OutboxStep.Send ->
@@ -178,6 +180,7 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                                 reading,
                                 allowNewRead = false,
                                 allowDecrease = false,
+                                userId = user,
                             )
                         else -> Unit
                     }
