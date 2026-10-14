@@ -254,6 +254,16 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - Add a test corpus on a real WebView in the emulator: malformed, image-heavy, non-linear spine, RTL, huge chapter.
 - **Device check:** open 5 varied EPUBs; rotate, background and kill the app; confirm the position is restored to the passage.
 
+**M1 status (2026-10-14):** done, apart from the device check, which needs your phone.
+- **Stable page area:** the controls overlay the page and the system bars hide with them, so the WebView never resizes and the reading position doesn't move. The emulator shows full-screen reading, and text stays in place when the controls toggle.
+- **Page turns:** edge taps, arrow and page keys (Readium's `DirectionalNavigationAdapter`), and volume buttons (a setting). Any tap the adapter doesn't claim toggles the controls.
+- **Spine-correct KOReader positions:** `Epub.spine` includes `linear="no"` items and maps them by path. The capture starts from a hit-test, so it works deep inside long chapters.
+- **Saving:** one debounced save per settled page, and the pause save can't be cancelled.
+- **Typography:** line spacing, margins and "the book's own formatting". The text-size slider applies on release. **Per-book settings** sit on top of the global defaults.
+- **Navigation:** page X of Y, the current chapter highlighted in the contents, and clearer bookmark names. Reader copy is in `strings.xml`.
+- **Tests:** an emulator corpus (non-linear spine, a 12,000-paragraph chapter, RTL, image-only, malformed, no chapters); recreation keeps the place; centre taps hide and show the controls; and CI screenshots.
+- **Deferred:** restoring the navigator fragment through `fragmentFactory`. Recreation already restores the place from Room, and the emulator verifies it.
+
 ### M2: App shell and library UX
 - Navigation-Compose with a back stack. Split the ViewModels (Library, Book, Lists, Kindle, Pairing, Settings, Discovery).
 - Remove the global busy lock, using an operations banner instead.

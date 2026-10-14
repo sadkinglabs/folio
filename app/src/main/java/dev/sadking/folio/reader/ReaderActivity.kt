@@ -701,6 +701,16 @@ private fun AppearancePanel(model: ReaderViewModel) {
             stringResource(R.string.appearance_title),
             style = MaterialTheme.typography.headlineSmall,
         )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.appearance_book_only))
+                Text(
+                    stringResource(R.string.appearance_book_only_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(model.bookOnly, model::keepForThisBook)
+        }
         Text(
             stringResource(R.string.appearance_text_size, size.toInt()),
             style = MaterialTheme.typography.labelLarge,

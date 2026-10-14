@@ -117,6 +117,12 @@ class ReaderUiTest {
                 QaScreenshots.tapScreenCentre()
                 compose.waitUntil(5000) { controlsShown() }
                 compose.onNodeWithContentDescription("Reading appearance").performClick()
+                compose.waitUntil(5000) {
+                    compose
+                        .onAllNodesWithText("Only for this book")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                }
                 QaScreenshots.capture("reader-appearance")
             }
             val saved = runBlocking { app.database.library().phoneReading(id, hash) }

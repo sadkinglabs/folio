@@ -4,6 +4,17 @@ This file records what was actually checked for the current state of `main`, new
 
 The earlier append-only log is in [history/VALIDATION.md](history/VALIDATION.md).
 
+## 2026-10-14: M1 reader (CI, emulator API 34, Pixel 6 profile)
+
+| Check | Level | Result |
+|---|---|---|
+| Unit, lint, `assembleDebug`, SFTP fixture, check scripts, DOM interop | Executed (CI) | Passed |
+| Instrumentation suite, including `MigrationTest`, `ReaderSpineTest`, `ReaderCorpusTest` and `ProductJourneyTest` | Executed (emulator) | 46 / 46 passed (run 15) |
+| Reader immersive toggle and text stability | Executed (emulator screenshot) | Controls and system bars hide on a centre tap; text does not move |
+| Per-book typography | Executed (JVM: serialisation and clamping). The UI path is compiled and run on the emulator | Passed |
+| Real phone: rendering, page turns, rotation, kill and restore | **Not run** | Owner device check |
+| KOReader round trip of a phone-captured pointer on a Kindle | **Not run** | M3 |
+
 ## 2026-10-14: M0 foundation, in a cloud container (no Android SDK)
 
 Google's Android download host (`dl.google.com`) was blocked by the environment's network policy. So the Android Gradle plugin and SDK were unavailable, and the `:app` module could not be configured.

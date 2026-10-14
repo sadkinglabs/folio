@@ -35,6 +35,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val app = application as FolioApplication
     private val dao = app.database.library()
     private val settings = app.getSharedPreferences("reader", Application.MODE_PRIVATE)
+    /** Per-book typography overrides, keyed by book ID; absent means the book uses the defaults. */
+    private val bookSettings = app.getSharedPreferences("reader-books", Application.MODE_PRIVATE)
     private val saveLock = Mutex()
     var book by mutableStateOf<Book?>(null)
         private set
@@ -85,6 +87,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     var volumeKeys by mutableStateOf(settings.getBoolean("volumeKeys", true))
+        private set
+
+    /** True when this book keeps its own text settings instead of the reader defaults. */
+    var bookOnly by mutableStateOf(false)
         private set
 
     /** Full package spine as ZIP paths; maps KOReader DocFragments to Readium resources. */
@@ -178,6 +184,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         queued.optString("revision") == loaded.first.currentHash &&
                         queued.optString("expectedPhone") == saved?.locator.orEmpty() &&
                         kindle?.position == queued.optString("position")
+                bookSettings.getString(loaded.first.id, null)?.let {
+                    use(ReaderTypography.fromJson(it, typography()))
+                    bookOnly = true
+                }
                 book = loaded.first
                 publication = opened
                 launch {
@@ -218,25 +228,58 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         bookStyles: Boolean = publisherStyles,
         turnWithVolume: Boolean = volumeKeys,
     ) {
-        fontSize = size.coerceIn(75.0, 200.0)
         pageTheme = theme
-        serif = useSerif
-        scrolling = scroll
-        lineHeight = spacing.coerceIn(1.0, 2.0)
-        margins = pageMargins.coerceIn(0.0, 2.0)
-        publisherStyles = bookStyles
         volumeKeys = turnWithVolume
-        settings
-            .edit()
-            .putFloat("fontSize", fontSize.toFloat())
-            .putString("theme", theme)
-            .putBoolean("serif", serif)
-            .putBoolean("scroll", scrolling)
-            .putFloat("lineHeight", lineHeight.toFloat())
-            .putFloat("margins", margins.toFloat())
-            .putBoolean("publisherStyles", publisherStyles)
-            .putBoolean("volumeKeys", volumeKeys)
-            .apply()
+        use(ReaderTypography(size, useSerif, scroll, spacing, pageMargins, bookStyles).bounded())
+        val global = settings.edit().putString("theme", theme).putBoolean("volumeKeys", volumeKeys)
+        val current = book
+        if (bookOnly && current != null)
+            bookSettings.edit().putString(current.id, typography().toJson()).apply()
+        else
+            global
+                .putFloat("fontSize", fontSize.toFloat())
+                .putBoolean("serif", serif)
+                .putBoolean("scroll", scrolling)
+                .putFloat("lineHeight", lineHeight.toFloat())
+                .putFloat("margins", margins.toFloat())
+                .putBoolean("publisherStyles", publisherStyles)
+        global.apply()
+    }
+
+    /**
+     * Turning this on keeps the current text settings for this book only; turning it off drops the
+     * override and returns the book to the reader defaults.
+     */
+    fun keepForThisBook(on: Boolean) {
+        val current = book ?: return
+        bookOnly = on
+        if (on) bookSettings.edit().putString(current.id, typography().toJson()).apply()
+        else {
+            bookSettings.edit().remove(current.id).apply()
+            use(defaults())
+        }
+    }
+
+    private fun typography() =
+        ReaderTypography(fontSize, serif, scrolling, lineHeight, margins, publisherStyles)
+
+    private fun defaults() =
+        ReaderTypography(
+            settings.getFloat("fontSize", 110f).toDouble(),
+            settings.getBoolean("serif", true),
+            settings.getBoolean("scroll", false),
+            settings.getFloat("lineHeight", 1.5f).toDouble(),
+            settings.getFloat("margins", 1.0f).toDouble(),
+            settings.getBoolean("publisherStyles", false),
+        )
+
+    private fun use(value: ReaderTypography) {
+        fontSize = value.fontSize
+        serif = value.serif
+        scrolling = value.scroll
+        lineHeight = value.lineHeight
+        margins = value.margins
+        publisherStyles = value.publisherStyles
     }
 
     /** Page colour Readium paints for the current theme, so system-bar areas match the page. */
