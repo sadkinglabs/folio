@@ -317,6 +317,33 @@ fun HardcoverReadingSheet(
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
+                            // Positions e-readers sent through Folio Link for this exact file.
+                            linkReports(book).forEach { report ->
+                                val percent = koreaderPercent(report.percentage)
+                                OutlinedButton(
+                                    onClick = {
+                                        useDevice = false
+                                        percentage = true
+                                        input = percent.toString()
+                                    },
+                                    enabled = !state.busy,
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            R.string.hardcover_use_link_position,
+                                            report.device,
+                                            percent,
+                                        )
+                                    )
+                                }
+                                Text(
+                                    stringResource(
+                                        R.string.progress_link_reported,
+                                        observationDate(report.timestamp * 1000),
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                             Button(
                                 onClick = {
                                     allowNew = false

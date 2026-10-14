@@ -358,7 +358,7 @@ private fun ProgressLine(
  * them by a fingerprint of the file, so another edition of the book does not match.
  */
 @Composable
-private fun linkReports(book: Book): List<KosyncReport> {
+internal fun linkReports(book: Book): List<KosyncReport> {
     val app = LocalContext.current.applicationContext as? FolioApplication ?: return emptyList()
     val document by
         produceState<String?>(null, book.currentPath) {
