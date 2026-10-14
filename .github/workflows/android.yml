@@ -18,7 +18,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+        with:
+          # The default list includes the removed 'tools' package, which fails on current cmdline-tools.
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
       - name: Restore preserved debug signing key
         # Without it CI APKs get a random key and cannot install over an existing Folio.
@@ -59,7 +61,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+        with:
+          # The default list includes the removed 'tools' package, which fails on current cmdline-tools.
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
       - name: Enable KVM
         run: |
