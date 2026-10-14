@@ -1,10 +1,30 @@
 /* Folio DOM adapter. No Android interfaces, credentials or network access. */
 (function () {
   const visible = rect => rect.width > 0 && rect.height > 0 && rect.right > 1 && rect.left < innerWidth - 1 && rect.bottom > 1 && rect.top < innerHeight - 1;
+  // Hit-test near the page's top-left to find a text node close to the first visible one.
+  function hint() {
+    for (const y of [4, 16, 40, innerHeight / 4, innerHeight / 2]) {
+      for (const x of [4, 16, innerWidth / 4, innerWidth / 2]) {
+        let node = null;
+        if (document.caretPositionFromPoint) node = document.caretPositionFromPoint(x, y)?.offsetNode;
+        else if (document.caretRangeFromPoint) node = document.caretRangeFromPoint(x, y)?.startContainer;
+        if (node && node.nodeType === Node.TEXT_NODE && document.body.contains(node)) return node;
+      }
+    }
+    return null;
+  }
   function firstText() {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let node, visited = 0;
-    while ((node = walker.nextNode()) && ++visited <= 8000) {
+    // Start a little before the hint so the exact search below still finds the first visible
+    // character; without a hint (or in non-layout DOMs) scan from the start as before.
+    let node = null;
+    const near = hint();
+    if (near) {
+      walker.currentNode = near;
+      for (let i = 0; i < 64 && walker.previousNode(); i++);
+      node = walker.currentNode;
+    } else node = walker.nextNode();
+    for (let visited = 0; node && visited < 8000; node = walker.nextNode(), visited++) {
       if (!node.data.trim() || node.data.length > 65536 || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(node.parentElement?.tagName || '')) continue;
       const range = document.createRange();
       range.selectNodeContents(node);
