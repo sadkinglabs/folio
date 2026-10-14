@@ -426,8 +426,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                 editorDirty = false
                                                 nav.open(Route.Edit(book.id))
                                             } else catalogueEditorId = catalogue?.id
-                                        },
-                                        enabled = !op.busy,
+                                        }
                                     ) {
                                         Icon(
                                             Icons.Outlined.Edit,
@@ -490,13 +489,7 @@ fun FolioApp(model: LibraryViewModel) {
                         }
                 },
                 floatingActionButton = {
-                    if (
-                        book == null &&
-                            catalogue == null &&
-                            tab == 0 &&
-                            selection.isEmpty() &&
-                            !op.busy
-                    )
+                    if (book == null && catalogue == null && tab == 0 && selection.isEmpty())
                         FloatingActionButton(onClick = { showAddBooks = true }) {
                             Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
                         }
