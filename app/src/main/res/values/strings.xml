@@ -80,7 +80,7 @@
     <string name="devices_retrieve">Retrieve saved Kindle position</string>
     <string name="devices_resume">Resume from Kindle on phone</string>
     <string name="devices_phone_to_kindle">Phone → Kindle</string>
-    <string name="devices_phone_to_kindle_body">Requires the Folio bridge in KOReader. Send the EPUB first. The bridge asks before moving your position; bookmarks and highlights are kept.</string>
+    <string name="devices_phone_to_kindle_body">Needs the Folio plugin in KOReader. Send the book first. The plugin asks before moving your place, and bookmarks and highlights are kept.</string>
     <string name="devices_send">Send phone position for review</string>
     <string name="devices_working">Working…</string>
     <string name="transfer_waiting">Waiting to send to your e-reader</string>
