@@ -117,7 +117,7 @@ print('Migration 5→6 matches Room schema; legacy metadata defaults, soft remov
 
 # New phone data uses revision-scoped anchors and cascades only on permanent book removal.
 v7=json.loads((schemas/'7.json').read_text())['database']
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_6_7',1)[1]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_6_7',1)[1].split('val MIGRATION_7_8',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==3,statements
 for sql in statements:old.execute(sql)
@@ -137,3 +137,22 @@ assert old.execute('SELECT count(*) FROM phone_bookmarks').fetchone()==(0,)
 assert old.execute('SELECT title FROM wishlist').fetchone()==('Retained catalogue',)
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 6→7 matches Room schema; separate file-revision anchors, permanent-deletion cascades and catalogue data preservation verified.')
+
+# Folio Link adds one table for every device's latest kosync report; nothing existing changes.
+v8=json.loads((schemas/'8.json').read_text())['database']
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_7_8',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==1,statements
+old.execute("INSERT INTO reading VALUES ('kept','kindle',0.4,'xp','reading',0,1,'a.sdr','h','d')")
+for sql in statements:old.execute(sql)
+expected8=sqlite3.connect(':memory:');schema(expected8,v8)
+for entity in v8['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected8.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected8.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected8.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT percent FROM reading WHERE bookId='kept'").fetchone()==(0.4,)
+old.execute("INSERT INTO kosync_progress VALUES ('doc','kobo-1','Kobo','/body/p',0.5,10,10000)")
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 7→8 matches Room schema; KOReader reading data kept and Folio Link reports stored.')
+
