@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import dev.sadking.folio.FolioApplication
+import dev.sadking.folio.R
 import dev.sadking.folio.core.Epub
 import dev.sadking.folio.data.*
 import java.io.File
@@ -114,18 +115,21 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 val loaded =
                     withContext(Dispatchers.IO) {
                         UUID.fromString(id)
-                        require(dao.removedEntry(id) == null) { "Restore this book before reading" }
-                        val found = dao.book(id) ?: error("This book has no attached EPUB")
+                        require(dao.removedEntry(id) == null) {
+                            app.getString(R.string.msg_reader_restore_first)
+                        }
+                        val found =
+                            dao.book(id) ?: error(app.getString(R.string.msg_reader_no_epub))
                         val file = File(found.currentPath).canonicalFile
                         require(
                             file.path.startsWith(
                                 app.repository.root.canonicalPath + File.separator
                             ) && file.isFile
                         ) {
-                            "EPUB is unavailable. Attach it from book details."
+                            app.getString(R.string.msg_reader_epub_missing)
                         }
                         require(Epub.sha256(file) == found.currentHash) {
-                            "EPUB changed outside Folio. Reimport it before reading."
+                            app.getString(R.string.msg_reader_epub_changed)
                         }
                         // Positions stay phone-only if the spine cannot be read.
                         spine = runCatching { Epub.spine(file) }.getOrDefault(emptyList())
@@ -145,7 +149,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 val retriever = AssetRetriever(app.contentResolver, http)
                 val asset =
                     retriever.retrieve(loaded.second.toUrl(isDirectory = false)).getOrElse {
-                        error("Could not open EPUB")
+                        error(app.getString(R.string.msg_reader_epub_unopenable))
                     }
                 val opened =
                     PublicationOpener(
@@ -154,16 +158,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         .open(asset, allowUserInteraction = false)
                         .getOrElse {
                             asset.close()
-                            error("Unsupported or protected EPUB. Folio reads DRM-free EPUBs.")
+                            error(app.getString(R.string.msg_reader_epub_protected))
                         }
                 if (
                     opened.readingOrder.isEmpty() ||
                         opened.locatorFromLink(opened.readingOrder.first()) == null
                 ) {
                     opened.close()
-                    error(
-                        "This EPUB has no readable chapters. Attach a valid EPUB or try another reader."
-                    )
+                    error(app.getString(R.string.msg_reader_no_chapters))
                 }
                 val saved = dao.phoneReading(id, loaded.first.currentHash)
                 initialLocator = saved?.let {
@@ -196,7 +198,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
-                error = failure.message ?: "Could not open this book"
+                error = failure.message ?: app.getString(R.string.msg_reader_open_failed)
             }
         }
     }
@@ -340,7 +342,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 try {
                     save(locator, pointer)
                 } catch (_: Exception) {
-                    message = "Position could not be saved. Try again before closing."
+                    message = app.getString(R.string.reader_save_failed)
                 }
             }
         }
@@ -364,7 +366,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     System.currentTimeMillis(),
                 )
             )
-            message = "Bookmark saved on phone"
+            message = app.getString(R.string.msg_reader_bookmark_saved)
         }
     }
 
@@ -403,11 +405,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         try {
             val snapshot = ReaderHandoff(app).retrieve(current)
             kindle = snapshot
-            message = "Kindle position retrieved. Choose Resume from Kindle to move there."
+            message =
+                app.getString(
+                    R.string.msg_reader_device_position,
+                    app.getString(R.string.devices_resume),
+                )
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
-            message = failure.message ?: "Could not retrieve Kindle position"
+            message = failure.message ?: app.getString(R.string.msg_reader_device_position_failed)
         } finally {
             busy = false
         }
@@ -415,16 +421,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun sendPosition() {
         val current = book ?: return
-        val saved = lastPhone ?: error("Turn a page first to save a position")
+        val saved = lastPhone ?: error(app.getString(R.string.msg_reader_turn_page_first))
         busy = true
         try {
             ReaderHandoff(app).send(current, saved)
-            message =
-                "Position request sent. Open this EPUB in KOReader → Folio bridge → Review phone reading position."
+            message = app.getString(R.string.msg_reader_position_sent)
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Exception) {
-            message = failure.message ?: "Could not send reading position"
+            message = failure.message ?: app.getString(R.string.msg_reader_position_send_failed)
         } finally {
             busy = false
         }

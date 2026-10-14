@@ -59,6 +59,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     val titleProposal = MutableStateFlow<HardcoverBookData?>(null)
     val titleCover = MutableStateFlow<String?>(null)
 
+    private fun msg(id: Int, vararg args: Any) =
+        if (args.isEmpty()) app.getString(id) else app.getString(id, *args)
+
+    private fun plural(id: Int, n: Int) = app.resources.getQuantityString(id, n, n)
+
     fun clearTitleLookup() {
         titleResults.value = emptyList()
         titleProposal.value = null
@@ -67,15 +72,15 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun searchTitle(text: String) =
-        run("Searching Hardcover…") {
+        run(msg(R.string.msg_discovery_searching_hardcover)) {
             clearTitleLookup()
             titleResults.value = hardcover.search(settings.token(), text.trim().take(300))
-            if (titleResults.value.isEmpty()) "No matches. Try a shorter title or add the author"
-            else "Choose a book to fetch its details"
+            if (titleResults.value.isEmpty()) msg(R.string.msg_discovery_no_title_matches)
+            else msg(R.string.msg_discovery_choose_book)
         }
 
     fun selectTitle(match: HardcoverMatch) =
-        run("Fetching Hardcover book data…") {
+        run(msg(R.string.msg_discovery_fetching)) {
             titleProposal.value = null
             titleCover.value?.let { File(it).delete() }
             titleCover.value = null
@@ -96,23 +101,22 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                             .absolutePath
             }
             titleProposal.value = value
-            "Review title, authors and edition metadata before adding. Nothing is published to Hardcover"
+            msg(R.string.msg_discovery_review_before_adding)
         }
 
     fun saveTitle(onSaved: (WishBook) -> Unit) =
-        run("Adding book to your library…") {
-            val value = titleProposal.value ?: error("Choose a Hardcover result first")
+        run(msg(R.string.msg_discovery_adding)) {
+            val value =
+                titleProposal.value ?: error(msg(R.string.msg_discovery_choose_result_first))
             val wish =
                 app.repository.lock.withLock {
                     app.database.withTransaction {
                         val existing = dao.allStoredWishes().filter { it.hardcoverId == value.id }
-                        require(existing.size <= 1) {
-                            "Multiple local matches; resolve them before adding"
-                        }
+                        require(existing.size <= 1) { msg(R.string.msg_discovery_duplicates) }
                         val old = existing.singleOrNull()
                         if (old != null) {
                             require(dao.removedEntry(old.id) == null) {
-                                "This book is in Recently removed. Restore it from Settings"
+                                msg(R.string.msg_discovery_in_recently_removed)
                             }
                             old
                         } else {
@@ -142,7 +146,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                                     )
                                 parseWish(wishJson(entry))
                                 require(dao.insertWish(entry) != -1L) {
-                                    "This catalogue entry already exists; open it from your library"
+                                    msg(R.string.msg_discovery_already_in_library)
                                 }
                                 entry
                             } catch (e: Exception) {
@@ -153,7 +157,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
             withContext(Dispatchers.Main) { onSaved(wish) }
-            "Book available in your library; existing phone metadata retained and no Hardcover change published"
+            msg(R.string.msg_discovery_added)
         }
 
     val matchWishId = MutableStateFlow<String?>(null)
@@ -164,13 +168,13 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     val notices = MutableSharedFlow<Operation>(extraBufferCapacity = 8)
 
     fun openReading(book: Book) =
-        run("Loading Hardcover tracking…") {
+        run(msg(R.string.msg_discovery_loading_tracking)) {
             readingBookId.value = book.id
             hardcoverReading.value = null
             hardcoverEditions.value = emptyList()
             matches.value = emptyList()
             matchWishId.value = null
-            if (settings.username.isBlank()) return@run "Connect Hardcover to track this book"
+            if (settings.username.isBlank()) return@run msg(R.string.msg_discovery_connect_to_track)
             val link =
                 dao.allWishes().firstOrNull {
                     (it.linkedBookId == book.id || it.id == book.id) && it.hardcoverId != null
@@ -181,10 +185,10 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         settings.token(),
                         "${book.title} ${book.authorLabel}".take(300),
                     )
-                "Confirm the Hardcover book to begin tracking"
+                msg(R.string.msg_discovery_confirm_to_track)
             } else {
                 loadReading(link.hardcoverId!!)
-                "Hardcover tracking loaded"
+                msg(R.string.msg_discovery_tracking_loaded)
             }
         }
 
@@ -211,11 +215,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun currentReading(book: Book) =
-        run("Updating Currently Reading…") {
+        run(msg(R.string.msg_discovery_updating_currently_reading)) {
             val link =
                 dao.allWishes().firstOrNull {
                     (it.linkedBookId == book.id || it.id == book.id) && it.hardcoverId != null
-                } ?: error("Link this book first")
+                } ?: error(msg(R.string.msg_discovery_link_first))
             val result = hardcover.currentlyReading(settings.token(), link.hardcoverId!!)
             loadReading(link.hardcoverId)
             result
@@ -229,11 +233,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         allowNew: Boolean,
         allowDecrease: Boolean,
     ) =
-        run("Updating Hardcover progress…") {
+        run(msg(R.string.msg_discovery_updating_progress)) {
             val link =
                 dao.allWishes().firstOrNull {
                     (it.linkedBookId == book.id || it.id == book.id) && it.hardcoverId != null
-                } ?: error("Link this book first")
+                } ?: error(msg(R.string.msg_discovery_link_first))
             val result =
                 hardcover.progress(
                     settings.token(),
@@ -262,10 +266,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                 state.value = DiscoveryState(message = withContext(Dispatchers.IO) { work() })
                 notices.emit(Operation(message = state.value.message, failed = state.value.failed))
             } catch (e: CancellationException) {
-                state.value =
-                    DiscoveryState(
-                        message = "Operation cancelled. Refresh to check completed changes."
-                    )
+                state.value = DiscoveryState(message = msg(R.string.msg_discovery_cancelled))
                 throw e
             } catch (e: Exception) {
                 state.value =
@@ -273,12 +274,13 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         message =
                             when (e) {
                                 is java.net.SocketTimeoutException ->
-                                    "Connection timed out; try again"
+                                    msg(R.string.msg_discovery_timed_out)
                                 is java.net.UnknownHostException ->
-                                    "No internet connection; saved books are available offline"
+                                    msg(R.string.msg_discovery_offline)
                                 is IllegalArgumentException,
-                                is IllegalStateException -> e.message ?: "Operation failed"
-                                else -> "Could not complete this operation; try again"
+                                is IllegalStateException ->
+                                    userMessage(e) ?: msg(R.string.msg_error_incomplete)
+                                else -> msg(R.string.msg_error_incomplete)
                             },
                         failed = true,
                     )
@@ -299,19 +301,20 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun photo(uri: Uri) =
-        run("Reading the cover on your phone…") {
+        run(msg(R.string.msg_discovery_reading_photo)) {
             val input = File.createTempFile("folio-photo-", ".image", app.cacheDir)
             var bitmap: Bitmap? = null
             try {
                 val stream =
-                    app.contentResolver.openInputStream(uri) ?: error("Could not open this photo")
+                    app.contentResolver.openInputStream(uri)
+                        ?: error(msg(R.string.msg_discovery_photo_unopenable))
                 stream.use { source ->
                     input.outputStream().use { Epub.copyBounded(source, it, 25L * 1024 * 1024) }
                 }
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(input.absolutePath, bounds)
                 require(bounds.outWidth in 1..30000 && bounds.outHeight in 1..30000) {
-                    "Choose a readable photo up to 30,000 pixels per side"
+                    msg(R.string.msg_discovery_photo_too_large)
                 }
                 var sample = 1
                 while (
@@ -321,7 +324,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     BitmapFactory.decodeFile(
                         input.absolutePath,
                         BitmapFactory.Options().apply { inSampleSize = sample },
-                    ) ?: error("Could not read the photo")
+                    ) ?: error(msg(R.string.msg_discovery_photo_unreadable))
                 bitmap = decoded
                 val orientation =
                     runCatching {
@@ -382,10 +385,8 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                 previous?.let { File(it).delete() }
                 query.value = BookDiscovery.query(result)
                 candidates.value = emptyList()
-                if (query.value.isBlank())
-                    "No clear text found. Enter the title and author, or try a sharper photo"
-                else
-                    "Check the recognised text, then search for a book. Your photo stays on the phone"
+                if (query.value.isBlank()) msg(R.string.msg_discovery_no_text)
+                else msg(R.string.msg_discovery_check_text)
             } finally {
                 bitmap?.recycle()
                 input.delete()
@@ -393,14 +394,14 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
     fun search() =
-        run("Finding matching books…") {
+        run(msg(R.string.msg_discovery_finding_books)) {
             candidates.value = lookup.search(query.value.trim())
-            if (candidates.value.isEmpty()) "No matches. Try just the title and author"
-            else "Choose the correct book; covers and editions can differ"
+            if (candidates.value.isEmpty()) msg(R.string.msg_discovery_no_matches)
+            else msg(R.string.msg_discovery_choose_correct)
         }
 
     fun save(candidate: MetadataCandidate, onSaved: () -> Unit = {}) =
-        run("Adding to Want to Read…") {
+        run(msg(R.string.msg_discovery_adding_want)) {
             require(
                 candidate.key.matches(Regex("/works/OL[0-9]+W")) &&
                     candidate.title.isNotBlank() &&
@@ -408,7 +409,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     candidate.authors.size <= 100 &&
                     candidate.authors.all { it.length <= 1000 }
             ) {
-                "Invalid catalogue book"
+                msg(R.string.msg_discovery_bad_book)
             }
             val id = UUID.randomUUID().toString()
             var coverPath: String? = null
@@ -427,7 +428,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeFile(destination.absolutePath, bounds)
                         require(bounds.outWidth in 1..20000 && bounds.outHeight in 1..20000) {
-                            "Cover is invalid"
+                            msg(R.string.msg_discovery_bad_cover)
                         }
                         coverPath = destination.absolutePath
                     }
@@ -443,8 +444,8 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         )
                     if (inserted == -1L) {
                         folder.deleteRecursively()
-                        "Already in Want to Read"
-                    } else "Saved to Want to Read. Link to Hardcover whenever you like"
+                        msg(R.string.msg_discovery_already_wanted)
+                    } else msg(R.string.msg_discovery_wanted)
                 } catch (e: Exception) {
                     folder.deleteRecursively()
                     throw e
@@ -455,7 +456,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
     fun connect(token: String, onConnected: () -> Unit = {}) =
-        run("Checking your Hardcover account…") {
+        run(msg(R.string.msg_discovery_checking_account)) {
             val clean = token.trim().removePrefix("Bearer ").trim()
             val account = hardcover.account(clean)
             if (account.username != settings.username)
@@ -469,11 +470,11 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             settings.accountId = account.id
             username.value = account.username
             withContext(Dispatchers.Main) { onConnected() }
-            "Connected as ${account.username}. Changes are published only when you confirm a Hardcover action"
+            msg(R.string.msg_discovery_connected, account.username)
         }
 
     fun forget() =
-        run("Disconnecting Hardcover…") {
+        run(msg(R.string.msg_discovery_disconnecting)) {
             settings.forget()
             accountId.value = 0
             profileAccount = null
@@ -482,39 +483,38 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             app.database.withTransaction {
                 dao.allWishes().forEach { dao.updateWish(it.copy(hardcoverSynced = false)) }
             }
-            "Hardcover disconnected; local Want to Read retained"
+            msg(R.string.msg_discovery_disconnected)
         }
 
     fun searchHardcover(wish: WishBook) =
-        run("Finding the Hardcover entry…") {
+        run(msg(R.string.msg_discovery_finding_entry)) {
             matchWishId.value = wish.id
             matches.value = emptyList()
             matches.value =
                 hardcover.search(settings.token(), "${wish.title} ${wish.authorLabel}".take(300))
-            if (matches.value.isEmpty())
-                "No Hardcover matches found; edit the search text and retry"
-            else "Confirm the Hardcover book before linking"
+            if (matches.value.isEmpty()) msg(R.string.msg_discovery_no_hardcover_matches_retry)
+            else msg(R.string.msg_discovery_confirm_to_link)
         }
 
     fun discoverHardcover() =
-        run("Finding books on Hardcover…") {
+        run(msg(R.string.msg_discovery_finding_on_hardcover)) {
             readingBookId.value = null
             matchWishId.value = null
             matches.value = emptyList()
             matches.value = hardcover.search(settings.token(), query.value.trim())
-            if (matches.value.isEmpty()) "No matches. Try just the title and author"
-            else "Confirm the Hardcover book to save it locally"
+            if (matches.value.isEmpty()) msg(R.string.msg_discovery_no_matches)
+            else msg(R.string.msg_discovery_confirm_to_save)
         }
 
     fun searchHardcoverText(text: String) =
-        run("Searching Hardcover…") {
+        run(msg(R.string.msg_discovery_searching_hardcover)) {
             matches.value = hardcover.search(settings.token(), text.take(300))
-            if (matches.value.isEmpty()) "No Hardcover matches found"
-            else "Confirm the Hardcover book before linking"
+            if (matches.value.isEmpty()) msg(R.string.msg_discovery_no_hardcover_matches)
+            else msg(R.string.msg_discovery_confirm_to_link)
         }
 
     fun link(match: HardcoverMatch) =
-        run("Saving the Hardcover match…") {
+        run(msg(R.string.msg_discovery_saving_match)) {
             val wishId = matchWishId.value ?: readingBookId.value?.let { dao.wish(it)?.id }
             if (wishId == null) {
                 val id = UUID.randomUUID().toString()
@@ -523,21 +523,19 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     val trackedBook = readingBookId.value?.let { dao.book(it) }
                     val already = dao.allStoredWishes().filter { it.hardcoverId == match.id }
                     require(already.none { dao.removedEntry(it.id) != null }) {
-                        "A matching book is in Recently removed. Restore it from Settings before linking"
+                        msg(R.string.msg_discovery_removed_before_linking)
                     }
-                    require(already.size <= 1) {
-                        "Multiple catalogue matches; resolve them before linking"
-                    }
+                    require(already.size <= 1) { msg(R.string.msg_discovery_duplicates) }
                     if (already.isNotEmpty()) {
                         trackedBook?.let { app.repository.attach(already.single().id, it.id) }
                         matches.value = emptyList()
                         matchWishId.value = null
                         if (readingBookId.value != null) loadReading(match.id)
-                        return@run "Existing catalogue entry retained; lists and reading data preserved"
+                        return@run msg(R.string.msg_discovery_matched_existing)
                     }
                     if (trackedBook != null)
                         require(dao.allWishes().none { it.linkedBookId == trackedBook.id }) {
-                            "This EPUB already has a catalogue match; open it from Collection"
+                            msg(R.string.msg_discovery_epub_already_matched)
                         }
                     val photo =
                         (if (trackedBook != null) trackedBook.coverPath else cover.value)
@@ -569,7 +567,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                                         existing.linkedBookId == null ||
                                             existing.linkedBookId == trackedBook.id
                                     ) {
-                                        "This Hardcover entry is linked to another EPUB. Use its book details to update progress."
+                                        msg(R.string.msg_discovery_linked_elsewhere)
                                     }
                                     app.repository.attach(existing.id, trackedBook.id)
                                 }
@@ -579,9 +577,9 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     throw e
                 }
             } else {
-                val wish = dao.wish(wishId) ?: error("Book no longer exists")
+                val wish = dao.wish(wishId) ?: error(msg(R.string.msg_book_gone))
                 require(dao.allWishes().none { it.id != wish.id && it.hardcoverId == match.id }) {
-                    "This Hardcover book already has a local entry; open it to attach your EPUB"
+                    msg(R.string.msg_discovery_hardcover_book_exists)
                 }
                 dao.updateWish(
                     wish.copy(
@@ -594,79 +592,80 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             matches.value = emptyList()
             matchWishId.value = null
             if (readingBookId.value != null) loadReading(match.id)
-            if (readingBookId.value != null)
-                "Book linked. Review status or progress before publishing"
-            else "Hardcover match saved locally. Tap Add to Hardcover to publish it"
+            if (readingBookId.value != null) msg(R.string.msg_discovery_linked)
+            else msg(R.string.msg_discovery_match_saved)
         }
 
     fun publish(wish: WishBook) =
-        run("Adding to Hardcover Want to Read…") {
-            val current = dao.wish(wish.id) ?: error("Book no longer exists")
+        run(msg(R.string.msg_discovery_publishing)) {
+            val current = dao.wish(wish.id) ?: error(msg(R.string.msg_book_gone))
             val result =
                 hardcover.wantToRead(
                     settings.token(),
-                    current.hardcoverId ?: error("Link this book first"),
+                    current.hardcoverId ?: error(msg(R.string.msg_discovery_link_first)),
                 )
             dao.updateWish(current.copy(hardcoverSynced = true))
             result
         }
 
     fun attach(wish: WishBook, book: Book) =
-        run("Attaching the EPUB…") {
+        run(msg(R.string.msg_discovery_attaching)) {
             app.repository.attach(wish.id, book.id)
-            "EPUB attached; metadata and reading status were retained"
+            msg(R.string.msg_discovery_attached)
         }
 
     fun importForAttachment(uri: Uri, onImported: (Book) -> Unit) =
-        run("Importing EPUB for review…") {
+        run(msg(R.string.msg_discovery_importing)) {
             val (book, added) = app.repository.import(uri)
             withContext(Dispatchers.Main) { onImported(book) }
-            if (added) "EPUB imported. Confirm its attachment"
-            else "EPUB already in Folio. Review before attaching"
+            if (added) msg(R.string.msg_discovery_imported)
+            else msg(R.string.msg_discovery_import_existing)
         }
 
     fun membership(wish: WishBook, shelf: Shelf, checked: Boolean) =
-        run("Updating list…") {
+        run(msg(R.string.msg_discovery_updating_list)) {
             app.repository.manageBatch(setOf(wish.id), shelfId = shelf.id, add = checked)
-            "List updated"
+            msg(R.string.msg_list_updated)
         }
 
     fun loadProfile(reset: Boolean = true) =
-        run("Reading your Hardcover library…") {
+        run(msg(R.string.msg_discovery_loading_profile)) {
             val me = hardcover.account(settings.token())
             if (reset) {
                 profile.value = emptyList()
                 profileCursor = 0
             }
-            require(reset || profileAccount == me.id) { "Account changed; refresh your import" }
+            require(reset || profileAccount == me.id) {
+                msg(R.string.msg_discovery_account_changed)
+            }
             profileAccount = me.id
             accountId.value = me.id
             settings.accountId = me.id
             val page = hardcover.libraryPage(settings.token(), me.id, profileCursor)
             require(profile.value.size + page.size <= 10000) {
-                "Import limit reached; review these books first"
+                msg(R.string.msg_discovery_import_limit)
             }
             require(
                 page.none { row -> profile.value.any { it.book.id == row.book.id } } &&
                     page.map { it.book.id }.distinct().size == page.size
             ) {
-                "Duplicate Hardcover entries; resolve them before importing"
+                msg(R.string.msg_discovery_import_duplicates)
             }
             profile.value = profile.value + page
             profileCursor = page.lastOrNull()?.userBookId ?: profileCursor
             profileMore.value = page.size == 50
-            "${profile.value.size} books ready to review. Nothing changed locally or on Hardcover"
+            plural(R.plurals.msg_discovery_profile_ready, profile.value.size)
         }
 
     fun importProfile(selected: Set<Int>, targets: Map<Int, String>, onDone: () -> Unit) =
-        run("Saving reviewed Hardcover books…") {
-            val owner = profileAccount ?: error("Load Hardcover first")
+        run(msg(R.string.msg_discovery_saving_reviewed)) {
+            val owner = profileAccount ?: error(msg(R.string.msg_discovery_load_first))
             require(hardcover.account(settings.token()).id == owner) {
-                "Account changed; refresh the import"
+                msg(R.string.msg_discovery_account_changed)
             }
             val rows = profile.value.filter { it.userBookId in selected }
             require(rows.isNotEmpty() && rows.size == selected.size) {
-                "Review selected books again"
+                msg(R.string.msg_discovery_review_again)
             }
             app.repository.lock.withLock {
                 app.database.withTransaction {
@@ -674,14 +673,12 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                         val existing =
                             dao.allStoredWishes().filter { it.hardcoverId == row.book.id }
                         require(existing.none { dao.removedEntry(it.id) != null }) {
-                            "A matching book is in Recently removed. Restore it before importing"
+                            msg(R.string.msg_discovery_removed_before_importing)
                         }
-                        require(existing.size <= 1) {
-                            "Multiple local matches; resolve before importing"
-                        }
+                        require(existing.size <= 1) { msg(R.string.msg_discovery_duplicates) }
                         val target =
                             targets[row.userBookId]?.let {
-                                dao.book(it) ?: error("Selected EPUB no longer exists")
+                                dao.book(it) ?: error(msg(R.string.msg_discovery_epub_gone))
                             }
                         val wish =
                             existing.singleOrNull()
@@ -701,7 +698,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                             )
                         if (existing.isEmpty())
                             require(dao.insertWish(value) != -1L) {
-                                "This catalogue book already exists, possibly in Recently removed. Restore it from Settings before importing again"
+                                msg(R.string.msg_discovery_import_conflict)
                             }
                         else dao.updateWish(value)
                         if (target != null)
@@ -722,12 +719,12 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
             withContext(Dispatchers.Main) { onDone() }
-            "${rows.size} books saved; local files and Kindle data retained"
+            plural(R.plurals.msg_discovery_profile_saved, rows.size)
         }
 
     fun remove(wish: WishBook) =
-        run("Moving book to Recently removed…") {
+        run(msg(R.string.msg_discovery_removing)) {
             app.repository.removeLocal(setOf(wish.id))
-            "Book moved to Recently removed; files and notes retained for restore"
+            msg(R.string.msg_discovery_removed)
         }
 }

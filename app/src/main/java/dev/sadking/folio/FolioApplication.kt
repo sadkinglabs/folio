@@ -19,6 +19,7 @@ class FolioApplication : Application() {
         OperationRunner(
             transferActive = { database.library().jobs().first().any { it.active } },
             authentication = { deviceSettings.load().authentication },
+            text = { resources.failureText() },
         )
     }
 }

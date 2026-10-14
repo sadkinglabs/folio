@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Operation labels, results and errors shown in the status line and snackbars. -->
+<resources>
+    <!-- Shared -->
+    <string name="msg_book_gone">This book is no longer in your library</string>
+    <string name="msg_write_failed">Could not save to the chosen location</string>
+    <string name="msg_list_updated">List updated</string>
+
+    <!-- Failures explained by safeError (Operation.kt, Messages.kt) -->
+    <string name="msg_error_host_key">Your e-reader\'s security fingerprint changed or was turned down. Check the address KOReader shows, then review the fingerprint in setup before you accept a new one.</string>
+    <string name="msg_error_password_free_rejected">KOReader turned down password-free access. In KOReader, stop SSH, turn off key-only login, turn on Login without password and start SSH again. The username must be root.</string>
+    <string name="msg_error_sign_in_rejected">Your e-reader turned down the sign-in. Check the username, and the key and its passphrase or the password.</string>
+    <string name="msg_error_unsupported_algorithms">Your e-reader\'s SSH server only offers security settings Folio does not support. Update its settings; Folio never turns on outdated ones.</string>
+    <string name="msg_error_connection">Could not reach your e-reader. Check Wi-Fi, its address and port, and that its SSH server is running.</string>
+    <string name="msg_error_file_transfer">A file transfer with your e-reader failed. Check its folder permissions, free space and connection, then compare again before you retry.</string>
+    <string name="msg_error_incomplete">Something went wrong. Try again.</string>
+    <string name="msg_error_generic">Something went wrong. Check the file, free space and connection, then try again.</string>
+    <string name="msg_error_transfer_busy">Finish or cancel the current transfer first</string>
+
+    <!-- LibraryViewModel -->
+    <string name="msg_library_removing">Removing from this phone…</string>
+    <plurals name="msg_library_removed">
+        <item quantity="one">%d book moved to Recently removed. Restore it from Settings. Your e-reader and Hardcover are not affected.</item>
+        <item quantity="other">%d books moved to Recently removed. Restore them from Settings. Your e-reader and Hardcover are not affected.</item>
+    </plurals>
+    <string name="msg_library_leftover_files">Some leftover files could not be deleted.</string>
+    <string name="msg_library_restoring">Restoring the book…</string>
+    <string name="msg_library_restored">Book and its reading data restored</string>
+    <string name="msg_library_purging">Deleting from this phone…</string>
+    <string name="msg_library_purged">Deleted from this phone for good. Your e-reader and Hardcover are not affected.</string>
+    <string name="msg_library_saving_book">Saving the book…</string>
+    <string name="msg_library_book_saved">Book details saved</string>
+    <string name="msg_library_updating_selected">Updating the selected books…</string>
+    <string name="msg_library_selected_updated">Selected books updated</string>
+    <string name="msg_library_detaching">Detaching the catalogue entry…</string>
+    <string name="msg_library_detached">Catalogue entry detached. Your EPUB, lists and reading data are kept. Attach the right edition from its catalogue entry.</string>
+    <string name="msg_library_saving_list">Saving the list…</string>
+    <string name="msg_library_list_name">Enter a list name of up to 120 characters</string>
+    <string name="msg_library_list_rule">Choose a rule and enter its value</string>
+    <string name="msg_library_list_exists">A list with this name already exists</string>
+    <string name="msg_library_list_saved">List saved</string>
+    <string name="msg_library_removing_list">Removing the list…</string>
+    <string name="msg_library_list_removed">List removed. Its books, and collections on your e-reader, are kept.</string>
+    <string name="msg_library_importing">Importing books…</string>
+    <string name="msg_library_import_unnamed">Selected EPUB</string>
+    <string name="msg_library_import_added">Imported</string>
+    <string name="msg_library_import_existing">Already in your library, or restored</string>
+    <string name="msg_library_import_failed">Not imported</string>
+    <string name="msg_library_imported">%1$d in your library · %2$d failed. Review the import results.</string>
+    <string name="msg_library_exporting_epub">Exporting the EPUB…</string>
+    <string name="msg_library_restore_first">Restore this book from Recently removed first</string>
+    <string name="msg_library_file_misplaced">This book\'s file could not be found in Folio\'s storage</string>
+    <string name="msg_library_epub_exported">EPUB exported with your latest changes</string>
+    <string name="msg_library_preparing_share">Preparing to share…</string>
+    <string name="msg_library_preparing_open">Preparing to open…</string>
+    <string name="msg_library_share_title">Share EPUB</string>
+    <string name="msg_library_open_title">Open EPUB</string>
+    <string name="msg_library_no_app">No app here can take this EPUB. Install an EPUB reader, or export the file instead.</string>
+    <string name="msg_library_choose_app">Choose an app to continue</string>
+    <string name="msg_library_saving_changes">Saving changes…</string>
+    <string name="msg_library_changes_saved">Changes saved. Your original EPUB is kept</string>
+    <string name="msg_library_updating_status">Updating the reading status…</string>
+    <string name="msg_library_status_updated">Reading status updated</string>
+    <string name="msg_library_creating_list">Creating the list…</string>
+    <string name="msg_library_list_created">List created</string>
+    <string name="msg_library_updating_lists">Updating lists…</string>
+    <string name="msg_library_lists_updated">Lists updated</string>
+    <string name="msg_library_backing_up">Creating a backup…</string>
+    <string name="msg_library_backup_saved">Backup saved. It includes your original and edited EPUBs, lists and reading data from your e-reader.</string>
+    <string name="msg_library_restoring_backup">Checking and restoring the backup…</string>
+    <string name="msg_library_backup_unreadable">Could not open this backup</string>
+    <string name="msg_library_searching_open_library">Searching Open Library…</string>
+    <plurals name="msg_library_metadata_matches">
+        <item quantity="one">%d match found. Choose an edition to review.</item>
+        <item quantity="other">%d matches found. Choose an edition to review.</item>
+    </plurals>
+    <string name="msg_library_loading_edition">Loading edition details…</string>
+    <string name="msg_library_choose_fields">Choose the details you want to replace</string>
+    <string name="msg_library_applying_details">Saving the selected details…</string>
+    <string name="msg_library_details_saved">Selected details saved. Your original EPUB is kept</string>
+    <string name="msg_library_exporting_highlights">Exporting highlights…</string>
+    <string name="msg_library_highlights_exported">Highlights exported as Markdown</string>
+
+    <!-- DeviceViewModel -->
+    <string name="msg_device_connecting_folder">Connecting the phone folder…</string>
+    <plurals name="msg_device_folder_connected">
+        <item quantity="one">Phone folder connected · %d EPUB imported. Tap Sync in the library to compare both folders.</item>
+        <item quantity="other">Phone folder connected · %d EPUBs imported. Tap Sync in the library to compare both folders.</item>
+    </plurals>
+    <string name="msg_device_disconnecting_folder">Disconnecting the phone folder…</string>
+    <string name="msg_device_folder_disconnected">Phone folder disconnected. Books in your library and on your e-reader are kept.</string>
+    <string name="msg_device_refreshing_folder">Checking the phone folder…</string>
+    <plurals name="msg_device_folder_refreshed">
+        <item quantity="one">%d new EPUB imported from the phone folder</item>
+        <item quantity="other">%d new EPUBs imported from the phone folder</item>
+    </plurals>
+    <string name="msg_device_installing_companion">Installing the KOReader companion…</string>
+    <string name="msg_device_comparing_folders">Comparing the paired folders…</string>
+    <!-- Pairing setup: wording is redone with pairing in M4. -->
+    <string name="msg_pairing_reading_fingerprint">Reading Kindle fingerprint…</string>
+    <string name="msg_pairing_reading_ssh_fingerprint">Reading Kindle SSH fingerprint…</string>
+    <string name="msg_pairing_fingerprint_confirm">Fingerprint read. Confirm the Kindle address before trusting it</string>
+    <string name="msg_pairing_fingerprint_read">Fingerprint read; no login or file access was attempted</string>
+    <string name="msg_pairing_reading_folders">Reading Kindle folders…</string>
+    <string name="msg_pairing_creating_folder">Creating Kindle folder…</string>
+    <string name="msg_pairing_password_first">Enter the SSH password first</string>
+    <string name="msg_pairing_key_unreadable">Cannot open private key</string>
+    <string name="msg_pairing_key_first">Select your SSH private key first</string>
+    <string name="msg_pairing_folders_loaded">Kindle folders loaded</string>
+    <string name="msg_pairing_folder_created">Folder created on Kindle</string>
+    <string name="msg_pairing_saving">Saving Kindle connection…</string>
+    <string name="msg_pairing_saved">Pairing saved. Review sync to verify access.</string>
+    <string name="msg_pairing_removing">Removing pairing…</string>
+    <string name="msg_pairing_removed">Pairing removed</string>
+    <!-- Comparing and sending -->
+    <string name="msg_device_comparing">Comparing your books with your e-reader…</string>
+    <string name="msg_device_nothing_to_compare">This collection has no books to compare</string>
+    <plurals name="msg_device_compared">
+        <item quantity="one">Comparison ready · %d EPUB in your e-reader folder</item>
+        <item quantity="other">Comparison ready · %d EPUBs in your e-reader folder</item>
+    </plurals>
+    <string name="msg_device_sending">Sending to your e-reader…</string>
+    <string name="msg_device_nothing_to_send">Nothing to send</string>
+    <plurals name="msg_device_nothing_to_send_differ">
+        <item quantity="one">Nothing to send. %d book is different on your e-reader and was left as it is. Review it on the Device tab.</item>
+        <item quantity="other">Nothing to send. %d books are different on your e-reader and were left as they are. Review them on the Device tab.</item>
+    </plurals>
+    <string name="msg_device_sending_book">Sending %1$s to your e-reader…</string>
+    <string name="msg_device_book_unavailable">This book is no longer available</string>
+    <string name="msg_device_book_present">Your e-reader already has this book</string>
+    <string name="msg_device_book_differs">Your e-reader has a different copy of this book. Review it on the Device tab; books and annotations on your e-reader are kept.</string>
+    <string name="msg_device_connection_changed">Your e-reader connection changed. Compare again before sending.</string>
+    <plurals name="msg_device_queued">
+        <item quantity="one">%d book queued. Follow its progress on the Device tab or in the notification.</item>
+        <item quantity="other">%d books queued. Follow their progress on the Device tab or in the notification.</item>
+    </plurals>
+    <string name="msg_device_start_failed">The transfer is saved, but Android could not start it. Tap Resume remaining books on the Device tab.</string>
+    <string name="msg_device_resuming">Resuming the transfer…</string>
+    <string name="msg_device_resumed">Transfer resumed. Books already sent are checked, not sent again.</string>
+    <string name="msg_device_saving_sync_setting">Saving the sync setting…</string>
+    <string name="msg_device_sync_setting_saved">Sync setting saved</string>
+    <!-- Reading data from KOReader -->
+    <string name="msg_device_getting_reading">Getting reading progress from KOReader…</string>
+    <plurals name="msg_device_reading_updated">
+        <item quantity="one">Reading progress updated for %d book</item>
+        <item quantity="other">Reading progress updated for %d books</item>
+    </plurals>
+    <plurals name="msg_device_reading_none">
+        <item quantity="one">%d has no KOReader reading data yet</item>
+        <item quantity="other">%d have no KOReader reading data yet</item>
+    </plurals>
+    <plurals name="msg_device_reading_differ">
+        <item quantity="one">%d is missing or different on your e-reader</item>
+        <item quantity="other">%d are missing or different on your e-reader</item>
+    </plurals>
+    <plurals name="msg_device_reading_unreadable">
+        <item quantity="one">%d could not be read</item>
+        <item quantity="other">%d could not be read</item>
+    </plurals>
+    <string name="msg_device_reading_kept">%1$s. Your existing annotations are kept.</string>
+    <string name="msg_device_sending_collections">Sending collections to KOReader…</string>
+    <string name="msg_device_collections_none">Turn on Include in one-tap sync for at least one collection</string>
+    <string name="msg_device_collections_send_books">Send every book in the collection to your e-reader first</string>
+    <string name="msg_device_collections_changed">A book in this collection is missing or different on your e-reader. Compare and send it first.</string>
+    <string name="msg_device_collections_sent">Collections sent. In KOReader, open the Folio bridge menu to review and add them. Books already in a collection stay there.</string>
+    <string name="msg_device_getting_statistics">Getting reading statistics from KOReader…</string>
+    <string name="msg_device_statistics_export_first">In KOReader, export reading statistics from the Folio bridge menu first</string>
+    <string name="msg_device_statistics_changed">The statistics changed while Folio was reading them. Try again.</string>
+    <string name="msg_device_statistics_saved">Reading statistics saved on this phone</string>
+
+    <!-- DiscoveryViewModel -->
+    <string name="msg_discovery_searching_hardcover">Searching Hardcover…</string>
+    <string name="msg_discovery_no_title_matches">No matches. Try a shorter title or add the author</string>
+    <string name="msg_discovery_choose_book">Choose a book to see its details</string>
+    <string name="msg_discovery_fetching">Getting book details from Hardcover…</string>
+    <string name="msg_discovery_review_before_adding">Check the title, authors and edition before adding. Nothing changes on Hardcover.</string>
+    <string name="msg_discovery_adding">Adding to your library…</string>
+    <string name="msg_discovery_choose_result_first">Choose a Hardcover result first</string>
+    <string name="msg_discovery_duplicates">More than one book in your library matches this one. Remove the duplicate first.</string>
+    <string name="msg_discovery_in_recently_removed">This book is in Recently removed. Restore it from Settings</string>
+    <string name="msg_discovery_already_in_library">This book is already in your library. Open it from there.</string>
+    <string name="msg_discovery_added">Book is in your library. Details already on this phone are kept, and nothing changes on Hardcover.</string>
+    <string name="msg_discovery_loading_tracking">Loading your Hardcover progress…</string>
+    <string name="msg_discovery_connect_to_track">Connect Hardcover to track this book</string>
+    <string name="msg_discovery_confirm_to_track">Confirm the matching Hardcover book to start tracking</string>
+    <string name="msg_discovery_tracking_loaded">Hardcover progress loaded</string>
+    <string name="msg_discovery_updating_currently_reading">Updating Currently Reading…</string>
+    <string name="msg_discovery_link_first">Link this book to Hardcover first</string>
+    <string name="msg_discovery_updating_progress">Updating Hardcover progress…</string>
+    <string name="msg_discovery_cancelled">Stopped. Refresh to see which changes were made.</string>
+    <string name="msg_discovery_timed_out">The connection timed out. Try again.</string>
+    <string name="msg_discovery_offline">No internet connection. Your saved books are still available.</string>
+    <string name="msg_discovery_reading_photo">Reading the cover on your phone…</string>
+    <string name="msg_discovery_photo_unopenable">Could not open this photo</string>
+    <string name="msg_discovery_photo_too_large">Choose a photo of up to 30,000 pixels on each side</string>
+    <string name="msg_discovery_photo_unreadable">Could not read this photo</string>
+    <string name="msg_discovery_no_text">No clear text found. Enter the title and author, or try a sharper photo</string>
+    <string name="msg_discovery_check_text">Check the recognised text, then search for a book. Your photo stays on this phone.</string>
+    <string name="msg_discovery_finding_books">Finding matching books…</string>
+    <string name="msg_discovery_no_matches">No matches. Try just the title and author</string>
+    <string name="msg_discovery_choose_correct">Choose the right book. Covers and editions can differ.</string>
+    <string name="msg_discovery_adding_want">Adding to Want to Read…</string>
+    <string name="msg_discovery_bad_book">This book\'s details could not be used. Choose another result.</string>
+    <string name="msg_discovery_bad_cover">This cover image could not be used</string>
+    <string name="msg_discovery_already_wanted">Already in Want to Read</string>
+    <string name="msg_discovery_wanted">Saved to Want to Read. Link to Hardcover whenever you like</string>
+    <string name="msg_discovery_checking_account">Checking your Hardcover account…</string>
+    <string name="msg_discovery_connected">Connected as %1$s. Nothing changes on Hardcover until you confirm it.</string>
+    <string name="msg_discovery_disconnecting">Disconnecting Hardcover…</string>
+    <string name="msg_discovery_disconnected">Hardcover disconnected. Your Want to Read books stay on this phone.</string>
+    <string name="msg_discovery_finding_entry">Finding this book on Hardcover…</string>
+    <string name="msg_discovery_no_hardcover_matches_retry">No matches on Hardcover. Edit the search and try again.</string>
+    <string name="msg_discovery_confirm_to_link">Confirm the Hardcover book before linking</string>
+    <string name="msg_discovery_finding_on_hardcover">Finding books on Hardcover…</string>
+    <string name="msg_discovery_confirm_to_save">Confirm the Hardcover book to save it to your library</string>
+    <string name="msg_discovery_no_hardcover_matches">No matches on Hardcover</string>
+    <string name="msg_discovery_saving_match">Saving the Hardcover match…</string>
+    <string name="msg_discovery_removed_before_linking">A matching book is in Recently removed. Restore it from Settings before linking</string>
+    <string name="msg_discovery_matched_existing">Matched to the book already in your library. Its lists and reading data are kept.</string>
+    <string name="msg_discovery_epub_already_matched">This EPUB is already matched to a book. Open it from your library.</string>
+    <string name="msg_discovery_linked_elsewhere">This Hardcover book is linked to another EPUB. Update progress from that book\'s details.</string>
+    <string name="msg_discovery_hardcover_book_exists">This Hardcover book is already in your library. Open it to attach your EPUB.</string>
+    <string name="msg_discovery_linked">Book linked. Check the status or progress before sending it to Hardcover.</string>
+    <string name="msg_discovery_match_saved">Hardcover match saved on this phone. Tap Add to Hardcover Want to Read to add it there.</string>
+    <string name="msg_discovery_publishing">Adding to Hardcover Want to Read…</string>
+    <string name="msg_discovery_attaching">Attaching the EPUB…</string>
+    <string name="msg_discovery_attached">EPUB attached. Book details and reading status are kept.</string>
+    <string name="msg_discovery_importing">Importing the EPUB…</string>
+    <string name="msg_discovery_imported">EPUB imported. Confirm to attach it.</string>
+    <string name="msg_discovery_import_existing">This EPUB is already in your library. Check it before attaching.</string>
+    <string name="msg_discovery_updating_list">Updating the list…</string>
+    <string name="msg_discovery_loading_profile">Loading your Hardcover library…</string>
+    <string name="msg_discovery_account_changed">Your Hardcover account changed. Load the import again.</string>
+    <string name="msg_discovery_import_limit">That is as many books as can be imported at once. Review these first.</string>
+    <string name="msg_discovery_import_duplicates">Some books came back twice from Hardcover. Load the import again.</string>
+    <plurals name="msg_discovery_profile_ready">
+        <item quantity="one">%d book ready to review. Nothing has changed yet, here or on Hardcover.</item>
+        <item quantity="other">%d books ready to review. Nothing has changed yet, here or on Hardcover.</item>
+    </plurals>
+    <string name="msg_discovery_saving_reviewed">Saving the books you reviewed…</string>
+    <string name="msg_discovery_load_first">Load your Hardcover library first</string>
+    <string name="msg_discovery_review_again">Review the selected books again</string>
+    <string name="msg_discovery_removed_before_importing">A matching book is in Recently removed. Restore it before importing</string>
+    <string name="msg_discovery_epub_gone">A chosen EPUB is no longer in your library</string>
+    <string name="msg_discovery_import_conflict">This book is already in your library, or in Recently removed. Restore it from Settings before importing again.</string>
+    <plurals name="msg_discovery_profile_saved">
+        <item quantity="one">%d book saved. Your files and e-reader data are kept.</item>
+        <item quantity="other">%d books saved. Your files and e-reader data are kept.</item>
+    </plurals>
+    <string name="msg_discovery_removing">Moving to Recently removed…</string>
+    <string name="msg_discovery_removed">Moved to Recently removed. Its files and notes are kept, so you can restore it.</string>
+
+    <!-- ReaderViewModel -->
+    <string name="msg_reader_restore_first">Restore this book from Recently removed to read it</string>
+    <string name="msg_reader_no_epub">This book has no EPUB attached yet</string>
+    <string name="msg_reader_epub_missing">The EPUB file is missing. Attach it again from the book details.</string>
+    <string name="msg_reader_epub_changed">This EPUB was changed outside Folio. Import it again to read it.</string>
+    <string name="msg_reader_epub_unopenable">Could not open this EPUB</string>
+    <string name="msg_reader_epub_protected">This EPUB is protected or not supported. Folio reads DRM-free EPUBs.</string>
+    <string name="msg_reader_no_chapters">This EPUB has no readable chapters. Attach a valid EPUB or try another reader.</string>
+    <string name="msg_reader_open_failed">Could not open this book</string>
+    <string name="msg_reader_bookmark_saved">Bookmark saved</string>
+    <string name="msg_reader_device_position">E-reader position retrieved. Choose “%1$s” to move there.</string>
+    <string name="msg_reader_device_position_failed">Could not get the position from your e-reader</string>
+    <string name="msg_reader_turn_page_first">Turn a page first to save a position</string>
+    <string name="msg_reader_position_sent">Position sent. On your e-reader, open this book in KOReader, then choose Folio bridge → Review phone reading position.</string>
+    <string name="msg_reader_position_send_failed">Could not send your reading position</string>
+</resources>

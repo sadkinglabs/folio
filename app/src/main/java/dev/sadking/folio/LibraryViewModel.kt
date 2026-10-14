@@ -55,31 +55,39 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun run(label: String, work: suspend () -> String) =
         runner.launch(viewModelScope, label, device = false, work)
 
-    private fun safeError(e: Exception) = dev.sadking.folio.safeError(e)
+    private fun safeError(e: Exception) = dev.sadking.folio.safeError(e, app.resources)
+
+    private fun msg(id: Int, vararg args: Any) =
+        if (args.isEmpty()) app.getString(id) else app.getString(id, *args)
+
+    /** [message], followed by a note when some private files could not be deleted. */
+    private fun withLeftovers(message: String, cleaned: Boolean) =
+        if (cleaned) message else message + " " + msg(R.string.msg_library_leftover_files)
 
     fun removeLocal(ids: Set<String>, onRemoved: () -> Unit = {}) =
-        run("Removing from phone library…") {
+        run(msg(R.string.msg_library_removing)) {
             val (count, cleaned) = repo.removeLocal(ids)
             withContext(Dispatchers.Main) { onRemoved() }
-            "$count moved to Recently removed; restore from Settings. Kindle and Hardcover retained" +
-                if (!cleaned) ". Some private files could not be cleaned up" else ""
+            withLeftovers(
+                app.resources.getQuantityString(R.plurals.msg_library_removed, count, count),
+                cleaned,
+            )
         }
 
     fun restoreRemoved(group: String) =
-        run("Restoring book…") {
+        run(msg(R.string.msg_library_restoring)) {
             repo.restoreRemoved(group)
-            "Book and its cached reading data restored"
+            msg(R.string.msg_library_restored)
         }
 
     fun purgeRemoved(group: String) =
-        run("Deleting private book copies…") {
+        run(msg(R.string.msg_library_purging)) {
             val cleaned = repo.purgeRemoved(group)
-            "Removed permanently from phone; Kindle and Hardcover retained" +
-                if (!cleaned) ". Some orphan private files remain" else ""
+            withLeftovers(msg(R.string.msg_library_purged), cleaned)
         }
 
     fun saveCatalogue(id: String?, metadata: Metadata, cover: Uri?, onSaved: () -> Unit) =
-        run("Saving book…") {
+        run(msg(R.string.msg_library_saving_book)) {
             managementError.value = null
             try {
                 repo.saveCatalogue(id, metadata, cover)
@@ -88,7 +96,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 throw e
             }
             withContext(Dispatchers.Main) { onSaved() }
-            "Book metadata saved on phone"
+            msg(R.string.msg_library_book_saved)
         }
 
     fun manageBatch(
@@ -98,39 +106,39 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         status: String? = null,
         onDone: () -> Unit = {},
     ) =
-        run("Updating selected books…") {
+        run(msg(R.string.msg_library_updating_selected)) {
             repo.manageBatch(ids, shelf, add, status)
             withContext(Dispatchers.Main) { onDone() }
-            "Selected books updated on phone"
+            msg(R.string.msg_library_selected_updated)
         }
 
     fun detach(book: Book, done: () -> Unit) =
-        run("Detaching catalogue entry…") {
+        run(msg(R.string.msg_library_detaching)) {
             repo.detach(book.id)
             withContext(Dispatchers.Main) { done() }
-            "Attachment cleared. EPUB, lists and reading data retained; attach the correct edition from the catalogue entry"
+            msg(R.string.msg_library_detached)
         }
 
     fun saveShelf(shelf: Shelf, onDone: () -> Unit) =
-        run("Saving list…") {
+        run(msg(R.string.msg_library_saving_list)) {
             managementError.value = null
             try {
                 require(shelf.name.trim().isNotBlank() && shelf.name.trim().length <= 120) {
-                    "Enter a list name up to 120 characters"
+                    msg(R.string.msg_library_list_name)
                 }
                 require(
                     shelf.ruleField in LibraryRules.fields &&
                         (shelf.ruleField in listOf("Manual", "Missing on Kindle") ||
                             shelf.ruleValue.isNotBlank())
                 ) {
-                    "Choose a rule and enter its value"
+                    msg(R.string.msg_library_list_rule)
                 }
                 require(
                     dao.allShelves().none {
                         it.id != shelf.id && it.name.equals(shelf.name.trim(), true)
                     }
                 ) {
-                    "A list with this name already exists"
+                    msg(R.string.msg_library_list_exists)
                 }
                 dao.updateShelf(
                     shelf.copy(name = shelf.name.trim(), ruleValue = shelf.ruleValue.trim())
@@ -140,18 +148,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 throw e
             }
             withContext(Dispatchers.Main) { onDone() }
-            "List saved"
+            msg(R.string.msg_library_list_saved)
         }
 
     fun deleteShelf(shelf: Shelf, done: () -> Unit) =
-        run("Removing list…") {
+        run(msg(R.string.msg_library_removing_list)) {
             dao.deleteShelf(shelf.id)
             withContext(Dispatchers.Main) { done() }
-            "List removed; books and Kindle collections retained"
+            msg(R.string.msg_library_list_removed)
         }
 
     fun import(uris: List<Uri>) =
-        run("Importing books…") {
+        run(msg(R.string.msg_library_importing)) {
             val results =
                 uris.distinct().map { uri ->
                     runCatching {
@@ -173,51 +181,77 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                                     ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
                             }
                             .getOrNull()
-                            ?.take(200) ?: "Selected EPUB"
+                            ?.take(200) ?: msg(R.string.msg_library_import_unnamed)
                     try {
                         val (book, added) = repo.import(uri)
                         ImportOutcome(
                             uri.toString(),
                             name,
-                            if (added) "Imported" else "Already in library / restored",
+                            msg(
+                                if (added) R.string.msg_library_import_added
+                                else R.string.msg_library_import_existing
+                            ),
                             book.id,
                             null,
                         )
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        ImportOutcome(uri.toString(), name, "Failed", null, importFailure(e))
+                        ImportOutcome(
+                            uri.toString(),
+                            name,
+                            msg(R.string.msg_library_import_failed),
+                            null,
+                            importFailure(e),
+                        )
                     }
                 }
             importResults.value = results
             showImportResults.value = true
-            "${results.count { it.error == null }} available · ${results.count { it.error != null }} failed. Review import results"
+            msg(
+                R.string.msg_library_imported,
+                results.count { it.error == null },
+                results.count { it.error != null },
+            )
         }
 
     fun exportEpub(book: Book, uri: Uri) =
-        run("Exporting EPUB…") {
+        run(msg(R.string.msg_library_exporting_epub)) {
             repo.lock.withLock {
-                val current = dao.book(book.id) ?: error("Book no longer exists")
-                require(dao.removedEntry(book.id) == null) { "Restore this book first" }
+                val current = dao.book(book.id) ?: error(msg(R.string.msg_book_gone))
+                require(dao.removedEntry(book.id) == null) {
+                    msg(R.string.msg_library_restore_first)
+                }
                 val file = File(current.currentPath)
                 require(file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile) {
-                    "Invalid book location"
+                    msg(R.string.msg_library_file_misplaced)
                 }
                 app.contentResolver.openOutputStream(uri, "wt")?.use { out ->
                     file.inputStream().use { it.copyTo(out) }
-                } ?: error("Cannot write selected destination")
+                } ?: error(msg(R.string.msg_write_failed))
             }
-            "Current EPUB revision exported"
+            msg(R.string.msg_library_epub_exported)
         }
 
     fun openEpub(book: Book, share: Boolean) =
-        run(if (share) "Preparing EPUB share…" else "Preparing reader…") {
+        run(
+            msg(
+                if (share) R.string.msg_library_preparing_share
+                else R.string.msg_library_preparing_open
+            )
+        ) {
             val ready =
                 repo.lock.withLock {
-                    val current = dao.book(book.id) ?: error("Book no longer exists")
-                    require(dao.removedEntry(book.id) == null) { "Restore this book first" }
+                    val current = dao.book(book.id) ?: error(msg(R.string.msg_book_gone))
+                    require(dao.removedEntry(book.id) == null) {
+                        msg(R.string.msg_library_restore_first)
+                    }
                     val file = File(current.currentPath)
-                    require(file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile)
+                    require(
+                        file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile
+                    ) {
+                        msg(R.string.msg_library_file_misplaced)
+                    }
                     val folder = File(app.cacheDir, "epub-share").apply { mkdirs() }
                     File(folder, "${book.id}.epub").also { file.copyTo(it, overwrite = true) }
                 }
@@ -244,7 +278,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     val chooser =
                         android.content.Intent.createChooser(
                                 intent,
-                                if (share) "Share EPUB" else "Open EPUB",
+                                msg(
+                                    if (share) R.string.msg_library_share_title
+                                    else R.string.msg_library_open_title
+                                ),
                             )
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     chooser.putExtra(
@@ -253,63 +290,63 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     )
                     app.startActivity(chooser)
                 } catch (_: android.content.ActivityNotFoundException) {
-                    error("Install an EPUB reader or sharing app, or export the file instead")
+                    error(msg(R.string.msg_library_no_app))
                 }
             }
-            "EPUB handed to Android"
+            msg(R.string.msg_library_choose_app)
         }
 
     fun edit(book: Book, metadata: Metadata, cover: Uri?, done: () -> Unit) =
-        run("Saving metadata…") {
+        run(msg(R.string.msg_library_saving_changes)) {
             repo.edit(book.id, metadata, cover)
             withContext(Dispatchers.Main) { done() }
-            "Changes saved. Your original EPUB is kept"
+            msg(R.string.msg_library_changes_saved)
         }
 
     fun status(book: Book, status: String) =
-        run("Updating reading status…") {
+        run(msg(R.string.msg_library_updating_status)) {
             repo.manageBatch(setOf(book.id), status = status)
-            "Reading status updated on phone"
+            msg(R.string.msg_library_status_updated)
         }
 
     fun createShelf(name: String, field: String = "Manual", value: String = "") =
-        run("Creating collection…") {
-            require(name.isNotBlank())
+        run(msg(R.string.msg_library_creating_list)) {
+            require(name.isNotBlank()) { msg(R.string.msg_library_list_name) }
             require(name.length <= 120 && field in LibraryRules.fields)
             require(field in listOf("Manual", "Missing on Kindle") || value.isNotBlank()) {
-                "Enter a shelf rule value"
+                msg(R.string.msg_library_list_rule)
             }
             dao.insertShelf(Shelf(UUID.randomUUID().toString(), name.trim(), field, value.trim()))
-            "Collection created"
+            msg(R.string.msg_library_list_created)
         }
 
     fun membership(book: String, shelf: String, selected: Boolean) =
-        run("Updating collection…") {
+        run(msg(R.string.msg_library_updating_lists)) {
             repo.manageBatch(setOf(book), shelfId = shelf, add = selected)
-            "Lists updated"
+            msg(R.string.msg_library_lists_updated)
         }
 
     fun exportBackup(uri: Uri) =
-        run("Creating verified backup…") {
+        run(msg(R.string.msg_library_backing_up)) {
             val temp = File(app.cacheDir, "backup-${UUID.randomUUID()}.zip")
             try {
                 LibraryBackup(repo).export(temp)
                 app.contentResolver.openOutputStream(uri, "wt")?.use { out ->
                     temp.inputStream().use { it.copyTo(out) }
-                } ?: error("Cannot write backup")
-                "Backup saved · originals, revisions, collections and imported reading data included"
+                } ?: error(msg(R.string.msg_write_failed))
+                msg(R.string.msg_library_backup_saved)
             } finally {
                 temp.delete()
             }
         }
 
     fun restoreBackup(uri: Uri) =
-        run("Validating and restoring backup…") {
+        run(msg(R.string.msg_library_restoring_backup)) {
             val temp = File(app.cacheDir, "restore-${UUID.randomUUID()}.zip")
             try {
                 app.contentResolver.openInputStream(uri)?.use { input ->
                     temp.outputStream().use { Epub.copyBounded(input, it, BackupArchive.MAX_TOTAL) }
-                } ?: error("Cannot open backup")
+                } ?: error(msg(R.string.msg_library_backup_unreadable))
                 LibraryBackup(repo).restore(temp)
             } finally {
                 temp.delete()
@@ -317,15 +354,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun searchMetadata(query: String) =
-        run("Searching Open Library…") {
+        run(msg(R.string.msg_library_searching_open_library)) {
             lookupProposal.value = null
             lookupResults.value = emptyList()
             lookupResults.value = lookup.search(query)
-            "${lookupResults.value.size} metadata matches · choose an edition to review"
+            val found = lookupResults.value.size
+            app.resources.getQuantityString(R.plurals.msg_library_metadata_matches, found, found)
         }
 
     fun selectMetadata(candidate: MetadataCandidate) =
-        run("Loading edition metadata…") {
+        run(msg(R.string.msg_library_loading_edition)) {
             lookupProposal.value = null
             lookupCover.value?.let { File(it).delete() }
             lookupCover.value = null
@@ -338,7 +376,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             lookupProposal.value = proposal
-            "Select the fields you want to replace"
+            msg(R.string.msg_library_choose_fields)
         }
 
     fun clearLookup() {
@@ -349,7 +387,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun applyMetadata(book: Book, metadata: Metadata, coverId: Long?, done: () -> Unit) =
-        run("Applying selected metadata…") {
+        run(msg(R.string.msg_library_applying_details)) {
             val file = coverId?.let { id ->
                 File(app.cacheDir, "lookup-${UUID.randomUUID()}.jpg").also {
                     it.writeBytes(lookup.cover(id))
@@ -358,14 +396,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             try {
                 repo.edit(book.id, metadata, file?.let(Uri::fromFile))
                 withContext(Dispatchers.Main) { done() }
-                "Selected details saved. Your original EPUB is kept"
+                msg(R.string.msg_library_details_saved)
             } finally {
                 file?.delete()
             }
         }
 
     fun exportHighlights(book: Book, uri: Uri) =
-        run("Exporting highlights…") {
+        run(msg(R.string.msg_library_exporting_highlights)) {
             val values =
                 dao.allAnnotations()
                     .filter { it.bookId == book.id }
@@ -383,7 +421,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     }
             val text = KoReaderData.markdown(book.title, book.authorLabel, values)
             app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) }
-                ?: error("Cannot write Markdown file")
-            "Highlights exported as Markdown"
+                ?: error(msg(R.string.msg_write_failed))
+            msg(R.string.msg_library_highlights_exported)
         }
 }

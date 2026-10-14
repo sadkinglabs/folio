@@ -50,36 +50,39 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     val phoneFolder = MutableStateFlow(pairedFolder.label)
 
     fun choosePhoneFolder(uri: Uri) =
-        run("Connecting phone folder…") {
+        run(app.getString(R.string.msg_device_connecting_folder)) {
             pairedFolder.select(uri)
             phoneFolder.value = pairedFolder.label
             val added = pairedFolder.refresh()
-            "Phone folder connected · $added EPUBs imported. Tap Sync in the library to compare both folders."
+            app.resources.getQuantityString(R.plurals.msg_device_folder_connected, added, added)
         }
 
     fun forgetPhoneFolder() =
-        run("Disconnecting phone folder…") {
+        run(app.getString(R.string.msg_device_disconnecting_folder)) {
             pairedFolder.forget()
             phoneFolder.value = ""
-            "Phone folder disconnected. Library and Kindle books retained."
+            app.getString(R.string.msg_device_folder_disconnected)
         }
 
     fun refreshPhoneFolder() =
-        run("Refreshing phone folder…") {
-            "${pairedFolder.refresh()} new EPUBs imported from the phone folder"
+        run(app.getString(R.string.msg_device_refreshing_folder)) {
+            val added = pairedFolder.refresh()
+            app.resources.getQuantityString(R.plurals.msg_device_folder_refreshed, added, added)
         }
 
     val folderReport = MutableStateFlow<List<String>>(emptyList())
 
     fun installCompanion(folder: String) =
-        runOnDevice("Installing KOReader companion…") { BridgeInstaller(app).install(folder) }
+        runOnDevice(app.getString(R.string.msg_device_installing_companion)) {
+            BridgeInstaller(app).install(folder)
+        }
 
     fun clearFolderReport() {
         folderReport.value = emptyList()
     }
 
     fun syncPairedFolder() =
-        runOnDevice("Comparing paired folders…") {
+        runOnDevice(app.getString(R.string.msg_device_comparing_folders)) {
             try {
                 pairedFolder.reconcile()
             } finally {
@@ -139,24 +142,21 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         runner.launch(viewModelScope, label, device = true, work)
 
     private fun safeError(e: Exception) =
-        dev.sadking.folio.safeError(e, device.value.authentication)
+        dev.sadking.folio.safeError(e, app.resources, device.value.authentication)
 
     fun probeHost(host: String, port: Int) {
         val generation = probeGeneration.incrementAndGet()
         observedHost.value = null
-        probeStatus.value = Operation(true, "Reading Kindle fingerprint…")
-        runOnDevice("Reading Kindle SSH fingerprint…") {
+        probeStatus.value = Operation(true, app.getString(R.string.msg_pairing_reading_fingerprint))
+        runOnDevice(app.getString(R.string.msg_pairing_reading_ssh_fingerprint)) {
             try {
                 val observed = HostFingerprint.read(host.trim(), port)
                 if (probeGeneration.get() == generation) {
                     observedHost.value = observed
                     probeStatus.value =
-                        Operation(
-                            message =
-                                "Fingerprint read. Confirm the Kindle address before trusting it"
-                        )
+                        Operation(message = app.getString(R.string.msg_pairing_fingerprint_confirm))
                 }
-                "Fingerprint read; no login or file access was attempted"
+                app.getString(R.string.msg_pairing_fingerprint_read)
             } catch (e: Exception) {
                 if (probeGeneration.get() == generation)
                     probeStatus.value = Operation(message = safeError(e), failed = true)
@@ -189,8 +189,17 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         create: String? = null,
     ) {
         val generation = folderGeneration.incrementAndGet()
-        runOnDevice(if (create == null) "Reading Kindle folders…" else "Creating Kindle folder…") {
-            folderStatus.value = Operation(busy = true, message = "Reading Kindle folders…")
+        runOnDevice(
+            app.getString(
+                if (create == null) R.string.msg_pairing_reading_folders
+                else R.string.msg_pairing_creating_folder
+            )
+        ) {
+            folderStatus.value =
+                Operation(
+                    busy = true,
+                    message = app.getString(R.string.msg_pairing_reading_folders),
+                )
             try {
                 val saved = app.deviceSettings.load()
                 val credential =
@@ -204,7 +213,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                                         saved.username == config.username &&
                                         saved.authentication == config.authentication
                                 ) {
-                                    "Enter the SSH password first"
+                                    app.getString(R.string.msg_pairing_password_first)
                                 }
                                 app.deviceSettings.credential()
                             }
@@ -216,7 +225,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                                             .ByteArrayOutputStream()
                                             .also { Epub.copyBounded(input, it, 65536) }
                                             .toByteArray()
-                                    } ?: error("Cannot open private key")
+                                    } ?: error(app.getString(R.string.msg_pairing_key_unreadable))
                                 DeviceCredential(password, bytes)
                             } else {
                                 check(
@@ -224,7 +233,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                                         saved.username == config.username &&
                                         saved.authentication == config.authentication
                                 ) {
-                                    "Select your SSH private key first"
+                                    app.getString(R.string.msg_pairing_key_first)
                                 }
                                 app.deviceSettings.credential().let {
                                     if (password.isNotEmpty()) it.copy(secret = password) else it
@@ -238,7 +247,10 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                         folderListing.value = FolderListing(config, relative, dirs)
                 }
                 if (folderGeneration.get() == generation) folderStatus.value = Operation()
-                if (create == null) "Kindle folders loaded" else "Folder created on Kindle"
+                app.getString(
+                    if (create == null) R.string.msg_pairing_folders_loaded
+                    else R.string.msg_pairing_folder_created
+                )
             } catch (e: Exception) {
                 if (folderGeneration.get() == generation)
                     folderStatus.value = Operation(message = safeError(e), failed = true)
@@ -253,7 +265,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         keyUri: Uri? = null,
         onSaved: () -> Unit = {},
     ) =
-        runOnDevice("Saving Kindle connection…") {
+        runOnDevice(app.getString(R.string.msg_pairing_saving)) {
             val keyBytes =
                 keyUri
                     ?.takeIf { config.authentication == "Key" }
@@ -263,7 +275,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                                 .ByteArrayOutputStream()
                                 .also { Epub.copyBounded(input, it, 65536) }
                                 .toByteArray()
-                        } ?: error("Cannot open private key")
+                        } ?: error(app.getString(R.string.msg_pairing_key_unreadable))
                     }
             app.deviceSettings.save(config, password, keyBytes)
             device.value = config
@@ -272,27 +284,27 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             inventory.value = emptyList()
             inventoryCheckedAt.value = null
             withContext(Dispatchers.Main) { onSaved() }
-            "Pairing saved. Review sync to verify access."
+            app.getString(R.string.msg_pairing_saved)
         }
 
     fun forgetDevice() =
-        runOnDevice("Removing pairing…") {
+        runOnDevice(app.getString(R.string.msg_pairing_removing)) {
             app.deviceSettings.forget()
             device.value = DeviceConfig()
             plan.value = emptyList()
             inventory.value = emptyList()
             inventoryCheckedAt.value = null
-            "Pairing removed"
+            app.getString(R.string.msg_pairing_removed)
         }
 
     private fun connect() = SftpDevice(device.value, app.deviceSettings.credential())
 
     fun preview(selected: Set<String>? = null) =
-        runOnDevice("Connecting and comparing books…") { prepare(selected) }
+        runOnDevice(app.getString(R.string.msg_device_comparing)) { prepare(selected) }
 
     private suspend fun prepare(selected: Set<String>?): String {
         require(selected == null || selected.isNotEmpty()) {
-            "This collection has no books to compare"
+            app.getString(R.string.msg_device_nothing_to_compare)
         }
         plan.value = emptyList()
         planDevice = null
@@ -332,13 +344,14 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
         }
-        return "Comparison ready · ${inventory.value.size} EPUBs in Kindle folder"
+        val found = inventory.value.size
+        return app.resources.getQuantityString(R.plurals.msg_device_compared, found, found)
     }
 
-    fun sync() = runOnDevice("Synchronising…") { performSync() }
+    fun sync() = runOnDevice(app.getString(R.string.msg_device_sending)) { performSync() }
 
     fun syncMissing() =
-        runOnDevice("Checking Kindle for missing books…") {
+        runOnDevice(app.getString(R.string.send_comparing)) {
             val enabled = dao.allShelves().filter { it.syncEnabled }
             prepare(null)
             val presentIds =
@@ -355,33 +368,40 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                         }
                         .toSet()
             plan.value = SyncPlanner.scope(plan.value, selected)
+            val differ = plan.value.count { it.action == Action.CONFLICT }
             if (plan.value.any { it.action == Action.UPLOAD }) performSync()
+            else if (differ == 0) app.getString(R.string.msg_device_nothing_to_send)
             else
-                "Nothing to upload · ${plan.value.count { it.action == Action.CONFLICT }} conflicts left unchanged"
+                app.resources.getQuantityString(
+                    R.plurals.msg_device_nothing_to_send_differ,
+                    differ,
+                    differ,
+                )
         }
 
     fun sendBook(book: Book) =
-        runOnDevice("Sending ${book.title} to Kindle…") {
-            check(device.value.host.isNotBlank()) { "Pair your Kindle first" }
+        runOnDevice(app.getString(R.string.msg_device_sending_book, book.title)) {
+            check(device.value.host.isNotBlank()) { app.getString(R.string.send_pair_first) }
             prepare(setOf(book.id))
-            val item = plan.value.singleOrNull() ?: error("Book is no longer available")
+            val item =
+                plan.value.singleOrNull()
+                    ?: error(app.getString(R.string.msg_device_book_unavailable))
             when (item.action) {
                 Action.UPLOAD -> performSync()
-                Action.PRESENT -> "This EPUB is already verified on Kindle"
-                Action.CONFLICT ->
-                    error(
-                        "The Kindle has another revision. Review the conflict in Kindle; existing books and annotations are retained."
-                    )
+                Action.PRESENT -> app.getString(R.string.msg_device_book_present)
+                Action.CONFLICT -> error(app.getString(R.string.msg_device_book_differs))
             }
         }
 
     private suspend fun performSync(): String {
-        check(planDevice == device.value.id) { "Pairing changed; preview again" }
+        check(planDevice == device.value.id) {
+            app.getString(R.string.msg_device_connection_changed)
+        }
         val items = plan.value.filter { it.action == Action.UPLOAD }
         val id = coordinator.enqueue(items, device.value.id)
         startJob(id)
         plan.value = plan.value.filter { it.action != Action.UPLOAD }
-        return "${items.size} books queued. Follow transfer progress in Kindle or the notification"
+        return app.resources.getQuantityString(R.plurals.msg_device_queued, items.size, items.size)
     }
 
     private suspend fun startJob(id: String) {
@@ -389,15 +409,15 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             withContext(Dispatchers.Main) { dev.sadking.folio.sync.SyncService.start(app, id) }
         } catch (e: Exception) {
             coordinator.startFailed(id)
-            error("Sync saved but Android could not start it. Tap Resume in Kindle")
+            error(app.getString(R.string.msg_device_start_failed))
         }
     }
 
     fun resumeSync(id: String) =
-        runOnDevice("Resuming queued sync…") {
+        runOnDevice(app.getString(R.string.msg_device_resuming)) {
             coordinator.prepareResume(id)
             startJob(id)
-            "Sync resumed; completed files are verified without duplicate uploads"
+            app.getString(R.string.msg_device_resumed)
         }
 
     fun cancelSync(id: String) {
@@ -431,9 +451,9 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun shelfPolicy(shelf: Shelf, enabled: Boolean) =
-        run("Saving sync policy…") {
+        run(app.getString(R.string.msg_device_saving_sync_setting)) {
             dao.updateShelf(shelf.copy(syncEnabled = enabled))
-            "Collection sync preference saved"
+            app.getString(R.string.msg_device_sync_setting_saved)
         }
 
     /** Compares the chosen books with the e-reader and queues the ones it is missing. */
@@ -475,7 +495,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshBookReading(bookId: String) = refreshReadingFor(setOf(bookId))
 
     private fun refreshReadingFor(selected: Set<String>?) =
-        runOnDevice("Retrieving KOReader reading data…") {
+        runOnDevice(app.getString(R.string.msg_device_getting_reading)) {
             var imported = 0
             var missing = 0
             var failed = 0
@@ -544,13 +564,28 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
             }
-            "$imported reading snapshots refreshed · $missing adjacent sidecars absent · $conflicts file conflicts · $failed unsupported or changed snapshots. Existing annotations retained."
+            fun plural(id: Int, n: Int) = app.resources.getQuantityString(id, n, n)
+            val summary =
+                listOfNotNull(
+                        plural(R.plurals.msg_device_reading_updated, imported),
+                        plural(R.plurals.msg_device_reading_none, missing).takeIf { missing > 0 },
+                        plural(R.plurals.msg_device_reading_differ, conflicts).takeIf {
+                            conflicts > 0
+                        },
+                        plural(R.plurals.msg_device_reading_unreadable, failed).takeIf {
+                            failed > 0
+                        },
+                    )
+                    .joinToString(" · ")
+            app.getString(R.string.msg_device_reading_kept, summary)
         }
 
     fun sendCollections() =
-        runOnDevice("Preparing KOReader collection additions…") {
+        runOnDevice(app.getString(R.string.msg_device_sending_collections)) {
             val shelves = dao.allShelves().filter { it.syncEnabled }
-            require(shelves.isNotEmpty()) { "Select Include in Sync on at least one collection" }
+            require(shelves.isNotEmpty()) {
+                app.getString(R.string.msg_device_collections_none)
+            }
             val local = dao.allBooks()
             val members = dao.allMemberships()
             val known = dao.transfers(device.value.id).associateBy { it.bookId }
@@ -565,16 +600,14 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     val paths = selected.map { b ->
                         val record =
                             known[b.id]
-                                ?: error(
-                                    "Transfer or verify every collection book before sending its membership"
-                                )
+                                ?: error(app.getString(R.string.msg_device_collections_send_books))
                         require(
                             record.hash == b.currentHash &&
                                 remote.exists(record.remotePath) &&
                                 remote.read(record.remotePath).use { Epub.hash(it) } ==
                                     b.currentHash
                         ) {
-                            "Collection contains a missing or changed EPUB; preview its transfer first"
+                            app.getString(R.string.msg_device_collections_changed)
                         }
                         "${config.directory.trimEnd('/')}/${record.remotePath}"
                     }
@@ -607,15 +640,15 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     runCatching { remote.removeTemporary(temporary) }
                 }
             }
-            "Collection request sent. In KOReader's Folio bridge menu, review and apply additions. Existing memberships are retained."
+            app.getString(R.string.msg_device_collections_sent)
         }
 
     fun refreshStatistics() =
-        runOnDevice("Retrieving exported reading statistics…") {
+        runOnDevice(app.getString(R.string.msg_device_getting_statistics)) {
             val config = device.value
             connect().use { remote ->
                 require(remote.exists(".folio-statistics.json")) {
-                    "In KOReader's Folio bridge menu, export reading statistics first"
+                    app.getString(R.string.msg_device_statistics_export_first)
                 }
                 fun bytes() =
                     java.io
@@ -627,7 +660,9 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                         }
                         .toByteArray()
                 val first = bytes()
-                require(first.contentEquals(bytes())) { "Statistics export changed; retry" }
+                require(first.contentEquals(bytes())) {
+                    app.getString(R.string.msg_device_statistics_changed)
+                }
                 val o = org.json.JSONObject(first.toString(Charsets.UTF_8))
                 require(o.getString("format") == "folio-statistics" && o.getInt("version") == 1)
                 val value =
@@ -641,7 +676,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                 validateStatistics(value)
                 dao.statistics(value)
             }
-            "Reading statistics saved offline"
+            app.getString(R.string.msg_device_statistics_saved)
         }
 }
 

@@ -7,8 +7,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OperationRunnerTest {
+    private val text =
+        FailureText(
+            hostKey = "host key",
+            passwordFreeRejected = "password-free rejected",
+            signInRejected = "sign-in rejected",
+            unsupportedAlgorithms = "algorithms",
+            connection = "connection",
+            fileTransfer = "file transfer",
+            incomplete = "Something went wrong. Try again.",
+            generic = "Something went wrong. Check the file, free space and connection.",
+            transferBusy = "Finish or cancel the current transfer first.",
+        )
+
     private fun runner(transfer: Boolean = false) =
-        OperationRunner(transferActive = { transfer }, authentication = { "Key" })
+        OperationRunner(transferActive = { transfer }, authentication = { "Key" }, text = { text })
 
     @Test
     fun deviceWorkWaitsForTheTransferButLibraryWorkDoesNot() = runBlocking {
@@ -16,7 +29,7 @@ class OperationRunnerTest {
         runner.launch(this, "Sending", device = true) { "sent" }
         val refused = runner.notices.first()
         assertTrue(refused.failed)
-        assertEquals("Finish or cancel the current transfer first", refused.message)
+        assertEquals(text.transferBusy, refused.message)
 
         runner.launch(this, "Saving", device = false) { "saved" }
         assertEquals(Operation(message = "saved"), runner.notices.first())
@@ -31,7 +44,33 @@ class OperationRunnerTest {
         val notice = runner.notices.first()
         assertTrue(notice.failed)
         assertFalse(notice.message.contains("/data"))
+        assertEquals(text.generic, notice.message)
         assertEquals(notice, runner.state.value)
+    }
+
+    @Test
+    fun onlyMessagesWrittenForTheUserAreShown() {
+        assertEquals(
+            "Enter a list name",
+            safeError(IllegalArgumentException("Enter a list name"), text),
+        )
+        assertEquals(
+            text.incomplete,
+            safeError(runCatching { require(false) }.exceptionOrNull() as Exception, text),
+        )
+        assertEquals(
+            text.incomplete,
+            safeError(runCatching { check(false) }.exceptionOrNull() as Exception, text),
+        )
+        assertEquals(text.connection, safeError(com.jcraft.jsch.JSchException("timeout"), text))
+        assertEquals(
+            text.signInRejected,
+            safeError(com.jcraft.jsch.JSchException("Auth fail"), text, "Key"),
+        )
+        assertEquals(
+            text.passwordFreeRejected,
+            safeError(com.jcraft.jsch.JSchException("Auth fail"), text, "KOReader password-free"),
+        )
     }
 
     @Test
