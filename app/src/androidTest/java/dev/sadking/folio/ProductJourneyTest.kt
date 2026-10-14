@@ -5,6 +5,7 @@ import android.graphics.*
 import android.net.Uri
 import android.provider.MediaStore
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.*
@@ -234,11 +235,17 @@ class ProductJourneyTest {
         compose.onNodeWithText("Manage lists").performClick()
         compose.onNode(isToggleable() and hasAnySibling(hasText("Slow Sundays"))).performClick()
         compose.onNodeWithText("Lists · Pride and Prejudice").assertIsDisplayed()
-        // A real system back: it reaches the focused sheet window first, as on a phone. The
-        // activity's own dispatcher would bypass the open sheet.
-        automation.performGlobalAction(
-            android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
-        )
+        // Close the sheet through its scrim's own action. A system back gesture did not always
+        // reach the sheet window on the emulator, which left it open over the next screens.
+        compose
+            .onNodeWithContentDescription("Close sheet")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        waitFor("the lists sheet to close") {
+            compose
+                .onAllNodesWithText("Lists · Pride and Prejudice")
+                .fetchSemanticsNodes()
+                .isEmpty()
+        }
         waitText("Send to device")
         capture("book-light")
         compose.onNodeWithContentDescription("Edit metadata").performClick()

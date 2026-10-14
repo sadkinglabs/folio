@@ -89,7 +89,11 @@ class ReaderUiTest {
                     }
                     attached
                 }
-                // Controls first: no sheet has been opened yet, so taps reach the page.
+                // Controls first: no sheet has been opened yet, so taps reach the page. Wait for
+                // the first saved position: before the page has loaded, a tap has nothing to hit.
+                compose.waitUntil(30000) {
+                    runBlocking { app.database.library().phoneReading(id, hash) } != null
+                }
                 QaScreenshots.capture("reader-controls")
                 fun controlsShown() =
                     compose
