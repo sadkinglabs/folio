@@ -45,7 +45,8 @@ private val destinations =
 fun FolioApp(model: LibraryViewModel) {
     val discovery: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     var showProfileImport by rememberSaveable { mutableStateOf(false) }
-    var catalogueId by rememberSaveable { mutableStateOf<String?>(null) }
+    val nav = rememberFolioNav()
+    val catalogueId = nav.recordId
     var catalogueProgress by rememberSaveable { mutableStateOf(false) }
     var catalogueEditorId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingShelfId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -66,7 +67,6 @@ fun FolioApp(model: LibraryViewModel) {
     var showTitleLookup by rememberSaveable { mutableStateOf(false) }
     var resumeHardcoverSearch by rememberSaveable { mutableStateOf(false) }
     var resumeHardcoverImport by rememberSaveable { mutableStateOf(false) }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showAccount by rememberSaveable { mutableStateOf(false) }
     var showHardcover by rememberSaveable { mutableStateOf(false) }
     var showDiscovery by rememberSaveable { mutableStateOf(false) }
@@ -282,17 +282,11 @@ fun FolioApp(model: LibraryViewModel) {
                 notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             } else performRequestedSync()
         }
-        var tab by rememberSaveable { mutableIntStateOf(0) }
-        LaunchedEffect(Unit) {
-            if (tab !in 0..3) {
-                tab = 0
-                showSettings = true
-            }
-        }
-        var detailId by rememberSaveable { mutableStateOf<String?>(null) }
+        val tab = nav.tab
+        val detailId = nav.bookId
         var editorDirty by rememberSaveable { mutableStateOf(false) }
         var confirmDiscard by rememberSaveable { mutableStateOf(false) }
-        var editing by rememberSaveable { mutableStateOf(false) }
+        val editing = nav.editing
         var selection by remember { mutableStateOf(setOf<String>()) }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
         var showConnection by rememberSaveable { mutableStateOf(false) }
@@ -317,8 +311,7 @@ fun FolioApp(model: LibraryViewModel) {
         LaunchedEffect(catalogue?.linkedBookId, books) {
             catalogue?.linkedBookId?.let { id ->
                 if (books.any { it.id == id }) {
-                    detailId = id
-                    catalogueId = null
+                    nav.replaceTop(Route.Book(id))
                     catalogueProgress = false
                 }
             }
@@ -351,17 +344,24 @@ fun FolioApp(model: LibraryViewModel) {
                         .minByOrNull { LibraryRules.seriesNumber(it.seriesIndex) }
                 }
         fun leaveBook() {
-            if (catalogueId != null) {
-                catalogueId = null
-                catalogueProgress = false
-            } else if (editing) {
-                if (editorDirty) confirmDiscard = true else editing = false
-            } else detailId = null
+            if (editing && editorDirty) confirmDiscard = true
+            else {
+                if (catalogueId != null) catalogueProgress = false
+                nav.back()
+            }
         }
-        BackHandler(detailId != null || catalogueId != null || editing || selection.isNotEmpty()) {
+        // Settings handles its own back as a dialog window; this covers book screens and selection.
+        BackHandler(nav.stack.isNotEmpty() || selection.isNotEmpty()) {
             if (editing && op.busy) return@BackHandler
-            if (detailId != null || catalogueId != null || editing) leaveBook()
-            else selection = emptySet()
+            if (nav.stack.isNotEmpty()) leaveBook() else selection = emptySet()
+        }
+        // Opens a book screen for a library entry, with or without an EPUB.
+        fun openEntry(id: String, progress: Boolean = false) {
+            if (books.any { it.id == id }) nav.open(Route.Book(id))
+            else {
+                nav.open(Route.Record(id))
+                catalogueProgress = progress
+            }
         }
         CompositionLocalProvider(LocalRouteHeading provides (book == null && catalogue == null)) {
             Scaffold(
@@ -382,8 +382,10 @@ fun FolioApp(model: LibraryViewModel) {
                                 if (!editing)
                                     IconButton(
                                         onClick = {
-                                            if (book != null) editing = true
-                                            else catalogueEditorId = catalogue?.id
+                                            if (book != null) {
+                                                editorDirty = false
+                                                nav.open(Route.Edit(book.id))
+                                            } else catalogueEditorId = catalogue?.id
                                         },
                                         enabled = !op.busy,
                                     ) {
@@ -401,7 +403,7 @@ fun FolioApp(model: LibraryViewModel) {
                         TopAppBar(
                             title = { Text(destinations.getOrNull(tab)?.title ?: "Library") },
                             actions = {
-                                IconButton(onClick = { showSettings = true }) {
+                                IconButton(onClick = { nav.open(Route.Settings) }) {
                                     Icon(Icons.Outlined.Settings, "Settings")
                                 }
                             },
@@ -414,7 +416,7 @@ fun FolioApp(model: LibraryViewModel) {
                                 NavigationBarItem(
                                     selected = tab == i,
                                     onClick = {
-                                        tab = i
+                                        nav.root(i)
                                         selection = emptySet()
                                     },
                                     icon = {
@@ -452,8 +454,8 @@ fun FolioApp(model: LibraryViewModel) {
                                 metadata,
                                 cover ->
                                 model.edit(book, metadata, cover) {
-                                    editing = false
                                     editorDirty = false
+                                    if (nav.editing) nav.back()
                                 }
                             }
                         else
@@ -483,8 +485,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         pairingSendId = book.id
                                         showConnection = true
                                     } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
-                                        detailId = null
-                                        tab = 2
+                                        nav.root(2)
                                     } else requestSync("book", book.id)
                                 },
                                 signals = signals[book.id],
@@ -494,10 +495,7 @@ fun FolioApp(model: LibraryViewModel) {
                                     if (device.host.isBlank()) showConnection = true
                                     else model.refreshBookReading(book.id)
                                 },
-                                onReading = {
-                                    detailId = null
-                                    tab = 3
-                                },
+                                onReading = { nav.root(3) },
                                 busy = op.busy,
                                 deviceBusy = deviceBusy,
                                 reading =
@@ -522,7 +520,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                 it.hash == next.currentHash
                                         }
                                     } == true,
-                                onNext = { detailId = it.id },
+                                onNext = { nav.open(Route.Book(it.id)) },
                                 onHardcover = {
                                     showHardcover = true
                                     discovery.openReading(book)
@@ -542,7 +540,7 @@ fun FolioApp(model: LibraryViewModel) {
                             onActions = {
                                 actionsId = catalogue.id
                             },
-                            onDismiss = { catalogueId = null },
+                            onDismiss = { leaveBook() },
                             onLists = { listEntryId = catalogue.id },
                         )
                     } else
@@ -557,13 +555,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         selection = selection,
                                         busy = op.busy,
                                         onSelection = { selection = it },
-                                        onOpen = { entry ->
-                                            if (entry.id in library.fileIds) detailId = entry.id
-                                            else {
-                                                catalogueId = entry.id
-                                                catalogueProgress = false
-                                            }
-                                        },
+                                        onOpen = { entry -> openEntry(entry.id) },
                                         onContext = { actionsId = it.id },
                                         onAdd = { showAddBooks = true },
                                         onCreate = { name, field, value ->
@@ -575,11 +567,11 @@ fun FolioApp(model: LibraryViewModel) {
                                         },
                                         onPolicy = model::shelfPolicy,
                                         onSendShelf = {
-                                            tab = 2
+                                            nav.root(2)
                                             model.previewShelf(it)
                                         },
                                         onSend = {
-                                            tab = 2
+                                            nav.root(2)
                                             model.preview(it)
                                             selection = emptySet()
                                         },
@@ -591,9 +583,9 @@ fun FolioApp(model: LibraryViewModel) {
                                             }
                                         },
                                         onDiscover = { showDiscovery = true },
-                                        onSettings = { showSettings = true },
+                                        onSettings = { nav.open(Route.Settings) },
                                         onFolderSync = {
-                                            if (phoneFolder.isBlank()) showSettings = true
+                                            if (phoneFolder.isBlank()) nav.open(Route.Settings)
                                             else if (device.host.isBlank()) showConnection = true
                                             else model.syncPairedFolder()
                                         },
@@ -609,7 +601,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         deviceBusy,
                                         inventoryCheckedAt = inventoryCheckedAt,
                                         localBookCount = books.size,
-                                        onLibrary = { tab = 0 },
+                                        onLibrary = { nav.root(0) },
                                         onConfigure = { showConnection = true },
                                         onPreview = { model.preview() },
                                         onSync = { requestSync("preview") },
@@ -628,7 +620,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                         ?.let { t.remotePath to it }
                                                 }
                                                 .toMap(),
-                                        onOpenBook = { detailId = it.id },
+                                        onOpenBook = { nav.open(Route.Book(it.id)) },
                                         syncScope =
                                             if (shelves.any { it.syncEnabled })
                                                 "Sync includes: ${shelves.filter { it.syncEnabled }.joinToString { it.name }}. No remote books are removed."
@@ -642,28 +634,17 @@ fun FolioApp(model: LibraryViewModel) {
                                         annotations,
                                         deviceBusy,
                                         model::refreshReading,
-                                        onOpen = { entry ->
-                                            if (books.any { it.id == entry.id }) detailId = entry.id
-                                            else {
-                                                catalogueId = entry.id
-                                                catalogueProgress = false
-                                            }
-                                        },
+                                        onOpen = { entry -> openEntry(entry.id) },
                                         statistics =
                                             statistics.firstOrNull { it.deviceId == device.id },
                                         onStatistics = model::refreshStatistics,
                                         paired = device.host.isNotBlank(),
                                         onConnect = { showConnection = true },
-                                        onLibrary = { tab = 0 },
+                                        onLibrary = { nav.root(0) },
                                         signals = library.signals,
                                         onHardcover = { tracked ->
-                                            if (tracked.id in library.fileIds) {
-                                                detailId = tracked.id
-                                                showHardcover = true
-                                            } else {
-                                                catalogueId = tracked.id
-                                                catalogueProgress = true
-                                            }
+                                            openEntry(tracked.id, progress = true)
+                                            if (tracked.id in library.fileIds) showHardcover = true
                                             discovery.openReading(tracked)
                                         },
                                     )
@@ -672,9 +653,9 @@ fun FolioApp(model: LibraryViewModel) {
                 }
             }
         }
-        if (showSettings)
+        if (nav.top == Route.Settings)
             androidx.compose.ui.window.Dialog(
-                onDismissRequest = { showSettings = false },
+                onDismissRequest = { nav.back() },
                 properties =
                     androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
             ) {
@@ -684,7 +665,7 @@ fun FolioApp(model: LibraryViewModel) {
                             TopAppBar(
                                 title = { Text("Settings") },
                                 navigationIcon = {
-                                    IconButton(onClick = { showSettings = false }) {
+                                    IconButton(onClick = { nav.back() }) {
                                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                                     }
                                 },
@@ -705,16 +686,10 @@ fun FolioApp(model: LibraryViewModel) {
                                     dynamic = it
                                     prefs.edit().putBoolean("dynamic", it).apply()
                                 },
-                                onConnection = {
-                                    showSettings = false
-                                    showConnection = true
-                                },
+                                onConnection = { showConnection = true },
                                 onForget = model::forgetDevice,
                                 paired = device.host.isNotBlank(),
-                                onRemoved = {
-                                    showSettings = false
-                                    showRemoved = true
-                                },
+                                onRemoved = { showRemoved = true },
                                 removedCount = removed.map { it.groupId }.distinct().size,
                                 recordCount = library.entries.size,
                                 phoneFolder = phoneFolder,
@@ -722,15 +697,9 @@ fun FolioApp(model: LibraryViewModel) {
                                 onRefreshFolder = model::refreshPhoneFolder,
                                 onForgetFolder = model::forgetPhoneFolder,
                                 onInstallCompanion = { installCompanion = true },
-                                onImports = {
-                                    showSettings = false
-                                    model.showImportResults.value = true
-                                },
+                                onImports = { model.showImportResults.value = true },
                                 hardcoverUsername = hardcoverUsername,
-                                onHardcover = {
-                                    showSettings = false
-                                    showAccount = true
-                                },
+                                onHardcover = { showAccount = true },
                                 busy = deviceBusy,
                                 onBackup = {
                                     backupPicker.launch(
@@ -758,8 +727,8 @@ fun FolioApp(model: LibraryViewModel) {
                     TextButton(
                         onClick = {
                             confirmDiscard = false
-                            editing = false
                             editorDirty = false
+                            if (nav.editing) nav.back()
                         }
                     ) {
                         Text("Discard")
@@ -817,11 +786,8 @@ fun FolioApp(model: LibraryViewModel) {
                 onSaved = { wish ->
                     showTitleLookup = false
                     discovery.clearTitleLookup()
-                    if (wish.linkedBookId != null) detailId = wish.linkedBookId
-                    else {
-                        catalogueId = wish.id
-                        catalogueProgress = false
-                    }
+                    if (wish.linkedBookId != null) nav.open(Route.Book(wish.linkedBookId))
+                    else openEntry(wish.id)
                 },
             )
         val editingShelf = shelves.firstOrNull { it.id == editingShelfId }
@@ -894,7 +860,7 @@ fun FolioApp(model: LibraryViewModel) {
                 },
                 onOpen = { id ->
                     model.showImportResults.value = false
-                    detailId = id
+                    nav.open(Route.Book(id))
                 },
                 onDismiss = { model.showImportResults.value = false },
             )
@@ -932,43 +898,29 @@ fun FolioApp(model: LibraryViewModel) {
                 onAction = { action ->
                     actionsId = null
                     when (action) {
-                        BookAction.OPEN ->
-                            if (books.any { it.id == actionBook.id }) detailId = actionBook.id
-                            else {
-                                catalogueId = actionBook.id
-                                catalogueProgress = false
-                            }
+                        BookAction.OPEN -> openEntry(actionBook.id)
                         BookAction.SELECT -> {
-                            detailId = null
-                            catalogueId = null
+                            nav.root(0)
                             selection = selection + actionBook.id
-                            tab = 0
                         }
                         BookAction.SEND -> {
                             if (device.host.isBlank()) {
                                 pairingSendId = actionBook.id
                                 showConnection = true
                             } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
-                                detailId = null
-                                tab = 2
+                                nav.root(2)
                             } else requestSync("book", actionBook.id)
                         }
                         BookAction.PROGRESS -> {
-                            if (books.any { it.id == actionBook.id }) {
-                                detailId = actionBook.id
-                                showHardcover = true
-                                discovery.openReading(actionBook)
-                            } else {
-                                catalogueId = actionBook.id
-                                catalogueProgress = true
-                                discovery.openReading(actionBook)
-                            }
+                            openEntry(actionBook.id, progress = true)
+                            if (books.any { it.id == actionBook.id }) showHardcover = true
+                            discovery.openReading(actionBook)
                         }
                         BookAction.EDIT -> {
                             if (books.any { it.id == actionBook.id }) {
-                                detailId = actionBook.id
-                                editing = true
+                                nav.open(Route.Book(actionBook.id))
                                 editorDirty = false
+                                nav.open(Route.Edit(actionBook.id))
                             } else {
                                 model.managementError.value = null
                                 catalogueEditorId = actionBook.id
@@ -1051,8 +1003,7 @@ fun FolioApp(model: LibraryViewModel) {
                         TextButton(
                             onClick = {
                                 listEntryId = null
-                                detailId = null
-                                tab = 1
+                                nav.root(1)
                             }
                         ) {
                             Text("Create a list")
@@ -1153,14 +1104,8 @@ fun FolioApp(model: LibraryViewModel) {
                     removalAttempted = true
                     val ids = removalIds
                     model.removeLocal(ids) {
-                        if (detailId in ids) {
-                            detailId = null
-                            editing = false
-                        }
-                        if (catalogueId in ids) {
-                            catalogueId = null
-                            catalogueProgress = false
-                        }
+                        if (catalogueId in ids) catalogueProgress = false
+                        nav.forget(ids)
                         selection = selection - ids
                         removalIds = emptySet()
                     }
@@ -1220,7 +1165,7 @@ fun FolioApp(model: LibraryViewModel) {
                 },
                 onSaved = {
                     showDiscovery = false
-                    tab = 1
+                    nav.root(1)
                     requestedList = ReadingList.WANT_TO_READ.name
                 },
             )
