@@ -311,7 +311,7 @@ class ProductJourneyTest {
         capture("library-list-dark")
         // The layout is remembered across launches; leave the grid for the tests that follow.
         compose.onNodeWithContentDescription("Show grid").performClick()
-        tab("Kindle")
+        tab("Device")
         capture("kindle-dark")
         tab("Reading")
         capture("reading-dark")

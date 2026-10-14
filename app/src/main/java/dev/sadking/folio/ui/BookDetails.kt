@@ -119,7 +119,7 @@ fun BookDetails(
                     Text("Next in ${book.series}", style = MaterialTheme.typography.labelLarge)
                     Text(nextInSeries.title, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (nextOnDevice) "Last verified on Kindle" else "EPUB on phone",
+                        if (nextOnDevice) "On your e-reader" else "Not on your e-reader yet",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

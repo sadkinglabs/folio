@@ -454,8 +454,9 @@ internal fun LibraryCover(
     val badge: Pair<ImageVector, String>? =
         when {
             reading.startsWith("Finished") -> Icons.Outlined.DoneAll to reading
-            device == "On Kindle" -> Icons.Outlined.TabletAndroid to "On your Kindle"
-            device == "Sending" || device == "Queued" -> Icons.Outlined.Sync to "$device to Kindle"
+            device == "On Kindle" -> Icons.Outlined.TabletAndroid to "On your e-reader"
+            device == "Sending" || device == "Queued" ->
+                Icons.Outlined.Sync to "Sending to your e-reader"
             device in listOf("Transfer failed", "Transfer paused", "Needs update") ->
                 Icons.Outlined.ErrorOutline to device!!
             else -> null

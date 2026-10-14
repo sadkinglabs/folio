@@ -37,7 +37,7 @@ private val destinations =
     listOf(
         Destination("Library", Icons.Outlined.AutoStories),
         Destination("Lists", Icons.Outlined.CollectionsBookmark),
-        Destination("Kindle", Icons.Outlined.TabletMac),
+        Destination("Device", Icons.Outlined.TabletMac),
         Destination("Reading", Icons.Outlined.MenuBook),
     )
 

@@ -7,12 +7,12 @@
     <string name="progress_title">Progress</string>
     <string name="progress_change_status">Change status</string>
     <string name="progress_phone">This phone</string>
-    <string name="progress_device">Kindle</string>
+    <string name="progress_device">E-reader</string>
     <string name="progress_hardcover">Hardcover</string>
     <string name="progress_not_started">Not started</string>
     <string name="progress_not_checked">Not checked yet</string>
     <string name="progress_checked">Checked %1$s</string>
-    <string name="progress_refresh">Refresh from Kindle</string>
+    <string name="progress_refresh">Refresh from e-reader</string>
 
     <!-- Reader -->
     <string name="reader_title_fallback">Reader</string>

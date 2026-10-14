@@ -118,10 +118,15 @@ internal fun BookPrimaryActions(
 
 internal fun displayDeviceState(signals: BookSignals): String =
     when (signals.device) {
-        "On Kindle" -> "Verified on Kindle"
-        "Needs update" -> "EPUB edited since transfer"
+        "On Kindle" -> "On your e-reader"
+        "Needs update" -> "Edited since it was sent"
         "Phone only",
-        "Not sent" -> "EPUB on phone"
+        "Not sent" -> "Not on your e-reader yet"
+        "Queued" -> "Waiting to send"
+        "Sending" -> "Sending to your e-reader…"
+        "Transfer paused" -> "Sending paused"
+        "Transfer failed" -> "Sending failed"
+        "No EPUB" -> "No EPUB yet"
         else -> signals.device
     }
 

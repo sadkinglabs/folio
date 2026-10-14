@@ -369,7 +369,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             repo.edit(book.id, metadata, cover)
             plan.value = emptyList()
             withContext(Dispatchers.Main) { done() }
-            "Metadata saved in a new EPUB revision"
+            "Changes saved. Your original EPUB is kept"
         }
 
     fun status(book: Book, status: String) =
@@ -392,7 +392,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun membership(book: String, shelf: String, selected: Boolean) =
         run("Updating collection…") {
             repo.manageBatch(setOf(book), shelfId = shelf, add = selected)
-            "Collection updated"
+            "Lists updated"
         }
 
     fun probeHost(host: String, port: Int) {
@@ -784,7 +784,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 repo.edit(book.id, metadata, file?.let(Uri::fromFile))
                 plan.value = emptyList()
                 withContext(Dispatchers.Main) { done() }
-                "Selected fields saved in a new EPUB revision"
+                "Selected details saved. Your original EPUB is kept"
             } finally {
                 file?.delete()
             }

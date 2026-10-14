@@ -42,6 +42,6 @@ class BookDetailsBusyUiTest {
         compose.onNodeWithText("Read").assertIsEnabled()
         compose.onNodeWithText("Update progress").assertIsEnabled()
         compose.onNodeWithText("Send to device").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Refresh from Kindle").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Refresh from e-reader").assertIsNotEnabled()
     }
 }
