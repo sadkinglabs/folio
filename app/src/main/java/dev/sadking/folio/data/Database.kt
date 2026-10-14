@@ -376,6 +376,9 @@ interface LibraryDao {
     @Query("SELECT * FROM kosync_progress ORDER BY timestamp DESC")
     fun kosyncFlow(): Flow<List<KosyncReport>>
 
+    @Query("SELECT * FROM kosync_progress WHERE document = :document ORDER BY timestamp DESC")
+    fun kosyncReportsFlow(document: String): Flow<List<KosyncReport>>
+
     @Query("SELECT * FROM phone_reading WHERE bookId NOT IN (SELECT id FROM removed_entries)")
     suspend fun allPhoneReading(): List<PhoneReading>
 

@@ -38,6 +38,9 @@
     <string name="reader_link_stay">Stay here</string>
     <string name="reader_link_failed">Couldn\'t find that passage in this copy of the book. You\'re still on your page.</string>
 
+    <!-- Folio Link: book page -->
+    <string name="progress_link_reported">Through Folio Link, %1$s</string>
+
     <!-- Folio Link: notification -->
     <string name="link_channel">Folio Link</string>
     <string name="link_notification_title">Folio Link is on</string>

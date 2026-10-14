@@ -13,11 +13,18 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.koreaderDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 
 @Composable
 fun BookDetails(
@@ -276,6 +283,17 @@ private fun BookProgressCard(
                     Icon(Icons.Outlined.Sync, stringResource(R.string.progress_refresh))
                 }
             }
+            // Each e-reader that reported this exact file through Folio Link.
+            linkReports(book).forEach { report ->
+                ProgressLine(
+                    report.device,
+                    report.percentage,
+                    stringResource(
+                        R.string.progress_link_reported,
+                        observationDate(report.timestamp * 1000),
+                    ),
+                )
+            }
             signals.hardcover?.let {
                 ProgressLine(stringResource(R.string.progress_hardcover), null, it)
             }
@@ -333,4 +351,28 @@ private fun ProgressLine(
         }
         action()
     }
+}
+
+/**
+ * Folio Link reports for this book's current file from other devices, newest first. KOReader keys
+ * them by a fingerprint of the file, so another edition of the book does not match.
+ */
+@Composable
+private fun linkReports(book: Book): List<KosyncReport> {
+    val app = LocalContext.current.applicationContext as? FolioApplication ?: return emptyList()
+    val document by
+        produceState<String?>(null, book.currentPath) {
+            value =
+                withContext(Dispatchers.IO) {
+                    runCatching { koreaderDigest(java.io.File(book.currentPath)) }.getOrNull()
+                }
+        }
+    val reports by
+        remember(document) {
+                document?.let { app.database.library().kosyncReportsFlow(it) }
+                    ?: flowOf(emptyList())
+            }
+            .collectAsStateWithLifecycle(emptyList())
+    val phone = remember { app.link.settings.phoneDeviceId }
+    return reports.filter { it.deviceId != phone }
 }
