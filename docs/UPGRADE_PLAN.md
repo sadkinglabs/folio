@@ -290,6 +290,14 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - Fix the existing SSH handoff path too (tolerance reconciliation, plugin apply check), or retire it once kosync is verified.
 - **Device check:** read on phone → open on Kindle (auto-jumps) → read → close → open on phone, which offers the Kindle position → Hardcover shows the right page. Repeat with the screen off for 30 minutes.
 
+**M3 status (2026-10-14):** built; waits on the phone test in [FOLIO_LINK_TEST.md](FOLIO_LINK_TEST.md).
+- **Server:** kosync on Ktor CIO in `transport`, answering KOReader's routes, codes and JSON like the reference server. Single account (`folio` plus a password made on the phone), throttled logins, newest report wins, every device kept. JVM tests cover the protocol and real HTTP; they are written from the protocol, not captured from a real KOReader yet.
+- **Phone:** a `connectedDevice` foreground service with a Wi-Fi lock and an optional CPU wake lock; Settings shows the address, login, last contact and a connection log with screen on/off. Room 8 adds `kosync_progress`.
+- **Reader:** each saved page is published as "Folio on <phone>"; opening a book offers a newer e-reader position once.
+- **Book page and Hardcover:** each e-reader's position shows on the progress card and in the Update Hardcover sheet. Automatic Hardcover updates go through a WorkManager queue that only moves an open "Currently Reading" read forward.
+- **Not done:** the decision on Doze (needs the phone test), retiring or fixing the SSH handoff (after kosync is proven on a device), and real KOReader captures for the test suite.
+- **Schema note:** `8.json` was written by hand; Room accepts its structure but its identity hash is a placeholder. Room does not rewrite a schema file whose structure matches.
+
 ### M4: Device pairing and delivery (device-agnostic)
 - Device profiles: Kindle, Kobo, PocketBook and generic KOReader, with the default paths for each.
 - Pairing wizard:
