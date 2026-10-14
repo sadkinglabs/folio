@@ -17,6 +17,28 @@ import kotlinx.coroutines.flow.*
  * The e-reader and the paired phone folder: pairing, comparison, transfers and the reading data
  * brought back from KOReader.
  */
+/** What a send did, in one line: queued, already there, and what needs review. */
+internal fun sendSummary(
+    resources: android.content.res.Resources,
+    queued: Int,
+    present: Int,
+    differ: Int,
+): String {
+    if (queued == 0 && differ == 0) return resources.getString(R.string.send_nothing_missing)
+    return listOfNotNull(
+            resources.getQuantityString(R.plurals.send_queued, queued, queued).takeIf {
+                queued > 0
+            },
+            resources.getQuantityString(R.plurals.send_present, present, present).takeIf {
+                present > 0
+            },
+            resources.getQuantityString(R.plurals.send_differ, differ, differ).takeIf {
+                differ > 0
+            },
+        )
+        .joinToString(" · ")
+}
+
 class DeviceViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as FolioApplication
     private val repo = app.repository
@@ -414,8 +436,12 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             "Collection sync preference saved"
         }
 
-    fun previewShelf(shelf: Shelf) =
-        runOnDevice("Connecting and comparing books…") {
+    /** Compares the chosen books with the e-reader and queues the ones it is missing. */
+    fun sendBooks(ids: Set<String>) =
+        runOnDevice(app.getString(R.string.send_comparing)) { send(ids) }
+
+    fun sendShelf(shelf: Shelf) =
+        runOnDevice(app.getString(R.string.send_comparing)) {
             val verified = dao.transfers(device.value.id).associateBy { it.bookId }
             val ids =
                 collectionBooks(shelf, dao.allBooks(), dao.allMemberships()) {
@@ -423,8 +449,26 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     .map { it.id }
                     .toSet()
-            prepare(ids)
+            send(ids)
         }
+
+    /**
+     * Uploads only what is missing. Books that differ on the e-reader are never overwritten; they
+     * stay in the comparison on the Device tab for review.
+     */
+    private suspend fun send(ids: Set<String>): String {
+        check(device.value.host.isNotBlank()) { app.getString(R.string.send_pair_first) }
+        prepare(ids)
+        val items = plan.value
+        val queued = items.count { it.action == Action.UPLOAD }
+        if (queued > 0) performSync()
+        return sendSummary(
+            app.resources,
+            queued,
+            items.count { it.action == Action.PRESENT },
+            items.count { it.action == Action.CONFLICT },
+        )
+    }
 
     fun refreshReading() = refreshReadingFor(null)
 

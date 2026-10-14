@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +29,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
@@ -318,7 +320,7 @@ internal fun SelectionBar(
                     Icon(Icons.Outlined.MoreVert, "Manage selected books")
                 }
             IconButton(onClick = onSync, enabled = enabled && syncEnabled) {
-                Icon(Icons.Outlined.Sync, "Compare selected EPUBs with Kindle")
+                Icon(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.send_selected))
             }
             if (onRemove != null)
                 IconButton(onClick = onRemove, enabled = enabled) {

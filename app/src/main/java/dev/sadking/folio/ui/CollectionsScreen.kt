@@ -18,9 +18,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
@@ -181,7 +183,7 @@ fun CollectionsScreen(
                 ) {
                     Text(shelf.name, style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Only attached EPUBs can be sent. Review the transfer before anything is uploaded.",
+                        stringResource(R.string.send_list_explainer),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(
@@ -194,7 +196,7 @@ fun CollectionsScreen(
                                 (counts[shelf.id] ?: members.count { it.shelfId == shelf.id }) > 0,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Preview transfer")
+                        Text(stringResource(R.string.send_list))
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

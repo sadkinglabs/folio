@@ -261,6 +261,14 @@ fun FolioApp(model: LibraryViewModel) {
                 val id = pendingSendId
                 pendingSendId = null
                 books.firstOrNull { it.id == id }?.let(devices::sendBook)
+            } else if (action == "books") {
+                val ids = pendingSendId.orEmpty().split(',').filter { it.isNotEmpty() }.toSet()
+                pendingSendId = null
+                if (ids.isNotEmpty()) devices.sendBooks(ids)
+            } else if (action == "shelf") {
+                val id = pendingSendId
+                pendingSendId = null
+                shelves.firstOrNull { it.id == id }?.let(devices::sendShelf)
             } else if (action == "missing") devices.syncMissing()
             else if (action == "preview") devices.sync()
         }
@@ -268,8 +276,9 @@ fun FolioApp(model: LibraryViewModel) {
             rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 performRequestedSync()
             }
-        fun requestSync(action: String, bookId: String? = null) {
-            pendingSendId = bookId
+        /** [target] is a book id, comma-joined book ids or a list id, depending on [action]. */
+        fun requestSync(action: String, target: String? = null) {
+            pendingSendId = target
             pendingSync = action
             if (
                 android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -301,6 +310,14 @@ fun FolioApp(model: LibraryViewModel) {
             }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
         var showConnection by rememberSaveable { mutableStateOf(false) }
+        /** Sends from where you are; only pairing or a stuck transfer takes you elsewhere. */
+        fun sendOrPair(send: () -> Unit) {
+            when {
+                device.host.isBlank() -> showConnection = true
+                syncJob?.state in listOf("FAILED", "PAUSED") -> nav.root(2)
+                else -> send()
+            }
+        }
         val picker =
             rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
                 model.import(it)
@@ -585,14 +602,14 @@ fun FolioApp(model: LibraryViewModel) {
                                             editingShelfId = it.id
                                         },
                                         onPolicy = devices::shelfPolicy,
-                                        onSendShelf = {
-                                            nav.root(2)
-                                            devices.previewShelf(it)
+                                        onSendShelf = { shelf ->
+                                            sendOrPair { requestSync("shelf", shelf.id) }
                                         },
-                                        onSend = {
-                                            nav.root(2)
-                                            devices.preview(it)
-                                            selection = emptySet()
+                                        onSend = { ids ->
+                                            sendOrPair {
+                                                requestSync("books", ids.joinToString(","))
+                                                selection = emptySet()
+                                            }
                                         },
                                         onRemove = { removalIds = it },
                                         onBatch = { showBatchManage = true },

@@ -87,4 +87,22 @@
     <string name="transfer_stopping">Stopping after this book…</string>
     <string name="transfer_sending">Sending %1$d of %2$d to your e-reader</string>
     <string name="transfer_cancel">Cancel</string>
+    <string name="send_comparing">Checking what your e-reader is missing…</string>
+    <string name="send_pair_first">Connect your e-reader first</string>
+    <string name="send_nothing_missing">Your e-reader already has all of these</string>
+    <plurals name="send_queued">
+        <item quantity="one">%d book is on its way to your e-reader</item>
+        <item quantity="other">%d books are on their way to your e-reader</item>
+    </plurals>
+    <plurals name="send_present">
+        <item quantity="one">%d was already there</item>
+        <item quantity="other">%d were already there</item>
+    </plurals>
+    <plurals name="send_differ">
+        <item quantity="one">%d is different on the e-reader, review it on the Device tab</item>
+        <item quantity="other">%d are different on the e-reader, review them on the Device tab</item>
+    </plurals>
+    <string name="send_list">Send to e-reader</string>
+    <string name="send_list_explainer">Only books with an EPUB are sent. Books already on your e-reader are skipped, and a different copy there is never replaced.</string>
+    <string name="send_selected">Send selected books to your e-reader</string>
 </resources>
