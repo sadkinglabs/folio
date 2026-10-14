@@ -240,6 +240,10 @@ class ProductJourneyTest {
         compose.onNodeWithText("Title").performTextClearance()
         compose.onNodeWithText("Title").performTextInput("Pride and Prejudice · Edited")
         compose.onNodeWithText("Save changes").performClick()
+        // The edited title is already in the editor's own field, so wait for the saved revision.
+        compose.waitUntil(15000) {
+            runBlocking { app.database.library().book(pride.id)!!.currentHash != pride.currentHash }
+        }
         waitText("Pride and Prejudice · Edited")
         runBlocking {
             val changed = app.database.library().book(pride.id)!!

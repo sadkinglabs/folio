@@ -104,7 +104,14 @@ class ReaderUiTest {
                 InstrumentationRegistry.getInstrumentation()
                     .uiAutomation
                     .performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                compose.waitForIdle()
+                // A closing sheet still catches taps; wait until it has gone before tapping the
+                // page.
+                compose.waitUntil(5000) {
+                    compose
+                        .onAllNodesWithText("Your place in the book")
+                        .fetchSemanticsNodes()
+                        .isEmpty()
+                }
                 QaScreenshots.capture("reader-controls")
                 fun controlsShown() =
                     compose
