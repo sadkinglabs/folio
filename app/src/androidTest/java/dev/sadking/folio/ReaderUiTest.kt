@@ -1,12 +1,10 @@
 package dev.sadking.folio
 
-import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
-import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.*
 import dev.sadking.folio.reader.ReaderActivity
 import java.io.File
@@ -90,28 +88,7 @@ class ReaderUiTest {
                     }
                     attached
                 }
-                compose.onNodeWithContentDescription("Bookmark this page").performClick()
-                compose.waitUntil(10000) {
-                    runBlocking {
-                        app.database.library().phoneBookmarks(id, hash).first().isNotEmpty()
-                    }
-                }
-                compose.onNodeWithContentDescription("Contents and bookmarks").performClick()
-                // The chapter title also shows in the bottom bar; check the contents entry itself.
-                compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()
-                compose.onNodeWithText("Bookmarks · 1").performClick()
-                compose.onNodeWithContentDescription("Delete bookmark").assertExists()
-                InstrumentationRegistry.getInstrumentation()
-                    .uiAutomation
-                    .performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                // A closing sheet still catches taps; wait until it has gone before tapping the
-                // page.
-                compose.waitUntil(5000) {
-                    compose
-                        .onAllNodesWithText("Your place in the book")
-                        .fetchSemanticsNodes()
-                        .isEmpty()
-                }
+                // Controls first: no sheet has been opened yet, so taps reach the page.
                 QaScreenshots.capture("reader-controls")
                 fun controlsShown() =
                     compose
@@ -131,6 +108,22 @@ class ReaderUiTest {
                         .isNotEmpty()
                 }
                 QaScreenshots.capture("reader-appearance")
+                // Close by tapping the sheet's scrim: deterministic, unlike a system back gesture.
+                compose.onNodeWithContentDescription("Close sheet").performClick()
+                compose.waitUntil(5000) {
+                    compose.onAllNodesWithText("Only for this book").fetchSemanticsNodes().isEmpty()
+                }
+                compose.onNodeWithContentDescription("Bookmark this page").performClick()
+                compose.waitUntil(10000) {
+                    runBlocking {
+                        app.database.library().phoneBookmarks(id, hash).first().isNotEmpty()
+                    }
+                }
+                compose.onNodeWithContentDescription("Contents and bookmarks").performClick()
+                // The chapter title also shows in the bottom bar; check the contents entry itself.
+                compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()
+                compose.onNodeWithText("Bookmarks · 1").performClick()
+                compose.onNodeWithContentDescription("Delete bookmark").assertExists()
             }
             val saved = runBlocking { app.database.library().phoneReading(id, hash) }
             assertNotNull(saved)

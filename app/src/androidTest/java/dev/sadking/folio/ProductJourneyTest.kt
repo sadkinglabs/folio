@@ -96,14 +96,18 @@ class ProductJourneyTest {
         image.recycle()
     }
 
-    private fun waitText(text: String) {
+    private fun waitText(text: String) =
+        waitFor("'$text' to appear") {
+            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
+
+    /** Waits for [condition]; on timeout, fails with what was on screen. */
+    private fun waitFor(what: String, condition: () -> Boolean) {
         try {
-            compose.waitUntil(15000) {
-                compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-            }
+            compose.waitUntil(15000, condition)
         } catch (timeout: ComposeTimeoutException) {
             throw AssertionError(
-                "'$text' did not appear. Screen:\n" +
+                "Timed out waiting for $what. Screen:\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE),
                 timeout,
             )
@@ -239,9 +243,16 @@ class ProductJourneyTest {
         capture("metadata-light")
         compose.onNodeWithText("Title").performTextClearance()
         compose.onNodeWithText("Title").performTextInput("Pride and Prejudice · Edited")
+        // A disabled button ignores clicks silently: wait until Save can actually be pressed.
+        compose.waitUntil(15000) {
+            compose
+                .onAllNodes(hasText("Save changes") and isEnabled())
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         compose.onNodeWithText("Save changes").performClick()
         // The edited title is already in the editor's own field, so wait for the saved revision.
-        compose.waitUntil(15000) {
+        waitFor("the edited revision to be saved") {
             runBlocking { app.database.library().book(pride.id)!!.currentHash != pride.currentHash }
         }
         waitText("Pride and Prejudice · Edited")
