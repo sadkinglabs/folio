@@ -3,10 +3,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Folio Link: a connectedDevice service needs one of these on Android 14+; both are normal
+         permissions. Multicast is also what the plugin's discovery will use. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:name=".FolioApplication" android:label="Folio" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Folio" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <service android:name=".sync.SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".sync.CancelSyncReceiver" android:exported="false" />
+        <service android:name=".link.FolioLinkService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.photos" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/photo_paths" /></provider>
         <activity android:name=".reader.ReaderActivity" android:exported="false" android:theme="@style/Theme.Folio.Reader" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">

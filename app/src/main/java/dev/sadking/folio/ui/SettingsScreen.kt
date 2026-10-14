@@ -200,6 +200,7 @@ internal fun SettingsScreen(
                 enabled = !busy,
                 onClick = onHardcover,
             )
+            FolioLinkSection()
             Text(
                 stringResource(R.string.settings_device_title),
                 style = MaterialTheme.typography.titleMedium,

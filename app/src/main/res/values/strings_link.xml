@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Folio Link: settings -->
+    <string name="link_title">Folio Link</string>
+    <string name="link_summary">Let KOReader on your e-reader sync your reading position with this phone, over Wi-Fi or your phone\'s hotspot.</string>
+    <string name="link_starting">Starting…</string>
+    <string name="link_no_network">Connect this phone to Wi-Fi or turn on its hotspot. Your e-reader needs to be on the same network.</string>
+    <string name="link_address_label">Server address for KOReader</string>
+    <string name="link_username">Username: %1$s</string>
+    <string name="link_password">Password: %1$s</string>
+    <string name="link_show_password">Show password</string>
+    <string name="link_hide_password">Hide password</string>
+    <string name="link_new_password">New password</string>
+    <string name="link_steps">In KOReader, open a book, then go to Tools → Progress sync → Custom sync server and enter the address above. Then choose Register or Login and use this username and password.</string>
+    <string name="link_not_heard">Your e-reader hasn\'t connected yet.</string>
+    <string name="link_last_heard">Last heard from your e-reader %1$s.</string>
+    <string name="link_keep_awake">Keep the phone awake</string>
+    <string name="link_keep_awake_hint">Try this if your e-reader can\'t reach the phone while its screen is off. It uses more battery.</string>
+    <string name="link_show_log">Show connection log</string>
+    <string name="link_hide_log">Hide connection log</string>
+    <string name="link_log_empty">Nothing yet.</string>
+    <string name="link_log_clear">Clear log</string>
+    <string name="link_log_line">%1$s · %2$s</string>
+    <string name="link_log_started">Started on port %1$d</string>
+    <string name="link_log_stopped">Stopped</string>
+    <string name="link_log_failed">Couldn\'t start on port %1$d. Another app may be using it.</string>
+    <string name="link_log_screen_off">Phone screen off</string>
+    <string name="link_log_screen_on">Phone screen on</string>
+    <string name="link_log_login">%1$s logged in</string>
+    <string name="link_log_sent">%1$s sent its position</string>
+    <string name="link_log_asked">%1$s asked for the latest position</string>
+    <string name="link_log_refused">%1$s was refused: wrong username or password</string>
+    <string name="link_log_other">%1$s made a request Folio doesn\'t handle</string>
+
+    <!-- Folio Link: notification -->
+    <string name="link_channel">Folio Link</string>
+    <string name="link_notification_title">Folio Link is on</string>
+    <string name="link_notification_text">Your e-reader can sync at %1$s</string>
+    <string name="link_notification_no_network">Waiting for Wi-Fi or your hotspot</string>
+    <string name="link_stop">Turn off</string>
+</resources>

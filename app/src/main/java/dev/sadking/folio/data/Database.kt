@@ -166,6 +166,22 @@ data class PhoneReading(
     val updatedAt: Long,
 )
 
+/**
+ * The latest Folio Link (kosync) report from one device for one KOReader document. [document] is
+ * KOReader's partial MD5 of the EPUB, so the same bytes are needed on both sides. [timestamp] is in
+ * seconds, as kosync sends it; [receivedAt] breaks ties in milliseconds.
+ */
+@Entity(tableName = "kosync_progress", primaryKeys = ["document", "deviceId"])
+data class KosyncReport(
+    val document: String,
+    val deviceId: String,
+    val device: String,
+    val progress: String,
+    val percentage: Double,
+    val timestamp: Long,
+    val receivedAt: Long,
+)
+
 @Entity(
     tableName = "phone_bookmarks",
     indices = [Index("bookId")],
@@ -346,6 +362,20 @@ interface LibraryDao {
     @Query("SELECT * FROM phone_reading WHERE bookId NOT IN (SELECT id FROM removed_entries)")
     fun phoneReadingFlow(): Flow<List<PhoneReading>>
 
+    // Folio Link. Blocking on purpose: the server calls these from its own threads.
+    @Upsert fun saveKosyncReport(report: KosyncReport)
+
+    @Query(
+        "SELECT * FROM kosync_progress WHERE document = :document ORDER BY timestamp DESC, receivedAt DESC LIMIT 1"
+    )
+    fun latestKosyncReport(document: String): KosyncReport?
+
+    @Query("SELECT * FROM kosync_progress WHERE document = :document ORDER BY timestamp DESC")
+    suspend fun kosyncReports(document: String): List<KosyncReport>
+
+    @Query("SELECT * FROM kosync_progress ORDER BY timestamp DESC")
+    fun kosyncFlow(): Flow<List<KosyncReport>>
+
     @Query("SELECT * FROM phone_reading WHERE bookId NOT IN (SELECT id FROM removed_entries)")
     suspend fun allPhoneReading(): List<PhoneReading>
 
@@ -513,6 +543,7 @@ interface LibraryDao {
             Book::class,
             PhoneReading::class,
             PhoneBookmark::class,
+            KosyncReport::class,
             WishBook::class,
             WishMembership::class,
             RemovedEntry::class,
@@ -527,7 +558,7 @@ interface LibraryDao {
             SyncJob::class,
             SyncTask::class,
         ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -625,6 +656,15 @@ val MIGRATION_6_7 =
     }
 
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
+val MIGRATION_7_8 =
+    object : androidx.room.migration.Migration(7, 8) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS kosync_progress (document TEXT NOT NULL, deviceId TEXT NOT NULL, device TEXT NOT NULL, progress TEXT NOT NULL, percentage REAL NOT NULL, timestamp INTEGER NOT NULL, receivedAt INTEGER NOT NULL, PRIMARY KEY(document,deviceId))"
+            )
+        }
+    }
+
 val ALL_MIGRATIONS =
     arrayOf(
         MIGRATION_1_2,
@@ -633,4 +673,5 @@ val ALL_MIGRATIONS =
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     )

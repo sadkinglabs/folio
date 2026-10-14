@@ -44,6 +44,15 @@ jobs:
       - run: python3 scripts/check-plugin.py
       - name: Reader position interop (DOM fixtures)
         run: npm ci --prefix tools/reader-interop && npm test --prefix tools/reader-interop
+      - name: Room's exported schemas are committed
+        run: |
+          if [ -n "$(git status --porcelain -- app/schemas)" ]; then
+            echo "Room exported a schema that differs from the committed one:"
+            git status --porcelain -- app/schemas
+            git diff -- app/schemas
+            for f in $(git ls-files --others --exclude-standard -- app/schemas); do echo "== new: $f"; cat "$f"; done
+            exit 1
+          fi
       - name: Hardcover queries match the published schema
         run: python3 scripts/check-hardcover-schema.py
       - uses: actions/upload-artifact@v4
