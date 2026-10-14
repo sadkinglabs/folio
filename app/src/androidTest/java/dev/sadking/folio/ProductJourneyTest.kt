@@ -228,7 +228,11 @@ class ProductJourneyTest {
         compose.onNodeWithText("Manage lists").performClick()
         compose.onNode(isToggleable() and hasAnySibling(hasText("Slow Sundays"))).performClick()
         compose.onNodeWithText("Lists · Pride and Prejudice").assertIsDisplayed()
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        // A real system back: it reaches the focused sheet window first, as on a phone. The
+        // activity's own dispatcher would bypass the open sheet.
+        automation.performGlobalAction(
+            android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+        )
         waitText("Send to device")
         capture("book-light")
         compose.onNodeWithContentDescription("Edit metadata").performClick()
