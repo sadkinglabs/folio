@@ -47,9 +47,9 @@ class ReadingListsUiTest {
                 )
             }
         }
-        compose.onNodeWithText("Preview transfer").assertDoesNotExist()
+        compose.onNodeWithText("Send to e-reader").assertDoesNotExist()
         compose.onNodeWithText("Transfer options").performScrollTo().performClick()
-        compose.onNodeWithText("Preview transfer").assertIsDisplayed()
+        compose.onNodeWithText("Send to e-reader").assertIsDisplayed()
         compose.onNodeWithText("Include in one-tap sync").assertIsDisplayed()
     }
 }
