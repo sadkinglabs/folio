@@ -38,3 +38,6 @@ Format the code with `./gradlew formatKotlin` (ktfmt).
 - No new layer or dependency without a concrete benefit.
 - UI copy goes in `strings.xml`, in plain language.
 - Prefer finishing one complete slice over starting several.
+
+## Git
+- Commit as the repository owner (`sadkinglabs <jessonio.home@gmail.com>`). Never author, sign or attribute commits, PRs or comments to Claude: no Claude author, no `Co-Authored-By: Claude` or session trailers.
