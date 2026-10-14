@@ -41,3 +41,6 @@ Format the code with `./gradlew formatKotlin` (ktfmt).
 
 ## Git
 - Commit as the repository owner (`sadkinglabs <jessonio.home@gmail.com>`). Never author, sign or attribute commits, PRs or comments to Claude: no Claude author, no `Co-Authored-By: Claude` or session trailers.
+
+## Communication
+- Write to the owner in succinct, plain, direct English: short sentences, no filler, no jargon where a plain word works.
