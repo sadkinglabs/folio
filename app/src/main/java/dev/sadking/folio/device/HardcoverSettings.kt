@@ -49,6 +49,9 @@ class HardcoverSettings(context: Context) {
         check(prefs.edit().putString("token", encrypted).putString("username", username).commit())
     }
 
+    val connected: Boolean
+        get() = prefs.contains("token")
+
     fun token(): String {
         val value = prefs.getString("token", null) ?: error("Connect Hardcover first")
         val bytes = Base64.decode(value, Base64.NO_WRAP)

@@ -15,6 +15,7 @@ class FolioApplication : Application() {
     val repository by lazy { LibraryRepository(this, database) }
     val syncCoordinator by lazy { dev.sadking.folio.sync.SyncCoordinator(this) }
     val deviceSettings by lazy { DeviceSettings(this) }
+    val hardcoverOutbox by lazy { dev.sadking.folio.sync.HardcoverOutbox(this) }
     val link by lazy { dev.sadking.folio.link.FolioLink(this, database.library()) }
     val operations by lazy {
         OperationRunner(

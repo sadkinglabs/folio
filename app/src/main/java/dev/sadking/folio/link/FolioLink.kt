@@ -14,8 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 class RoomKosyncStore(
     private val dao: LibraryDao,
     private val now: () -> Long = System::currentTimeMillis,
+    private val onSaved: (KosyncProgress) -> Unit = {},
 ) : KosyncStore {
-    override fun save(user: String, progress: KosyncProgress) =
+    override fun save(user: String, progress: KosyncProgress) {
         dao.saveKosyncReport(
             KosyncReport(
                 progress.document,
@@ -27,6 +28,8 @@ class RoomKosyncStore(
                 now(),
             )
         )
+        onSaved(progress)
+    }
 
     override fun latest(user: String, document: String) =
         dao.latestKosyncReport(document)?.let {
@@ -46,7 +49,16 @@ class FolioLink(context: Context, dao: LibraryDao) {
     private val app = context.applicationContext
     val settings = LinkSettings(app)
     val log = LinkLog(java.io.File(app.filesDir, "folio-link-log.json"))
-    val kosync = Kosync(RoomKosyncStore(dao), { settings.account() })
+    // An e-reader's new position also goes to Hardcover when automatic updates are on.
+    val kosync =
+        Kosync(
+            RoomKosyncStore(dao) {
+                (app as dev.sadking.folio.FolioApplication)
+                    .hardcoverOutbox
+                    .queueDocument(it.document, it.percentage)
+            },
+            { settings.account() },
+        )
 
     internal val _port = MutableStateFlow<Int?>(null)
     /** The port Link is listening on, or null when it is off. */

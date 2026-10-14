@@ -331,6 +331,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 if (stored?.currentHash == current.currentHash) {
                     dao.savePhoneReading(value)
                     publishToLink(value)
+                    value.percent?.let { app.hardcoverOutbox.queueBook(current.id, it) }
                     if (
                         stored.status in listOf("Unread", "Want to Read") &&
                             (value.percent ?: 0.0) > 0.001

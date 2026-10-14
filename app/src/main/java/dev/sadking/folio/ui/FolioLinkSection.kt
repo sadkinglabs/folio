@@ -209,3 +209,30 @@ private fun describe(entry: LinkLog.Entry): String =
                 entry.remote,
             )
     }
+
+/** Whether reading positions go to Hardcover on their own. */
+@Composable
+internal fun HardcoverAutomaticRow() {
+    val outbox =
+        (LocalContext.current.applicationContext as? FolioApplication)?.hardcoverOutbox ?: return
+    var on by remember { mutableStateOf(outbox.automatic) }
+    val label = stringResource(R.string.hardcover_automatic)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label)
+            Text(
+                stringResource(R.string.hardcover_automatic_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            on,
+            {
+                on = it
+                outbox.automatic = it
+            },
+            Modifier.semantics { contentDescription = label },
+        )
+    }
+}

@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.readium.navigator)
     implementation(project(":core"))
     implementation(project(":transport"))
+    implementation(libs.work.runtime)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)

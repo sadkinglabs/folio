@@ -42,6 +42,10 @@
     <string name="hardcover_use_link_position">Use %1$s position · %2$.1f%%</string>
     <string name="progress_link_reported">Through Folio Link, %1$s</string>
 
+    <!-- Hardcover: automatic updates -->
+    <string name="hardcover_automatic">Update Hardcover automatically</string>
+    <string name="hardcover_automatic_hint">Sends your reading position from this phone and from your e-reader about a minute after you stop reading. Only moves forward, and only for books already marked Currently Reading on Hardcover.</string>
+
     <!-- Folio Link: notification -->
     <string name="link_channel">Folio Link</string>
     <string name="link_notification_title">Folio Link is on</string>

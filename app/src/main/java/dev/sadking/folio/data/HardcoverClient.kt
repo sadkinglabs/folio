@@ -16,6 +16,16 @@ data class HardcoverMatch(
 data class HardcoverAccount(val id: Int, val username: String, val privacy: Int)
 
 /** Personal-account GraphQL client. No token-bearing redirects and no response text in errors. */
+/** A Hardcover HTTP failure. Still an [IllegalArgumentException], as callers already expect. */
+class HardcoverHttpException(val code: Int, message: String) : IllegalArgumentException(message) {
+    /** Worth retrying later: rate limits and server errors. */
+    val transient: Boolean
+        get() = code == 429 || code >= 500
+
+    val unauthorized: Boolean
+        get() = code == 401 || code == 403
+}
+
 class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)? = null) {
     private var lastRequest = 0L
 
@@ -48,14 +58,16 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
                     try {
                         connection.outputStream.use { it.write(body.toString().toByteArray()) }
                         val code = connection.responseCode
-                        require(code == 200) {
-                            when (code) {
-                                401,
-                                403 -> "Hardcover token was rejected; reconnect your account"
-                                429 -> "Hardcover is busy; retry later"
-                                else -> "Hardcover request failed; check internet and retry"
-                            }
-                        }
+                        if (code != 200)
+                            throw HardcoverHttpException(
+                                code,
+                                when (code) {
+                                    401,
+                                    403 -> "Hardcover token was rejected; reconnect your account"
+                                    429 -> "Hardcover is busy; retry later"
+                                    else -> "Hardcover request failed; check internet and retry"
+                                },
+                            )
                         val bytes = java.io.ByteArrayOutputStream()
                         connection.inputStream.use { Epub.copyBounded(it, bytes, 2L * 1024 * 1024) }
                         JSONObject(bytes.toString("UTF-8"))
@@ -279,6 +291,17 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
         return result
     }
+
+    /** The page count of one edition, or null when Hardcover has none. */
+    fun editionPages(token: String, editionId: Int): Int? =
+        query(
+                token,
+                "query(\$id:Int!) { editions_by_pk(id:\$id) { id book_id pages } }",
+                JSONObject().put("id", editionId),
+            )
+            .optJSONObject("editions_by_pk")
+            ?.optInt("pages")
+            ?.takeIf { it > 0 }
 
     fun editions(token: String, bookId: Int): List<HardcoverEdition> {
         require(bookId > 0)
