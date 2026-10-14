@@ -1,0 +1,126 @@
+{
+  "version": "0.10.1",
+  "version_code": 16,
+  "date": "2026-10-14",
+  "app_tests": [
+    {
+      "suite": "dev.sadking.folio.data.HardcoverLibraryTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.LibraryBasicsTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.UnifiedLibraryTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.ReadingListsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.HardcoverReadingTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.BookActionsTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.reader.ReaderPositionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.BookDiscoveryTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.HardcoverMetadataTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.HardcoverClientTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.reader.ReaderFragmentHostTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.MetadataLookupTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.BookSignalsTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "dev.sadking.folio.data.LibraryPresentationTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "app_test_totals": {
+    "tests": 95,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "robolectric_startup_regressions": 3,
+  "lint": {
+    "errors": 0,
+    "warnings": 23
+  },
+  "android_instrumentation": {
+    "compiled": 38,
+    "executed": 0
+  },
+  "unchanged_room_schema": 7,
+  "signer_sha256": "ed12b075d6dba2b09b8246978903f679809725b43f24821a01e6833c85011d39",
+  "apk_sha256": "41a7763f454a8f35db4023f797c6062255a3850af9031b681ab468809f936333",
+  "actual_webview_rendering_tested": false,
+  "physical_phone_validation": false,
+  "core_transport_note": "Unchanged code; prior 0.10.0 core/transport results retained in historical validation. Not rerun for this hotfix."
+}

@@ -1,0 +1,11 @@
+# Product and visual direction — Folio 0.9
+
+Library is the home surface: anchored search/Refine, compact count and view control, full cover artwork, context menus and responsive selection toolbar. Its redundant top app bar is removed; Settings remains a named 48dp action in the count row. Lists and Reading reuse the same library projection so catalogue records are first-class without becoming transfer inputs.
+
+Book pages share hero bibliography, two primary lifecycle actions and source-aware state summaries. Record-only books offer Add EPUB; file-backed books offer Send to device; both offer Update progress. Lists are managed in place. Saved progress/notes can be refreshed without leaving the book. Longer metadata, descriptions and annotations are progressively disclosed. Pairing configuration does not claim reachability, and verified presence is timestamped historical evidence. Anna’s Archive remains a browser handoff explicitly labelled as such.
+
+Design tokens: 8dp small, 12dp control gap, 16dp item inset, 20dp page edge, 24dp section rhythm. Covers use 8dp corners; contextual surfaces use 20dp. Serif 24/30sp book headlines, semibold 16/22sp browsing titles, 16/24sp reading text, and small provenance labels. Existing paper/olive/ink light and dark palettes and optional Material You are retained. Use opaque surfaces for cover status contrast, preserve art aspect ratio with Fit, and outline selected covers.
+
+Motion is a 140ms/90ms layout crossfade and spring expandable-content feedback and immediate selection outlines, using Compose's Android duration-scale support (zero scale disables animation). Both lazy layout states are retained and toggle maps the first visible book index. No global hero/shared-element choreography is added while routing remains manually coordinated; a coherent, testable page transition is preferable to animated state ambiguity.
+
+Engineering: no dependency or schema change. One pure presentation projection for library/list/activity; one browser feature coordinator; one cached search index with background filtering; one bounded 24MiB native bitmap cache keyed by revision/file stamp; shared book primitives; post-commit UI callbacks outside resource rollback scopes. Historical architectural debt remains explicit in the audit.

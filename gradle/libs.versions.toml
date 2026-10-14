@@ -1,0 +1,49 @@
+[versions]
+json-test = "20250517"
+agp = "9.4.0"
+kotlin = "2.4.21"
+ksp = "2.3.12"
+compose = "2026.09.00"
+material = "1.5.0-beta01"
+room = "2.8.5"
+activity = "1.10.1"
+lifecycle = "2.9.2"
+coroutines = "1.10.2"
+jsch = "2.28.8"
+ktfmt = "0.63"
+readium = "3.4.0"
+[libraries]
+fragment-ktx = { module = "androidx.fragment:fragment-ktx", version = "1.9.0" }
+robolectric = { module = "org.robolectric:robolectric", version = "4.17" }
+desugar = { module = "com.android.tools:desugar_jdk_libs", version = "2.1.5" }
+readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
+readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
+readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
+mlkit-text = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
+json-test = { module = "org.json:json", version.ref = "json-test" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-icons = { module = "androidx.compose.material:material-icons-extended" }
+material = { module = "androidx.compose.material3:material3", version.ref = "material" }
+activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-vm-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-vm = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+junit = { module = "junit:junit", version = "4.13.2" }
+compose-test = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+android-test = { module = "androidx.test.ext:junit", version = "1.2.1" }
+[plugins]
+android = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

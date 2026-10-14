@@ -1,0 +1,20 @@
+{
+  "name": "reader-interop",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@prose-reader/koreader": "25.1.0",
+    "esbuild": "0.25.12",
+    "jsdom": "27.0.1"
+  },
+  "private": true
+}

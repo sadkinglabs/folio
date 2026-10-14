@@ -1,0 +1,172 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
+local UIManager = require("ui/uimanager")
+local InfoMessage = require("ui/widget/infomessage")
+local ConfirmBox = require("ui/widget/confirmbox")
+local InputDialog = require("ui/widget/inputdialog")
+local DataStorage = require("datastorage")
+local ReadCollection = require("readcollection")
+local SQ3 = require("lua-ljsqlite3/init")
+local JSON = require("rapidjson")
+local lfs = require("libs/libkoreader-lfs")
+local ffiUtil = require("ffi/util")
+local Event = require("ui/event")
+local Bridge
+local Folio = WidgetContainer:extend { name = "folio", }
+local function message(text) UIManager:show(InfoMessage:new { text = text }) end
+local function bounded_read(path)
+    local file = assert(io.open(path, "rb"))
+    local bytes = file:read(4 * 1024 * 1024 + 1)
+    file:close()
+    assert(bytes and #bytes <= 4 * 1024 * 1024, "Folio file too large")
+    return bytes
+end
+function Folio:init()
+    Bridge = dofile(self.path .. "/bridge.lua")
+    self.ui.menu:registerToMainMenu(self)
+end
+function Folio:root()
+    local path = G_reader_settings:readSetting("folio_folder", "/mnt/us/Books/Folio")
+    local root = ffiUtil.realpath(path)
+    assert(root and lfs.attributes(root, "mode") == "directory", "Configure an existing Folio book folder first")
+    return root:gsub("/$", "")
+end
+function Folio:collections()
+    local ok, plan = pcall(function()
+        local root = self:root()
+        local latest, timestamp, count = nil, -1, 0
+        for name in lfs.dir(root) do
+            if name:match("^%.folio%-collections%-%x[%x%-]*%.json$") then
+                count = count + 1
+                assert(count <= 100, "Too many collection requests; remove old request JSON files")
+                local path = root .. "/" .. name
+                local attr = lfs.symlinkattributes(path)
+                if attr and attr.mode == "file" then
+                    local request = assert(JSON.decode(bounded_read(path)))
+                    local created = tonumber(request.createdAt) or 0
+                    if created > timestamp then latest, timestamp = request, created end
+                end
+            end
+        end
+        assert(latest, "No Folio collection request found. Send one from the phone first.")
+        return Bridge.validate(latest, root, ffiUtil.realpath, lfs.attributes)
+    end)
+    if not ok then message("Cannot load Folio collection request. Check the configured folder and request format."); return end
+    local names = {}
+    for _, shelf in ipairs(plan) do names[#names + 1] = shelf.name end
+    UIManager:show(ConfirmBox:new {
+        text = "Add books to these KOReader collections?\n\n" .. table.concat(names, "\n") .. "\n\nExisting memberships and collections are retained. No books are removed.",
+        ok_text = "Apply additions",
+        ok_callback = function()
+            local success = pcall(function() Bridge.apply(plan, ReadCollection) end)
+            message(success and "Folio collection additions applied." or "Collection update failed. Retry after checking files; additions are idempotent.")
+        end,
+    })
+end
+function Folio:statistics()
+    local connection
+    local ok = pcall(function()
+        local root = self:root()
+        local db = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
+        assert(lfs.attributes(db, "mode") == "file", "No statistics database")
+        connection = SQ3.open(db)
+        connection:exec("PRAGMA query_only=ON;")
+        connection:exec("BEGIN;")
+        local seconds = tonumber(connection:rowexec("SELECT COALESCE(SUM(duration),0) FROM page_stat_data WHERE duration>=0;")) or 0
+        local rows = connection:exec("SELECT strftime('%Y-%m-%d',start_time,'unixepoch','localtime') AS day, SUM(duration) AS seconds FROM page_stat_data WHERE duration>=0 GROUP BY day ORDER BY day DESC LIMIT 366;")
+        local days = JSON.array()
+        if rows then for i, day in ipairs(rows[1]) do days[#days + 1] = { date = day, seconds = tonumber(rows[2][i]) or 0 } end end
+        connection:exec("COMMIT;")
+        connection:close(); connection = nil
+        local output = assert(JSON.encode({ format = "folio-statistics", version = 1, exportedAt = os.time(), seconds = seconds, days = days }))
+        local destination = root .. "/.folio-statistics.json"
+        local temporary = root .. "/.folio-statistics-" .. tostring(os.time()) .. "-" .. tostring(math.random(1, 999999999)) .. ".part"
+        assert(not lfs.symlinkattributes(temporary), "Staging destination exists")
+        local file = assert(io.open(temporary, "wb"))
+        assert(file:write(output)); assert(file:close())
+        assert(os.rename(temporary, destination))
+    end)
+    if connection then pcall(function() connection:exec("ROLLBACK;"); connection:close() end) end
+    message(ok and "Statistics snapshot exported. Retrieve it from Folio on your phone." or "Statistics export failed. Ensure the book is closed, statistics are enabled and the Folio folder exists.")
+end
+function Folio:reading(automatic)
+    local document = self.ui.document
+    if not document or document.info.has_pages then message("Open an EPUB first, then review its phone reading position."); return end
+    local ok, request = pcall(function()
+        local root = self:root()
+        local candidates, count = {}, 0
+        for name in lfs.dir(root) do
+            if name:match("^%.folio%-reading%-[0-9a-f%-]+%.json$") then
+                count = count + 1; assert(count <= 1000, "Too many reading requests")
+                if lfs.symlinkattributes(root .. "/" .. name, "mode") == "file" then
+                    local value = JSON.decode(bounded_read(root .. "/" .. name))
+                    if value and value.path == document.file then candidates[#candidates + 1] = value end
+                end
+            end
+        end
+        table.sort(candidates, function(a, b) return tonumber(a.createdAt) > tonumber(b.createdAt) end)
+        local latest = candidates[1]
+        assert(latest, "No phone reading request for this EPUB")
+        local applied = G_reader_settings:readSetting("folio_applied_positions", {})
+        assert(not applied[latest.id], "This position request was already applied")
+        local value = Bridge.reading(latest, root, document.file, self.ui.doc_settings:readSetting("partial_md5_checksum"), ffiUtil.realpath, lfs.attributes, os.time())
+        assert(document:isXPointerInDocument(value.position), "Position is not supported in this EPUB")
+        return value
+    end)
+    if not ok then if not automatic then message("Cannot apply phone position. Check the book, folder, EPUB revision, request age and whether it was already applied. Your place is unchanged.") end; return end
+    local function apply()
+        local success = pcall(function()
+            assert(self.ui.document == document and document:isXPointerInDocument(request.position))
+            Bridge.reading(request, self:root(), document.file, self.ui.doc_settings:readSetting("partial_md5_checksum"), ffiUtil.realpath, lfs.attributes, os.time())
+            self.ui:handleEvent(Event:new("GotoXPointer", request.position))
+            assert(self.ui.rolling and self.ui.rolling.xpointer == request.position, "Position not applied")
+            local applied = G_reader_settings:readSetting("folio_applied_positions", {})
+            applied[request.id] = os.time()
+            for id, time in pairs(applied) do if time < os.time() - 8 * 86400 then applied[id] = nil end end
+            G_reader_settings:saveSetting("folio_applied_positions", applied)
+        end)
+        if not automatic then message(success and "Continued from phone. Close the book to save the new Kindle position." or "Position handoff failed. Your bookmarks and highlights were retained.") end
+    end
+    if automatic then
+        -- Auto mode was explicitly enabled once on this device. Never override intervening reading.
+        local saved = self.ui.doc_settings:readSetting("last_xpointer")
+        if request.expectedKindle ~= saved and not (request.expectedKindle == "" and not saved) then return end
+        apply()
+    else
+        UIManager:show(ConfirmBox:new {
+            text = "Continue from the phone's saved passage?\n\nYour current Kindle position will move. Existing bookmarks and highlights are retained.",
+            ok_text = "Continue from phone", ok_callback = apply,
+        })
+    end
+end
+function Folio:onReaderReady()
+    if G_reader_settings:readSetting("folio_auto_positions", false) then
+        UIManager:nextTick(function() self:reading(true) end)
+    end
+end
+function Folio:configure()
+    local dialog
+    dialog = InputDialog:new {
+        title = "Folio book folder", input = G_reader_settings:readSetting("folio_folder", "/mnt/us/Books/Folio"),
+        buttons = {{ { text = "Cancel", callback = function() UIManager:close(dialog) end },
+            { text = "Save", callback = function()
+                local path = ffiUtil.realpath(dialog:getInputText())
+                if path and lfs.attributes(path, "mode") == "directory" then
+                    G_reader_settings:saveSetting("folio_folder", path); UIManager:close(dialog)
+                else message("Choose an existing folder.") end
+            end } }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
+function Folio:addToMainMenu(items)
+    items.folio_bridge = { text = "Folio bridge", sub_item_table = {
+        { text = "Configure Folio book folder", callback = function() self:configure() end },
+        { text = "Continue from Folio automatically", checked_func = function() return G_reader_settings:readSetting("folio_auto_positions", false) end,
+            callback = function() G_reader_settings:saveSetting("folio_auto_positions", not G_reader_settings:readSetting("folio_auto_positions", false)) end },
+        { text = "Review phone reading position", callback = function() self:reading() end },
+        { text = "Review collection additions", callback = function() self:collections() end },
+        { text = "Export reading statistics", callback = function() self:statistics() end },
+    }}
+end
+return Folio
