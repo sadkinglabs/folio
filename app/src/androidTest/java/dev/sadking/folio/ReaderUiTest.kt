@@ -97,7 +97,8 @@ class ReaderUiTest {
                     }
                 }
                 compose.onNodeWithContentDescription("Contents and bookmarks").performClick()
-                compose.onNodeWithText("A quiet beginning").assertExists()
+                // The chapter title also shows in the bottom bar; check the contents entry itself.
+                compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()
                 compose.onNodeWithText("Bookmarks · 1").performClick()
                 compose.onNodeWithContentDescription("Delete bookmark").assertExists()
                 InstrumentationRegistry.getInstrumentation()
