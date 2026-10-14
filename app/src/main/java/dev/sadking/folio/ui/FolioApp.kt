@@ -44,6 +44,7 @@ private val destinations =
 @Composable
 fun FolioApp(model: LibraryViewModel) {
     val discovery: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val devices: DeviceViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     var showProfileImport by rememberSaveable { mutableStateOf(false) }
     val nav = rememberFolioNav()
     val catalogueId = nav.recordId
@@ -85,8 +86,8 @@ fun FolioApp(model: LibraryViewModel) {
     FolioTheme(dark, dynamic) {
         val books by model.books.collectAsStateWithLifecycle()
         val phoneReading by model.phoneReading.collectAsStateWithLifecycle()
-        val phoneFolder by model.phoneFolder.collectAsStateWithLifecycle()
-        val folderReport by model.folderReport.collectAsStateWithLifecycle()
+        val phoneFolder by devices.phoneFolder.collectAsStateWithLifecycle()
+        val folderReport by devices.folderReport.collectAsStateWithLifecycle()
         val removed by model.removed.collectAsStateWithLifecycle()
         val importResults by model.importResults.collectAsStateWithLifecycle()
         val showImportResults by model.showImportResults.collectAsStateWithLifecycle()
@@ -95,8 +96,8 @@ fun FolioApp(model: LibraryViewModel) {
         val memberships by model.memberships.collectAsStateWithLifecycle()
         val foregroundOp by model.operation.collectAsStateWithLifecycle()
         val discoveryState by discovery.state.collectAsStateWithLifecycle()
-        val activeTasks by model.activeSyncTasks.collectAsStateWithLifecycle()
-        val syncJobs by model.syncJobs.collectAsStateWithLifecycle()
+        val activeTasks by devices.activeSyncTasks.collectAsStateWithLifecycle()
+        val syncJobs by devices.syncJobs.collectAsStateWithLifecycle()
         val syncJob = syncJobs.firstOrNull()
         // A running operation disables only controls that would start another one. A transfer
         // runs in its own service: it blocks device actions, never reading or library changes.
@@ -138,15 +139,15 @@ fun FolioApp(model: LibraryViewModel) {
                 }
         }
 
-        val plan by model.plan.collectAsStateWithLifecycle()
+        val plan by devices.plan.collectAsStateWithLifecycle()
         val history by model.history.collectAsStateWithLifecycle()
-        val inventory by model.inventory.collectAsStateWithLifecycle()
-        val inventoryCheckedAt by model.inventoryCheckedAt.collectAsStateWithLifecycle()
-        val device by model.device.collectAsStateWithLifecycle()
-        val observedHost by model.observedHost.collectAsStateWithLifecycle()
-        val probeStatus by model.probeStatus.collectAsStateWithLifecycle()
-        val folderStatus by model.folderStatus.collectAsStateWithLifecycle()
-        val folderListing by model.folderListing.collectAsStateWithLifecycle()
+        val inventory by devices.inventory.collectAsStateWithLifecycle()
+        val inventoryCheckedAt by devices.inventoryCheckedAt.collectAsStateWithLifecycle()
+        val device by devices.device.collectAsStateWithLifecycle()
+        val observedHost by devices.observedHost.collectAsStateWithLifecycle()
+        val probeStatus by devices.probeStatus.collectAsStateWithLifecycle()
+        val folderStatus by devices.folderStatus.collectAsStateWithLifecycle()
+        val folderListing by devices.folderListing.collectAsStateWithLifecycle()
         val transfers by model.transfers.collectAsStateWithLifecycle()
         val allReading by model.reading.collectAsStateWithLifecycle()
         val reading =
@@ -235,7 +236,7 @@ fun FolioApp(model: LibraryViewModel) {
                     TextButton(
                         onClick = {
                             installCompanion = false
-                            model.installCompanion(companionPath.trim())
+                            devices.installCompanion(companionPath.trim())
                         }
                     ) {
                         Text("Install")
@@ -247,7 +248,7 @@ fun FolioApp(model: LibraryViewModel) {
             )
         val phoneFolderPicker =
             rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-                if (uri != null) model.choosePhoneFolder(uri)
+                if (uri != null) devices.choosePhoneFolder(uri)
             }
         var pendingSendId by rememberSaveable { mutableStateOf<String?>(null) }
         var pairingSendId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -259,9 +260,9 @@ fun FolioApp(model: LibraryViewModel) {
             if (action == "book") {
                 val id = pendingSendId
                 pendingSendId = null
-                books.firstOrNull { it.id == id }?.let(model::sendBook)
-            } else if (action == "missing") model.syncMissing()
-            else if (action == "preview") model.sync()
+                books.firstOrNull { it.id == id }?.let(devices::sendBook)
+            } else if (action == "missing") devices.syncMissing()
+            else if (action == "preview") devices.sync()
         }
         val notificationPermission =
             rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -464,7 +465,7 @@ fun FolioApp(model: LibraryViewModel) {
                         TransferBanner(
                             syncJob,
                             onOpen = { nav.root(2) },
-                            onCancel = { model.cancelSync(syncJob.id) },
+                            onCancel = { devices.cancelSync(syncJob.id) },
                         )
                     if (book != null) {
                         if (editing)
@@ -511,7 +512,7 @@ fun FolioApp(model: LibraryViewModel) {
                                 onCollections = { listEntryId = book.id },
                                 onRefreshReading = {
                                     if (device.host.isBlank()) showConnection = true
-                                    else model.refreshBookReading(book.id)
+                                    else devices.refreshBookReading(book.id)
                                 },
                                 onReading = { nav.root(3) },
                                 busy = op.busy,
@@ -583,14 +584,14 @@ fun FolioApp(model: LibraryViewModel) {
                                             model.managementError.value = null
                                             editingShelfId = it.id
                                         },
-                                        onPolicy = model::shelfPolicy,
+                                        onPolicy = devices::shelfPolicy,
                                         onSendShelf = {
                                             nav.root(2)
-                                            model.previewShelf(it)
+                                            devices.previewShelf(it)
                                         },
                                         onSend = {
                                             nav.root(2)
-                                            model.preview(it)
+                                            devices.preview(it)
                                             selection = emptySet()
                                         },
                                         onRemove = { removalIds = it },
@@ -605,7 +606,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         onFolderSync = {
                                             if (phoneFolder.isBlank()) nav.open(Route.Settings)
                                             else if (device.host.isBlank()) showConnection = true
-                                            else model.syncPairedFolder()
+                                            else devices.syncPairedFolder()
                                         },
                                         requestedList = if (tab == 1) requestedList else null,
                                         onRequestHandled = { requestedList = null },
@@ -621,13 +622,13 @@ fun FolioApp(model: LibraryViewModel) {
                                         localBookCount = books.size,
                                         onLibrary = { nav.root(0) },
                                         onConfigure = { showConnection = true },
-                                        onPreview = { model.preview() },
+                                        onPreview = { devices.preview() },
                                         onSync = { requestSync("preview") },
                                         onSyncMissing = { requestSync("missing") },
-                                        onCollections = model::sendCollections,
+                                        onCollections = devices::sendCollections,
                                         syncJob = syncJob,
-                                        onCancelJob = model::cancelSync,
-                                        onResumeJob = model::resumeSync,
+                                        onCancelJob = devices::cancelSync,
+                                        onResumeJob = devices::resumeSync,
                                         bookTitles = books.associate { it.id to it.title },
                                         remoteBooks =
                                             transfers
@@ -651,11 +652,11 @@ fun FolioApp(model: LibraryViewModel) {
                                         reading,
                                         annotations,
                                         deviceBusy,
-                                        model::refreshReading,
+                                        devices::refreshReading,
                                         onOpen = { entry -> openEntry(entry.id) },
                                         statistics =
                                             statistics.firstOrNull { it.deviceId == device.id },
-                                        onStatistics = model::refreshStatistics,
+                                        onStatistics = devices::refreshStatistics,
                                         paired = device.host.isNotBlank(),
                                         onConnect = { showConnection = true },
                                         onLibrary = { nav.root(0) },
@@ -705,15 +706,15 @@ fun FolioApp(model: LibraryViewModel) {
                                     prefs.edit().putBoolean("dynamic", it).apply()
                                 },
                                 onConnection = { showConnection = true },
-                                onForget = model::forgetDevice,
+                                onForget = devices::forgetDevice,
                                 paired = device.host.isNotBlank(),
                                 onRemoved = { showRemoved = true },
                                 removedCount = removed.map { it.groupId }.distinct().size,
                                 recordCount = library.entries.size,
                                 phoneFolder = phoneFolder,
                                 onPhoneFolder = { phoneFolderPicker.launch(null) },
-                                onRefreshFolder = model::refreshPhoneFolder,
-                                onForgetFolder = model::forgetPhoneFolder,
+                                onRefreshFolder = devices::refreshPhoneFolder,
+                                onForgetFolder = devices::forgetPhoneFolder,
                                 onInstallCompanion = { installCompanion = true },
                                 onImports = { model.showImportResults.value = true },
                                 hardcoverUsername = hardcoverUsername,
@@ -987,7 +988,7 @@ fun FolioApp(model: LibraryViewModel) {
                 },
             )
         if (folderReport.isNotEmpty())
-            ModalBottomSheet(onDismissRequest = model::clearFolderReport) {
+            ModalBottomSheet(onDismissRequest = devices::clearFolderReport) {
                 LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
                     item {
                         Text(
@@ -1003,7 +1004,7 @@ fun FolioApp(model: LibraryViewModel) {
                         Text(folderReport[index], Modifier.padding(vertical = 12.dp))
                         HorizontalDivider()
                     }
-                    item { TextButton(onClick = model::clearFolderReport) { Text("Done") } }
+                    item { TextButton(onClick = devices::clearFolderReport) { Text("Done") } }
                 }
             }
         val listBook = catalogueBooks.firstOrNull { it.id == listEntryId }
@@ -1160,7 +1161,7 @@ fun FolioApp(model: LibraryViewModel) {
                 discovery,
                 book,
                 reading.filter { it.bookId == book.id }.maxByOrNull { it.fetchedAt },
-                onRefreshDevice = { model.refreshBookReading(book.id) },
+                onRefreshDevice = { devices.refreshBookReading(book.id) },
                 devicePaired = device.host.isNotBlank(),
                 deviceOperation = foregroundOp,
                 phoneReading =
@@ -1230,8 +1231,8 @@ fun FolioApp(model: LibraryViewModel) {
             ModalBottomSheet(
                 onDismissRequest = {
                     showConnection = false
-                    model.clearHostProbe()
-                    model.clearFolders()
+                    devices.clearHostProbe()
+                    devices.clearFolders()
                     pairingSendId = null
                 }
             ) {
@@ -1240,10 +1241,10 @@ fun FolioApp(model: LibraryViewModel) {
                         device,
                         deviceBusy,
                         save = { config, password, key ->
-                            model.saveDevice(config, password, key) {
+                            devices.saveDevice(config, password, key) {
                                 showConnection = false
-                                model.clearHostProbe()
-                                model.clearFolders()
+                                devices.clearHostProbe()
+                                devices.clearFolders()
                                 pairingSendId?.let { id ->
                                     pairingSendId = null
                                     requestSync("book", id)
@@ -1252,12 +1253,12 @@ fun FolioApp(model: LibraryViewModel) {
                         },
                         observed = observedHost,
                         probeStatus = probeStatus,
-                        onProbe = model::probeHost,
-                        onClearProbe = model::clearHostProbe,
+                        onProbe = devices::probeHost,
+                        onClearProbe = devices::clearHostProbe,
                         folderListing = folderListing,
                         folderStatus = folderStatus,
-                        onBrowse = model::browseFolders,
-                        onClearFolders = model::clearFolders,
+                        onBrowse = devices::browseFolders,
+                        onClearFolders = devices::clearFolders,
                     )
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                 }

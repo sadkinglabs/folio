@@ -4,73 +4,23 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.withTransaction
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
-import dev.sadking.folio.device.*
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-data class Operation(
-    val busy: Boolean = false,
-    val message: String = "",
-    val progress: Float? = null,
-    val failed: Boolean = false,
-)
-
+/** The phone library: books, lists, editing, metadata lookup and backups. */
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as FolioApplication
     private val repo = app.repository
     private val dao = repo.dao
-    private val coordinator = app.syncCoordinator
-    private val pairedFolder = PairedFolder(app)
-    val phoneFolder = MutableStateFlow(pairedFolder.label)
-
-    fun choosePhoneFolder(uri: Uri) =
-        run("Connecting phone folder…") {
-            pairedFolder.select(uri)
-            phoneFolder.value = pairedFolder.label
-            val added = pairedFolder.refresh()
-            "Phone folder connected · $added EPUBs imported. Tap Sync in the library to compare both folders."
-        }
-
-    fun forgetPhoneFolder() =
-        run("Disconnecting phone folder…") {
-            pairedFolder.forget()
-            phoneFolder.value = ""
-            "Phone folder disconnected. Library and Kindle books retained."
-        }
-
-    fun refreshPhoneFolder() =
-        run("Refreshing phone folder…") {
-            "${pairedFolder.refresh()} new EPUBs imported from the phone folder"
-        }
-
-    val folderReport = MutableStateFlow<List<String>>(emptyList())
-
-    fun installCompanion(folder: String) =
-        runOnDevice("Installing KOReader companion…") { BridgeInstaller(app).install(folder) }
-
-    fun clearFolderReport() {
-        folderReport.value = emptyList()
-    }
-
-    fun syncPairedFolder() =
-        runOnDevice("Comparing paired folders…") {
-            try {
-                pairedFolder.reconcile()
-            } finally {
-                folderReport.value = pairedFolder.lastReport
-            }
-        }
-
-    val activeSyncTasks =
-        dao.activeTasks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val syncJobs = dao.jobs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val runner = app.operations
+    /** Shared with [DeviceViewModel]: one status line and one queue for both. */
+    val operation = runner.state
+    val notices = runner.notices
     val removed =
         dao.removed().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val importResults = MutableStateFlow<List<ImportOutcome>>(emptyList())
@@ -100,70 +50,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val lookupCover = MutableStateFlow<String?>(null)
     val lookupProposal = MutableStateFlow<MetadataProposal?>(null)
     private val lookup = MetadataLookup()
-    val operation = MutableStateFlow(Operation())
-    val notices = MutableSharedFlow<Operation>(extraBufferCapacity = 8)
-    val observedHost = MutableStateFlow<ObservedHostKey?>(null)
-    val probeStatus = MutableStateFlow(Operation())
-    private val probeGeneration = java.util.concurrent.atomic.AtomicLong()
-    val device = MutableStateFlow(app.deviceSettings.load())
-    val plan = MutableStateFlow<List<SyncItem>>(emptyList())
-    val inventory = MutableStateFlow<List<RemoteEntry>>(emptyList())
-    val inventoryCheckedAt = MutableStateFlow<Long?>(null)
-    private var planDevice: String? = null
-    private val operations = Mutex()
-
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            coordinator.awaitRecovery()
-            val config = device.value
-            app.database.withTransaction {
-                val current = dao.transfers(config.id).associateBy { it.bookId }
-                dao.transfers(config.legacyId).forEach { old ->
-                    if (current[old.bookId]?.completedAt?.let { it >= old.completedAt } != true)
-                        dao.transfer(old.copy(deviceId = config.id))
-                }
-                dao.deleteLegacyTransfers(config.legacyId)
-                dao.rekeyJournal(config.legacyId, config.id)
-            }
-        }
-    }
 
     /** Library work. A transfer job never blocks it: queued transfers re-check revisions. */
-    private fun run(label: String, work: suspend () -> String) = operation(label, false, work)
+    private fun run(label: String, work: suspend () -> String) =
+        runner.launch(viewModelScope, label, device = false, work)
 
-    /** Work that talks to the device or changes pairing; it waits for the transfer job. */
-    private fun runOnDevice(label: String, work: suspend () -> String) =
-        operation(label, true, work)
-
-    private fun operation(label: String, device: Boolean, work: suspend () -> String) {
-        viewModelScope.launch {
-            operations.withLock {
-                operation.value = Operation(true, label)
-                try {
-                    val result =
-                        withContext(Dispatchers.IO) {
-                            if (device)
-                                check(syncJobs.value.none { it.active }) {
-                                    "Finish or cancel the current transfer first"
-                                }
-                            work()
-                        }
-                    operation.value = Operation(message = result)
-                    notices.emit(operation.value)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    operation.value = Operation(message = safeError(e), failed = true)
-                    notices.emit(operation.value)
-                }
-            }
-        }
-    }
+    private fun safeError(e: Exception) = dev.sadking.folio.safeError(e)
 
     fun removeLocal(ids: Set<String>, onRemoved: () -> Unit = {}) =
         run("Removing from phone library…") {
             val (count, cleaned) = repo.removeLocal(ids)
-            plan.value = emptyList()
             withContext(Dispatchers.Main) { onRemoved() }
             "$count moved to Recently removed; restore from Settings. Kindle and Hardcover retained" +
                 if (!cleaned) ". Some private files could not be cleaned up" else ""
@@ -295,7 +191,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
             importResults.value = results
             showImportResults.value = true
-            plan.value = emptyList()
             "${results.count { it.error == null }} available · ${results.count { it.error != null }} failed. Review import results"
         }
 
@@ -367,7 +262,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun edit(book: Book, metadata: Metadata, cover: Uri?, done: () -> Unit) =
         run("Saving metadata…") {
             repo.edit(book.id, metadata, cover)
-            plan.value = emptyList()
             withContext(Dispatchers.Main) { done() }
             "Changes saved. Your original EPUB is kept"
         }
@@ -395,325 +289,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             "Lists updated"
         }
 
-    fun probeHost(host: String, port: Int) {
-        val generation = probeGeneration.incrementAndGet()
-        observedHost.value = null
-        probeStatus.value = Operation(true, "Reading Kindle fingerprint…")
-        runOnDevice("Reading Kindle SSH fingerprint…") {
-            try {
-                val observed = HostFingerprint.read(host.trim(), port)
-                if (probeGeneration.get() == generation) {
-                    observedHost.value = observed
-                    probeStatus.value =
-                        Operation(
-                            message =
-                                "Fingerprint read. Confirm the Kindle address before trusting it"
-                        )
-                }
-                "Fingerprint read; no login or file access was attempted"
-            } catch (e: Exception) {
-                if (probeGeneration.get() == generation)
-                    probeStatus.value = Operation(message = safeError(e), failed = true)
-                throw e
-            }
-        }
-    }
-
-    fun clearHostProbe() {
-        probeGeneration.incrementAndGet()
-        observedHost.value = null
-        probeStatus.value = Operation()
-    }
-
-    val folderStatus = MutableStateFlow(Operation())
-    val folderListing = MutableStateFlow<FolderListing?>(null)
-    private val folderGeneration = java.util.concurrent.atomic.AtomicLong()
-
-    fun clearFolders() {
-        folderGeneration.incrementAndGet()
-        folderListing.value = null
-        folderStatus.value = Operation()
-    }
-
-    fun browseFolders(
-        config: DeviceConfig,
-        password: String,
-        key: Uri?,
-        relative: String = "",
-        create: String? = null,
-    ) {
-        val generation = folderGeneration.incrementAndGet()
-        runOnDevice(if (create == null) "Reading Kindle folders…" else "Creating Kindle folder…") {
-            folderStatus.value = Operation(busy = true, message = "Reading Kindle folders…")
-            try {
-                val saved = app.deviceSettings.load()
-                val credential =
-                    when (config.authentication) {
-                        "KOReader password-free" -> DeviceCredential("")
-                        "Password" ->
-                            if (password.isNotEmpty()) DeviceCredential(password)
-                            else {
-                                check(
-                                    saved.fingerprint == config.fingerprint &&
-                                        saved.username == config.username &&
-                                        saved.authentication == config.authentication
-                                ) {
-                                    "Enter the SSH password first"
-                                }
-                                app.deviceSettings.credential()
-                            }
-                        else ->
-                            if (key != null) {
-                                val bytes =
-                                    app.contentResolver.openInputStream(key)?.use { input ->
-                                        java.io
-                                            .ByteArrayOutputStream()
-                                            .also { Epub.copyBounded(input, it, 65536) }
-                                            .toByteArray()
-                                    } ?: error("Cannot open private key")
-                                DeviceCredential(password, bytes)
-                            } else {
-                                check(
-                                    saved.fingerprint == config.fingerprint &&
-                                        saved.username == config.username &&
-                                        saved.authentication == config.authentication
-                                ) {
-                                    "Select your SSH private key first"
-                                }
-                                app.deviceSettings.credential().let {
-                                    if (password.isNotEmpty()) it.copy(secret = password) else it
-                                }
-                            }
-                    }
-                SftpDevice(config.copy(directory = "/mnt/us"), credential).use { remote ->
-                    if (create != null) remote.createDirectory(relative, create)
-                    val dirs = remote.directories(relative)
-                    if (folderGeneration.get() == generation)
-                        folderListing.value = FolderListing(config, relative, dirs)
-                }
-                if (folderGeneration.get() == generation) folderStatus.value = Operation()
-                if (create == null) "Kindle folders loaded" else "Folder created on Kindle"
-            } catch (e: Exception) {
-                if (folderGeneration.get() == generation)
-                    folderStatus.value = Operation(message = safeError(e), failed = true)
-                throw e
-            }
-        }
-    }
-
-    fun saveDevice(
-        config: DeviceConfig,
-        password: String,
-        keyUri: Uri? = null,
-        onSaved: () -> Unit = {},
-    ) =
-        runOnDevice("Saving Kindle connection…") {
-            val keyBytes =
-                keyUri
-                    ?.takeIf { config.authentication == "Key" }
-                    ?.let { uri ->
-                        app.contentResolver.openInputStream(uri)?.use { input ->
-                            java.io
-                                .ByteArrayOutputStream()
-                                .also { Epub.copyBounded(input, it, 65536) }
-                                .toByteArray()
-                        } ?: error("Cannot open private key")
-                    }
-            app.deviceSettings.save(config, password, keyBytes)
-            device.value = config
-            observedHost.value = null
-            plan.value = emptyList()
-            inventory.value = emptyList()
-            inventoryCheckedAt.value = null
-            withContext(Dispatchers.Main) { onSaved() }
-            "Pairing saved. Review sync to verify access."
-        }
-
-    fun forgetDevice() =
-        runOnDevice("Removing pairing…") {
-            app.deviceSettings.forget()
-            device.value = DeviceConfig()
-            plan.value = emptyList()
-            inventory.value = emptyList()
-            inventoryCheckedAt.value = null
-            "Pairing removed"
-        }
-
-    private fun connect() = SftpDevice(device.value, app.deviceSettings.credential())
-
-    fun preview(selected: Set<String>? = null) =
-        runOnDevice("Connecting and comparing books…") { prepare(selected) }
-
-    private suspend fun prepare(selected: Set<String>?): String {
-        require(selected == null || selected.isNotEmpty()) {
-            "This collection has no books to compare"
-        }
-        plan.value = emptyList()
-        planDevice = null
-        val config = device.value
-        connect().use { remote ->
-            inventory.value = remote.inventory()
-            inventoryCheckedAt.value = System.currentTimeMillis()
-            val existing = dao.transfers(config.id).associateBy { it.bookId }
-            val removed =
-                dao.removed()
-                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-            val importResults = MutableStateFlow<List<ImportOutcome>>(emptyList())
-            val showImportResults = MutableStateFlow(false)
-            val managementError = MutableStateFlow<String?>(null)
-            val books =
-                dao.allBooks()
-                    .filter { selected == null || it.id in selected }
-                    .map { b ->
-                        SyncBook(
-                            b.id,
-                            b.title,
-                            File(b.currentPath),
-                            b.currentHash,
-                            existing[b.id]?.hash,
-                            existing[b.id]?.remotePath,
-                        )
-                    }
-            plan.value = SyncPlanner.plan(books, remote)
-            planDevice = config.id
-            // Presence is only recorded after an actual hash comparison, never inferred from
-            // filenames.
-            plan.value
-                .filter { it.action == Action.PRESENT }
-                .forEach {
-                    dao.transfer(
-                        Transfer(
-                            it.book.id,
-                            config.id,
-                            it.path,
-                            it.book.hash,
-                            System.currentTimeMillis(),
-                        )
-                    )
-                }
-        }
-        return "Comparison ready · ${inventory.value.size} EPUBs in Kindle folder"
-    }
-
-    fun sync() = runOnDevice("Synchronising…") { performSync() }
-
-    fun syncMissing() =
-        runOnDevice("Checking Kindle for missing books…") {
-            val enabled = dao.allShelves().filter { it.syncEnabled }
-            prepare(null)
-            val presentIds =
-                plan.value.filter { it.action == Action.PRESENT }.map { it.book.id }.toSet()
-            val allBooks = dao.allBooks()
-            val allMemberships = dao.allMemberships()
-            val selected =
-                if (enabled.isEmpty()) null
-                else
-                    enabled
-                        .flatMap { shelf ->
-                            allBooks
-                                .filter { b ->
-                                    if (shelf.ruleField == "Manual")
-                                        allMemberships.any {
-                                            it.bookId == b.id && it.shelfId == shelf.id
-                                        }
-                                    else
-                                        LibraryRules.matches(
-                                            shelf.ruleField,
-                                            shelf.ruleValue,
-                                            b.metadata(),
-                                            b.status,
-                                            b.id in presentIds,
-                                        )
-                                }
-                                .map { it.id }
-                        }
-                        .toSet()
-            plan.value = SyncPlanner.scope(plan.value, selected)
-            if (plan.value.any { it.action == Action.UPLOAD }) performSync()
-            else
-                "Nothing to upload · ${plan.value.count { it.action == Action.CONFLICT }} conflicts left unchanged"
-        }
-
-    fun sendBook(book: Book) =
-        runOnDevice("Sending ${book.title} to Kindle…") {
-            check(device.value.host.isNotBlank()) { "Pair your Kindle first" }
-            prepare(setOf(book.id))
-            val item = plan.value.singleOrNull() ?: error("Book is no longer available")
-            when (item.action) {
-                Action.UPLOAD -> performSync()
-                Action.PRESENT -> "This EPUB is already verified on Kindle"
-                Action.CONFLICT ->
-                    error(
-                        "The Kindle has another revision. Review the conflict in Kindle; existing books and annotations are retained."
-                    )
-            }
-        }
-
-    private suspend fun performSync(): String {
-        check(planDevice == device.value.id) { "Pairing changed; preview again" }
-        val items = plan.value.filter { it.action == Action.UPLOAD }
-        val id = coordinator.enqueue(items, device.value.id)
-        startJob(id)
-        plan.value = plan.value.filter { it.action != Action.UPLOAD }
-        return "${items.size} books queued. Follow transfer progress in Kindle or the notification"
-    }
-
-    private suspend fun startJob(id: String) {
-        try {
-            withContext(Dispatchers.Main) { dev.sadking.folio.sync.SyncService.start(app, id) }
-        } catch (e: Exception) {
-            coordinator.startFailed(id)
-            error("Sync saved but Android could not start it. Tap Resume in Kindle")
-        }
-    }
-
-    fun resumeSync(id: String) =
-        runOnDevice("Resuming queued sync…") {
-            coordinator.prepareResume(id)
-            startJob(id)
-            "Sync resumed; completed files are verified without duplicate uploads"
-        }
-
-    fun cancelSync(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                coordinator.cancel(id)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                notices.emit(Operation(message = safeError(e), failed = true))
-            }
-        }
-    }
-
-    fun shelfBookIds(shelf: Shelf): Set<String> =
-        books.value
-            .filter { b ->
-                if (shelf.ruleField == "Manual")
-                    memberships.value.any { it.bookId == b.id && it.shelfId == shelf.id }
-                else
-                    LibraryRules.matches(
-                        shelf.ruleField,
-                        shelf.ruleValue,
-                        b.metadata(),
-                        b.status,
-                        transfers.value.any {
-                            it.bookId == b.id &&
-                                it.deviceId == device.value.id &&
-                                it.hash == b.currentHash
-                        },
-                    )
-            }
-            .map { it.id }
-            .toSet()
-
-    fun shelfPolicy(shelf: Shelf, enabled: Boolean) =
-        run("Saving sync policy…") {
-            dao.updateShelf(shelf.copy(syncEnabled = enabled))
-            "Collection sync preference saved"
-        }
-
-    fun previewShelf(shelf: Shelf) = preview(shelfBookIds(shelf))
-
     fun exportBackup(uri: Uri) =
         run("Creating verified backup…") {
             val temp = File(app.cacheDir, "backup-${UUID.randomUUID()}.zip")
@@ -735,7 +310,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 app.contentResolver.openInputStream(uri)?.use { input ->
                     temp.outputStream().use { Epub.copyBounded(input, it, BackupArchive.MAX_TOTAL) }
                 } ?: error("Cannot open backup")
-                LibraryBackup(repo).restore(temp).also { plan.value = emptyList() }
+                LibraryBackup(repo).restore(temp)
             } finally {
                 temp.delete()
             }
@@ -782,89 +357,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
             try {
                 repo.edit(book.id, metadata, file?.let(Uri::fromFile))
-                plan.value = emptyList()
                 withContext(Dispatchers.Main) { done() }
                 "Selected details saved. Your original EPUB is kept"
             } finally {
                 file?.delete()
             }
-        }
-
-    fun refreshReading() = refreshReadingFor(null)
-
-    fun refreshBookReading(bookId: String) = refreshReadingFor(setOf(bookId))
-
-    private fun refreshReadingFor(selected: Set<String>?) =
-        runOnDevice("Retrieving KOReader reading data…") {
-            var imported = 0
-            var missing = 0
-            var failed = 0
-            var conflicts = 0
-            val config = device.value
-            val local = dao.allBooks().associateBy { it.id }
-            connect().use { remote ->
-                for (transfer in
-                    dao.transfers(config.id).filter { selected == null || it.bookId in selected }) {
-                    val book = local[transfer.bookId] ?: continue
-                    try {
-                        if (
-                            !remote.exists(transfer.remotePath) ||
-                                remote.read(transfer.remotePath).use { Epub.hash(it) } !=
-                                    transfer.hash
-                        ) {
-                            conflicts++
-                            continue
-                        }
-                        val data = ReadingRetriever.read(remote, transfer.remotePath)
-                        if (data == null) {
-                            missing++
-                            continue
-                        }
-                        val (value, hash) = data
-                        app.database.withTransaction {
-                            dao.reading(
-                                ReadingSnapshot(
-                                    book.id,
-                                    config.id,
-                                    value.percent,
-                                    value.position,
-                                    value.status,
-                                    value.rating,
-                                    System.currentTimeMillis(),
-                                    ReadingRetriever.sidecar(transfer.remotePath),
-                                    hash,
-                                    transfer.hash,
-                                )
-                            )
-                            value.annotations.forEach { a ->
-                                val id =
-                                    KoReaderData.digest(
-                                        (book.id + "\u0000" + config.id + "\u0000" + a.key)
-                                            .toByteArray()
-                                    )
-                                dao.annotation(
-                                    BookAnnotation(
-                                        id,
-                                        book.id,
-                                        config.id,
-                                        a.text,
-                                        a.note,
-                                        a.chapter,
-                                        a.date,
-                                        a.position,
-                                        a.endPosition,
-                                        a.kind,
-                                    )
-                                )
-                            }
-                        }
-                        imported++
-                    } catch (e: Exception) {
-                        failed++
-                    }
-                }
-            }
-            "$imported reading snapshots refreshed · $missing adjacent sidecars absent · $conflicts file conflicts · $failed unsupported or changed snapshots. Existing annotations retained."
         }
 
     fun exportHighlights(book: Book, uri: Uri) =
@@ -889,139 +386,4 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 ?: error("Cannot write Markdown file")
             "Highlights exported as Markdown"
         }
-
-    fun sendCollections() =
-        runOnDevice("Preparing KOReader collection additions…") {
-            val shelves = dao.allShelves().filter { it.syncEnabled }
-            require(shelves.isNotEmpty()) { "Select Include in Sync on at least one collection" }
-            val local = dao.allBooks()
-            val members = dao.allMemberships()
-            val known = dao.transfers(device.value.id).associateBy { it.bookId }
-            val config = device.value
-            val requests = mutableListOf<org.json.JSONObject>()
-            connect().use { remote ->
-                shelves.forEach { shelf ->
-                    val selected = local.filter { b ->
-                        if (shelf.ruleField == "Manual")
-                            members.any { it.bookId == b.id && it.shelfId == shelf.id }
-                        else
-                            LibraryRules.matches(
-                                shelf.ruleField,
-                                shelf.ruleValue,
-                                b.metadata(),
-                                b.status,
-                                known[b.id]?.hash == b.currentHash,
-                            )
-                    }
-                    val paths = selected.map { b ->
-                        val record =
-                            known[b.id]
-                                ?: error(
-                                    "Transfer or verify every collection book before sending its membership"
-                                )
-                        require(
-                            record.hash == b.currentHash &&
-                                remote.exists(record.remotePath) &&
-                                remote.read(record.remotePath).use { Epub.hash(it) } ==
-                                    b.currentHash
-                        ) {
-                            "Collection contains a missing or changed EPUB; preview its transfer first"
-                        }
-                        "${config.directory.trimEnd('/')}/${record.remotePath}"
-                    }
-                    requests +=
-                        org.json
-                            .JSONObject()
-                            .put("name", shelf.name)
-                            .put("paths", org.json.JSONArray(paths))
-                }
-                val json =
-                    org.json
-                        .JSONObject()
-                        .put("format", "folio-collections")
-                        .put("version", 1)
-                        .put("createdAt", System.currentTimeMillis())
-                        .put("shelves", org.json.JSONArray(requests))
-                        .toString()
-                val source = File(app.cacheDir, "collections-${UUID.randomUUID()}.json")
-                val temporary = ".folio-${UUID.randomUUID()}.part"
-                val destination = ".folio-collections-${UUID.randomUUID()}.json"
-                try {
-                    source.writeText(json)
-                    require(source.length() <= 4L * 1024 * 1024)
-                    remote.upload(temporary, source) { _, _ -> }
-                    require(remote.read(temporary).use { Epub.hash(it) } == Epub.sha256(source))
-                    remote.publish(temporary, destination)
-                    require(remote.read(destination).use { Epub.hash(it) } == Epub.sha256(source))
-                } finally {
-                    source.delete()
-                    runCatching { remote.removeTemporary(temporary) }
-                }
-            }
-            "Collection request sent. In KOReader's Folio bridge menu, review and apply additions. Existing memberships are retained."
-        }
-
-    fun refreshStatistics() =
-        runOnDevice("Retrieving exported reading statistics…") {
-            val config = device.value
-            connect().use { remote ->
-                require(remote.exists(".folio-statistics.json")) {
-                    "In KOReader's Folio bridge menu, export reading statistics first"
-                }
-                fun bytes() =
-                    java.io
-                        .ByteArrayOutputStream()
-                        .also { out ->
-                            remote.read(".folio-statistics.json").use {
-                                Epub.copyBounded(it, out, 4L * 1024 * 1024)
-                            }
-                        }
-                        .toByteArray()
-                val first = bytes()
-                require(first.contentEquals(bytes())) { "Statistics export changed; retry" }
-                val o = org.json.JSONObject(first.toString(Charsets.UTF_8))
-                require(o.getString("format") == "folio-statistics" && o.getInt("version") == 1)
-                val value =
-                    DeviceStatistics(
-                        config.id,
-                        o.getLong("seconds"),
-                        o.getLong("exportedAt"),
-                        System.currentTimeMillis(),
-                        o.getJSONArray("days").toString(),
-                    )
-                validateStatistics(value)
-                dao.statistics(value)
-            }
-            "Reading statistics saved offline"
-        }
-
-    private fun safeError(e: Exception): String =
-        when (e) {
-            is com.jcraft.jsch.JSchException ->
-                when {
-                    e.message.orEmpty().contains("HostKey", ignoreCase = true) ->
-                        "SSH host key changed or was rejected. Check the IP shown by KOReader, then read the fingerprint in setup and explicitly review any replacement."
-                    e.message.orEmpty().contains("Auth fail", ignoreCase = true) ->
-                        if (device.value.authentication == "KOReader password-free")
-                            "KOReader rejected password-free access. Stop SSH, disable key-only login, enable Login without password and restart SSH. Check the username is root."
-                        else
-                            "SSH authentication was rejected. Check the username, authorized public key and key passphrase or password."
-                    e.message.orEmpty().contains("Algorithm negotiation", ignoreCase = true) ->
-                        "The SSH server's algorithms are unsupported. Update its configuration; obsolete algorithms are not automatically enabled."
-                    else ->
-                        "SSH connection failed. Check Wi-Fi, the Kindle's address, SSH port and whether its server is running."
-                }
-            is com.jcraft.jsch.SftpException ->
-                "SFTP operation failed. Check folder permissions, storage and connection; preview again before retrying."
-            is IllegalArgumentException,
-            is IllegalStateException -> e.message?.take(200) ?: "Operation could not be completed"
-            else ->
-                "Operation failed. Check the file, available storage and connection, then try again."
-        }
 }
-
-data class FolderListing(
-    val config: DeviceConfig,
-    val relative: String,
-    val directories: List<DeviceDirectory>,
-)
