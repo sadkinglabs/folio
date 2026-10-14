@@ -4,6 +4,18 @@ This file records what was actually checked for the current state of `main`, new
 
 The earlier append-only log is in [history/VALIDATION.md](history/VALIDATION.md).
 
+## 2026-10-14: M2 app shell, 0.11.0 (CI run 35, emulator API 34, Pixel 6 profile)
+
+| Check | Level | Result |
+|---|---|---|
+| Format, unit (including `OperationRunnerTest`, `SendSummaryTest`, `FolioNavTest`), lint, `assembleDebug`, SFTP fixture, check scripts, DOM interop, Hardcover schema | Executed (CI) | Passed |
+| Instrumentation suite, including `ProductJourneyTest`, `ReadingListsUiTest` and the new `LargeFontUiTest` | Executed (emulator) | 48 / 48 passed |
+| 200% system font: library, book page, Device tab | Executed (emulator screenshots, reviewed) | Read and Send stay reachable; grid titles wrap between words after the tile fix |
+| `OperationRunner` queueing, transfer wait, error wording, cancelled-screen reset | Executed (JVM, local) | 5 / 5 passed |
+| APK signing certificate | Executed (v2 signing block read locally) | SHA-256 `ED:12:B0:75…1D:39`, same as the preserved development key |
+| Transfer banner, direct sending of a selection or list | Compiled; screens run in the emulator journey, no transfer to a real device | — |
+| Real phone: add → attach → edit → organise → read, back everywhere | **Not run** | Owner device check |
+
 ## 2026-10-14: M1 reader (CI, emulator API 34, Pixel 6 profile)
 
 | Check | Level | Result |
