@@ -26,7 +26,10 @@ object QaScreenshots {
         InstrumentationRegistry.getInstrumentation()
             .uiAutomation
             .executeShellCommand("input tap ${metrics.widthPixels / 2} ${metrics.heightPixels / 2}")
-            .close()
+            // Read to the end: closing the pipe early can drop the command before it runs.
+            .let {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { s -> s.readBytes() }
+            }
         Thread.sleep(1500)
     }
 }
