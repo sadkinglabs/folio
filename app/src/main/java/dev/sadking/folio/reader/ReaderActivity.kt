@@ -44,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -283,15 +285,23 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private suspend fun resumeKindle(): Boolean {
-        val nav = navigator ?: return false
-        val publication = model.publication ?: return false
         val snapshot = model.kindle ?: return false
         val book = model.book ?: return false
         if (snapshot.documentHash != book.currentHash) {
             navigationError = getString(R.string.reader_kindle_other_revision)
             return false
         }
-        val index = xpointerSpineIndex(snapshot.position, model.spine.size)
+        return resumeAt(snapshot.position)
+    }
+
+    /**
+     * Moves to the passage a KOReader pointer names, then saves it as the phone's place. Shared by
+     * the SSH handoff and Folio Link. On failure the page stays where it was.
+     */
+    private suspend fun resumeAt(pointer: String): Boolean {
+        val nav = navigator ?: return false
+        val publication = model.publication ?: return false
+        val index = xpointerSpineIndex(pointer, model.spine.size)
         if (index == null) {
             navigationError = getString(R.string.reader_kindle_unsupported)
             return false
@@ -319,9 +329,7 @@ class ReaderActivity : FragmentActivity() {
             }
             // evaluateJavascript waits for Readium's page to load; no delay guesses.
             val raw =
-                nav.bridge(
-                    "JSON.stringify(FolioReader.resolve(${JSONObject.quote(snapshot.position)}));"
-                )
+                nav.bridge("JSON.stringify(FolioReader.resolve(${JSONObject.quote(pointer)}));")
             val serialized = raw?.let { JSONTokener(it).nextValue() as? String }
             val resolved = serialized?.takeIf { it != "null" }?.let { JSONObject(it) }
             if (resolved == null) {
@@ -451,6 +459,33 @@ class ReaderActivity : FragmentActivity() {
                 exit = fadeOut() + slideOutVertically { it },
             ) {
                 BottomBar()
+            }
+            model.linkOffer?.let { offer ->
+                LinkOfferCard(
+                    offer,
+                    Modifier.align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            bottom = if (controls) 88.dp else 24.dp,
+                        ),
+                    onContinue = {
+                        scope.launch {
+                            try {
+                                // The offer can appear before the page is mounted.
+                                withTimeoutOrNull(15_000) {
+                                    while (navigator == null) delay(100)
+                                }
+                                if (!resumeAt(offer.progress))
+                                    navigationError = getString(R.string.reader_link_failed)
+                            } finally {
+                                model.settleLinkOffer()
+                            }
+                        }
+                    },
+                    onStay = model::settleLinkOffer,
+                )
             }
             SnackbarHost(
                 snackbar,
@@ -879,6 +914,41 @@ private fun ContentsPanel(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** "Continue from Kobo at 43%?", offered once when another device read further on or back. */
+@Composable
+private fun LinkOfferCard(
+    offer: dev.sadking.folio.data.KosyncReport,
+    modifier: Modifier,
+    onContinue: () -> Unit,
+    onStay: () -> Unit,
+) {
+    Surface(
+        modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 3.dp,
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(
+                    R.string.reader_link_offer,
+                    offer.device,
+                    (offer.percentage * 100).toInt(),
+                ),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onStay) { Text(stringResource(R.string.reader_link_stay)) }
+                Button(onClick = onContinue) { Text(stringResource(R.string.reader_link_continue)) }
             }
         }
     }

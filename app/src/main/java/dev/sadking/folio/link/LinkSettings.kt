@@ -35,6 +35,19 @@ class LinkSettings(context: Context) {
     val username: String
         get() = USERNAME
 
+    /** How this phone appears to KOReader, e.g. "Folio on Pixel 8". */
+    val phoneDeviceName: String
+        get() = "Folio on ${android.os.Build.MODEL}"
+
+    /** A stable id for this phone's reports, made once per install. */
+    val phoneDeviceId: String
+        @Synchronized
+        get() =
+            prefs.getString("device-id", null)
+                ?: java.util.UUID.randomUUID().toString().also {
+                    prefs.edit().putString("device-id", it).apply()
+                }
+
     /** The password to type into KOReader, created the first time it is needed. */
     @Synchronized
     fun password(): String {

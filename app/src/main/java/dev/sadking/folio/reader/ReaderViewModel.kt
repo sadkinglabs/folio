@@ -57,6 +57,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var kindle by mutableStateOf<ReadingSnapshot?>(null)
         private set
 
+    /** KOReader's key for this file, so Folio Link reports can be matched to it. */
+    private var linkDocument: String? = null
+
+    /** A newer position an e-reader reported through Folio Link, offered once when opening. */
+    var linkOffer by mutableStateOf<KosyncReport?>(null)
+        private set
+
     var error by mutableStateOf<String?>(null)
         private set
 
@@ -133,6 +140,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         }
                         // Positions stay phone-only if the spine cannot be read.
                         spine = runCatching { Epub.spine(file) }.getOrDefault(emptyList())
+                        linkDocument = runCatching { koreaderDigest(file) }.getOrNull()
                         found to file
                     }
                 // All resource requests through Readium are offline; no book-triggered HTTP
@@ -173,6 +181,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 lastLocation = initialLocator
                 lastPhone = saved
+                linkOffer = withContext(Dispatchers.IO) { newerLinkReport(saved) }
                 kindle =
                     dao.allReading().firstOrNull {
                         it.bookId == id && it.deviceId == app.deviceSettings.load().id
@@ -321,6 +330,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 val stored = dao.book(current.id)
                 if (stored?.currentHash == current.currentHash) {
                     dao.savePhoneReading(value)
+                    publishToLink(value)
                     if (
                         stored.status in listOf("Unread", "Want to Read") &&
                             (value.percent ?: 0.0) > 0.001
@@ -330,6 +340,52 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+    }
+
+    /**
+     * Makes the phone's position the one Folio Link hands to KOReader, when it can be expressed as
+     * a KOReader pointer. KOReader then offers to jump to it when the book opens there.
+     */
+    private fun publishToLink(value: PhoneReading) {
+        val document = linkDocument ?: return
+        val percent = value.percent ?: return
+        if (!value.xpointer.startsWith("/")) return
+        val settings = app.link.settings
+        dao.saveKosyncReport(
+            KosyncReport(
+                document,
+                settings.phoneDeviceId,
+                settings.phoneDeviceName,
+                value.xpointer,
+                percent.coerceIn(0.0, 1.0),
+                value.updatedAt / 1000,
+                value.updatedAt,
+            )
+        )
+    }
+
+    /** An e-reader's report that is newer than the phone's place and somewhere else in the book. */
+    private suspend fun newerLinkReport(saved: PhoneReading?): KosyncReport? {
+        val document = linkDocument ?: return null
+        val settings = app.link.settings
+        val dismissed = linkOffers.getLong(document, 0)
+        return dao.kosyncReports(document)
+            .filter { it.deviceId != settings.phoneDeviceId && it.progress.startsWith("/") }
+            .maxByOrNull { it.timestamp }
+            ?.takeIf { report ->
+                report.timestamp > dismissed &&
+                    report.timestamp * 1000 > (saved?.updatedAt ?: 0) &&
+                    kotlin.math.abs(report.percentage - (saved?.percent ?: 0.0)) >= 0.002
+            }
+    }
+
+    private val linkOffers = app.getSharedPreferences("link-offers", Application.MODE_PRIVATE)
+
+    /** Clears the offer whether it was taken or not; the same report is not offered again. */
+    fun settleLinkOffer() {
+        val offer = linkOffer ?: return
+        linkOffers.edit().putLong(offer.document, offer.timestamp).apply()
+        linkOffer = null
     }
 
     fun saveOnPause() {
