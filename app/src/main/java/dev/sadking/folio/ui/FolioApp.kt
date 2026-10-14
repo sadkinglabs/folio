@@ -458,6 +458,14 @@ fun FolioApp(model: LibraryViewModel) {
             ) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     if (foregroundOp.busy) StatusSurface(foregroundOp)
+                    // The device tab shows the full transfer; everywhere else gets a compact
+                    // banner.
+                    if (syncJob?.active == true && !(tab == 2 && nav.stack.isEmpty()))
+                        TransferBanner(
+                            syncJob,
+                            onOpen = { nav.root(2) },
+                            onCancel = { model.cancelSync(syncJob.id) },
+                        )
                     if (book != null) {
                         if (editing)
                             MetadataEditor(book, op.busy, onDirtyChange = { editorDirty = it }) {

@@ -83,4 +83,8 @@
     <string name="devices_phone_to_kindle_body">Requires the Folio bridge in KOReader. Send the EPUB first. The bridge asks before moving your position; bookmarks and highlights are kept.</string>
     <string name="devices_send">Send phone position for review</string>
     <string name="devices_working">Working…</string>
+    <string name="transfer_waiting">Waiting to send to your e-reader</string>
+    <string name="transfer_stopping">Stopping after this book…</string>
+    <string name="transfer_sending">Sending %1$d of %2$d to your e-reader</string>
+    <string name="transfer_cancel">Cancel</string>
 </resources>

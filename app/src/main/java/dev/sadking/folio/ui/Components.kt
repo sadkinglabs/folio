@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -55,6 +56,55 @@ internal fun StatusSurface(op: Operation) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 else LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+/**
+ * A transfer running in the background, shown above every screen except the device tab. It never
+ * blocks the screen beneath it.
+ */
+@Composable
+internal fun TransferBanner(job: SyncJob, onOpen: () -> Unit, onCancel: () -> Unit) {
+    val total = job.totalBooks.coerceAtLeast(1)
+    val progress =
+        if (job.totalBytes > 0) (job.bytesSent.toFloat() / job.totalBytes).coerceIn(0f, 1f)
+        else job.completedBooks.toFloat() / total
+    Surface(onClick = onOpen, color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(
+            Modifier.fillMaxWidth()
+                .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
+                .semantics {
+                    liveRegion = LiveRegionMode.Polite
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    when (job.state) {
+                        "QUEUED" -> stringResource(R.string.transfer_waiting)
+                        "CANCELLING" -> stringResource(R.string.transfer_stopping)
+                        else ->
+                            stringResource(
+                                R.string.transfer_sending,
+                                (job.completedBooks + 1).coerceAtMost(total),
+                                total,
+                            )
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (job.currentTitle.isNotBlank())
+                    Text(
+                        job.currentTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            }
+            TextButton(onClick = onCancel, enabled = job.state != "CANCELLING") {
+                Text(stringResource(R.string.transfer_cancel))
             }
         }
     }
