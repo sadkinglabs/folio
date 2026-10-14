@@ -1,6 +1,7 @@
 package dev.sadking.folio
 
 import android.graphics.Bitmap
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import dev.sadking.folio.data.*
@@ -16,8 +17,13 @@ class DiscoveryCommitTest {
     fun callbackCancellationCannotDeleteCommittedArtwork() =
         runBlocking<Unit> {
             val app = ApplicationProvider.getApplicationContext<FolioApplication>()
-            val model = DiscoveryViewModel(app)
-            val store = ViewModelStore().apply { put("discovery", model) }
+            // Public API only: ViewModelStore.put is library-internal and absent at runtime.
+            val store = ViewModelStore()
+            val model =
+                ViewModelProvider(
+                    store,
+                    ViewModelProvider.AndroidViewModelFactory.getInstance(app),
+                )[DiscoveryViewModel::class.java]
             val title = "Commit test ${UUID.randomUUID()}"
             val photo = File(app.cacheDir, "commit-test.png")
             Bitmap.createBitmap(24, 32, Bitmap.Config.ARGB_8888).also { image ->

@@ -103,7 +103,8 @@ class ProductJourneyTest {
             }
         } catch (timeout: ComposeTimeoutException) {
             throw AssertionError(
-                "'$text' did not appear. Screen:\n" + compose.onAllNodes(isRoot()).printToString(),
+                "'$text' did not appear. Screen:\n" +
+                    compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE),
                 timeout,
             )
         }
