@@ -1,6 +1,7 @@
 package dev.sadking.folio
 
 import android.content.Intent
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
@@ -108,8 +109,11 @@ class ReaderUiTest {
                         .isNotEmpty()
                 }
                 QaScreenshots.capture("reader-appearance")
-                // Close by tapping the sheet's scrim: deterministic, unlike a system back gesture.
-                compose.onNodeWithContentDescription("Close sheet").performClick()
+                // Close through the scrim's own action: a tap at its centre would land on the tall
+                // sheet.
+                compose
+                    .onNodeWithContentDescription("Close sheet")
+                    .performSemanticsAction(SemanticsActions.OnClick)
                 compose.waitUntil(5000) {
                     compose.onAllNodesWithText("Only for this book").fetchSemanticsNodes().isEmpty()
                 }
