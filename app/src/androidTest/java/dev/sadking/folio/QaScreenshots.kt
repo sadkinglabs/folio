@@ -9,6 +9,8 @@ object QaScreenshots {
     fun capture(name: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()
+        // Let sheet and bar animations finish; idle sync does not wait for Compose animations.
+        Thread.sleep(800)
         val image = instrumentation.uiAutomation.takeScreenshot() ?: return
         val folder = File(instrumentation.targetContext.filesDir, "qa").apply { mkdirs() }
         File(folder, "$name.png").outputStream().use {

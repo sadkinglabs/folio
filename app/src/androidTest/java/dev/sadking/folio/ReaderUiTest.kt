@@ -106,9 +106,16 @@ class ReaderUiTest {
                     .performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                 compose.waitForIdle()
                 QaScreenshots.capture("reader-controls")
+                fun controlsShown() =
+                    compose
+                        .onAllNodesWithContentDescription("Reading appearance")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
                 QaScreenshots.tapScreenCentre()
+                compose.waitUntil(5000) { !controlsShown() }
                 QaScreenshots.capture("reader-immersive")
                 QaScreenshots.tapScreenCentre()
+                compose.waitUntil(5000) { controlsShown() }
                 compose.onNodeWithContentDescription("Reading appearance").performClick()
                 QaScreenshots.capture("reader-appearance")
             }

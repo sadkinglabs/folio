@@ -182,21 +182,19 @@ class ReaderActivity : FragmentActivity() {
             .commitNow()
         navigator = fragment
         harden(fragment.requireView())
-        // Listeners run in order until one consumes the event: the middle third toggles
-        // controls, then the edges (30% each side) turn pages, as do arrow/page keys.
+        // Listeners run in order until one consumes the event. Readium's adapter claims edge taps
+        // (30% each side, in its own coordinate units) and arrow/page keys; any tap it leaves is
+        // a centre tap and toggles the controls. No coordinate maths of our own: comparing tap
+        // points with the fragment's pixel width failed to hide the controls on the emulator.
+        fragment.addInputListener(DirectionalNavigationAdapter(fragment))
         fragment.addInputListener(
             object : InputListener {
                 override fun onTap(event: TapEvent): Boolean {
-                    val width = fragment.view?.width ?: return false
-                    if (event.point.x in width * 0.3f..width * 0.7f) {
-                        controls = !controls
-                        return true
-                    }
-                    return false
+                    controls = !controls
+                    return true
                 }
             }
         )
-        fragment.addInputListener(DirectionalNavigationAdapter(fragment))
         lifecycleScope.launch {
             if (model.automaticKindleResume) {
                 try {
