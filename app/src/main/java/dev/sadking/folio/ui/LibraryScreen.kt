@@ -266,7 +266,14 @@ fun LibraryScreen(
                     LazyVerticalGrid(
                         state = gridState,
                         // Three covers across a typical phone; more on wider screens.
-                        columns = GridCells.Adaptive(104.dp),
+                        // Wider tiles for larger text, so titles wrap between words, not inside
+                        // them.
+                        columns =
+                            GridCells.Adaptive(
+                                104.dp *
+                                    androidx.compose.ui.platform.LocalDensity.current.fontScale
+                                        .coerceIn(1f, 1.6f)
+                            ),
                         contentPadding =
                             PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp, top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -160,22 +160,30 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                 Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        else
-            Column(
-                Modifier.fillMaxSize().padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        else {
+            // A generated cover is artwork: its title keeps one size, whatever the system font.
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides
+                    Density(density.density, fontScale = 1f)
             ) {
-                HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.primary)
-                Text(
-                    book.title,
-                    style =
-                        MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
-                        ),
-                    maxLines = 5,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        book.title,
+                        style =
+                            MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                            ),
+                        maxLines = 5,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+        }
     }
 }
 
