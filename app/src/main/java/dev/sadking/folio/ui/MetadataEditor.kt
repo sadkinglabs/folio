@@ -16,9 +16,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
@@ -79,7 +81,10 @@ fun MetadataEditor(
                         enabled = !busy && title.isNotBlank() && numberValid && dirty,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (busy) "Saving…" else "Save changes")
+                        Text(
+                            if (busy) stringResource(R.string.library_editor_saving)
+                            else stringResource(R.string.library_editor_save)
+                        )
                     }
                 }
             }
@@ -93,10 +98,9 @@ fun MetadataEditor(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SectionHeading(
-                "Book information",
-                if (book.currentPath.isBlank())
-                    "Saved locally without an EPUB. Your Hardcover match is retained."
-                else "Your original EPUB is preserved; edits create a new revision.",
+                stringResource(R.string.library_editor_heading),
+                if (book.currentPath.isBlank()) stringResource(R.string.library_editor_no_epub_note)
+                else stringResource(R.string.library_editor_epub_note),
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -110,62 +114,88 @@ fun MetadataEditor(
                         },
                         enabled = !busy,
                     ) {
-                        Text("Replace cover")
+                        Text(stringResource(R.string.library_editor_replace_cover))
                     }
                     if (cover != null) {
-                        Text("Replacement selected", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            stringResource(R.string.library_editor_cover_selected),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                         TextButton(onClick = { cover = null }, enabled = !busy) {
-                            Text("Undo cover change")
+                            Text(stringResource(R.string.library_editor_undo_cover))
                         }
                     }
                 }
             }
             EditorField(
-                "Title",
+                stringResource(R.string.library_editor_title),
                 title,
                 { title = it },
                 error = title.isBlank(),
                 enabled = !busy,
-                supporting = if (title.isBlank()) "A title is required" else null,
+                supporting =
+                    if (title.isBlank()) stringResource(R.string.library_editor_title_required)
+                    else null,
             )
             EditorField(
-                "Authors · one per line",
+                stringResource(R.string.library_editor_authors),
                 authors,
                 { authors = it },
                 multiline = true,
                 enabled = !busy,
             )
             EditorField(
-                "Description",
+                stringResource(R.string.library_editor_description),
                 description,
                 { description = it },
                 multiline = true,
                 enabled = !busy,
             )
-            EditorField("Series", series, { series = it }, enabled = !busy)
             EditorField(
-                "Series number",
+                stringResource(R.string.library_editor_series),
+                series,
+                { series = it },
+                enabled = !busy,
+            )
+            EditorField(
+                stringResource(R.string.library_editor_series_number),
                 seriesIndex,
                 { seriesIndex = it },
                 error = !numberValid,
                 enabled = !busy,
-                supporting = if (!numberValid) "Enter a number of zero or greater" else null,
+                supporting =
+                    if (!numberValid) stringResource(R.string.library_editor_series_number_error)
+                    else null,
             )
-            ExpandableSection("More metadata", "Publisher, language, identifiers and tags") {
-                EditorField("Publisher", publisher, { publisher = it }, enabled = !busy)
-                EditorField("Language", language, { language = it }, enabled = !busy)
+            ExpandableSection(
+                stringResource(R.string.library_editor_more),
+                stringResource(R.string.library_editor_more_summary),
+            ) {
                 EditorField(
-                    "Identifiers · one per line",
+                    stringResource(R.string.library_editor_publisher),
+                    publisher,
+                    { publisher = it },
+                    enabled = !busy,
+                )
+                EditorField(
+                    stringResource(R.string.library_editor_language),
+                    language,
+                    { language = it },
+                    enabled = !busy,
+                )
+                EditorField(
+                    stringResource(R.string.library_editor_identifiers),
                     identifiers,
                     { identifiers = it },
                     multiline = true,
                     enabled = !busy,
                     supporting =
-                        if (book.currentPath.isBlank()) "ISBN or other identifiers"
-                        else "The EPUB's primary identifier is retained.",
+                        if (book.currentPath.isBlank())
+                            stringResource(R.string.library_editor_identifiers_hint)
+                        else stringResource(R.string.library_editor_identifiers_epub),
                 )
                 EditorField(
-                    "Tags · one per line",
+                    stringResource(R.string.library_editor_tags),
                     tags,
                     { tags = it },
                     multiline = true,
@@ -174,9 +204,8 @@ fun MetadataEditor(
             }
             Text(
                 if (book.currentPath.isBlank())
-                    "These edits change phone metadata only; no Hardcover update is published."
-                else
-                    "Books already on your Kindle are not automatically replaced after an edit. Review any revision conflict in Kindle sync.",
+                    stringResource(R.string.library_editor_no_epub_footer)
+                else stringResource(R.string.library_editor_epub_footer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

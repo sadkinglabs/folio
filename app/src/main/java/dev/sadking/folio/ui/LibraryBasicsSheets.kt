@@ -15,9 +15,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 
@@ -44,10 +47,19 @@ fun CatalogueEditorDialog(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (book.title.isBlank()) "Add book offline" else "Edit book") },
+                    title = {
+                        Text(
+                            if (book.title.isBlank())
+                                stringResource(R.string.library_editor_add_title)
+                            else stringResource(R.string.library_editor_edit_title)
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { close() }, enabled = !busy) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                stringResource(R.string.library_back),
+                            )
                         }
                     },
                 )
@@ -67,8 +79,8 @@ fun CatalogueEditorDialog(
     if (discard)
         AlertDialog(
             onDismissRequest = { discard = false },
-            title = { Text("Discard unsaved changes?") },
-            text = { Text("The saved book has not been changed.") },
+            title = { Text(stringResource(R.string.library_discard_title)) },
+            text = { Text(stringResource(R.string.library_discard_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -76,10 +88,14 @@ fun CatalogueEditorDialog(
                         onDismiss()
                     }
                 ) {
-                    Text("Discard")
+                    Text(stringResource(R.string.library_discard))
                 }
             },
-            dismissButton = { TextButton(onClick = { discard = false }) { Text("Keep editing") } },
+            dismissButton = {
+                TextButton(onClick = { discard = false }) {
+                    Text(stringResource(R.string.library_keep_editing))
+                }
+            },
         )
 }
 
@@ -104,20 +120,37 @@ fun ShelfEditorSheet(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Edit list", style = MaterialTheme.typography.headlineSmall)
-            EditorField("List name", name, { name = it }, enabled = !busy, error = name.isBlank())
-            Text("Rule", style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.library_list_edit_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            EditorField(
+                stringResource(R.string.library_list_name),
+                name,
+                { name = it },
+                enabled = !busy,
+                error = name.isBlank(),
+            )
+            Text(
+                stringResource(R.string.library_list_rule),
+                style = MaterialTheme.typography.titleMedium,
+            )
             LibraryRules.fields.forEach { rule ->
                 Row {
                     RadioButton(field == rule, { field = rule }, enabled = !busy)
-                    Text(rule, Modifier.padding(top = 12.dp))
+                    Text(libraryRuleLabel(rule), Modifier.padding(top = 12.dp))
                 }
             }
             if (field !in listOf("Manual", "Missing on Kindle"))
-                EditorField("Rule value", value, { value = it }, enabled = !busy)
+                EditorField(
+                    stringResource(R.string.library_list_rule_value),
+                    value,
+                    { value = it },
+                    enabled = !busy,
+                )
             if (shelf.ruleField != field)
                 Text(
-                    "Manual memberships are retained when switching rules. Switching a smart list to Manual uses its stored manual memberships, not a copy of the smart results.",
+                    stringResource(R.string.library_list_rule_change_note),
                     style = MaterialTheme.typography.bodySmall,
                 )
             if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
@@ -129,7 +162,7 @@ fun ShelfEditorSheet(
                         (field in listOf("Manual", "Missing on Kindle") || value.isNotBlank()),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Save list")
+                Text(stringResource(R.string.library_list_save))
             }
             TextButton(
                 onClick = { confirmDelete = true },
@@ -137,24 +170,24 @@ fun ShelfEditorSheet(
                 colors =
                     ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
-                Text("Delete list")
+                Text(stringResource(R.string.library_list_delete))
             }
         }
     }
     if (confirmDelete)
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete ${shelf.name}?") },
-            text = {
-                Text(
-                    "Removes this list and its memberships. Books, files, reading data, Kindle collections and Hardcover entries are retained."
-                )
-            },
+            title = { Text(stringResource(R.string.library_list_delete_title, shelf.name)) },
+            text = { Text(stringResource(R.string.library_list_delete_body)) },
             confirmButton = {
-                TextButton(onClick = onDelete, enabled = !busy) { Text("Delete list") }
+                TextButton(onClick = onDelete, enabled = !busy) {
+                    Text(stringResource(R.string.library_list_delete))
+                }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Keep list") }
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(stringResource(R.string.library_list_keep))
+                }
             },
         )
 }
@@ -180,20 +213,29 @@ fun RemovedBooksSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("Recently removed", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "Files, notes and associations stay here until you delete them permanently. Restoring an EPUB also restores its attached catalogue entry."
+                    stringResource(R.string.library_removed_title),
+                    style = MaterialTheme.typography.headlineSmall,
                 )
+                Text(stringResource(R.string.library_removed_body))
             }
-            if (groups.isEmpty()) item { Text("No removed books") }
+            if (groups.isEmpty()) item { Text(stringResource(R.string.library_removed_empty)) }
             items(groups, key = { it.groupId }) { entry ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text(entry.title, style = MaterialTheme.typography.titleMedium)
-                        Text(entry.kind, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            when (entry.kind) {
+                                "EPUB" -> stringResource(R.string.library_removed_kind_epub)
+                                "Catalogue" ->
+                                    stringResource(R.string.library_removed_kind_catalogue)
+                                else -> entry.kind
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                         Row {
                             TextButton(onClick = { onRestore(entry.groupId) }, enabled = !busy) {
-                                Text("Restore")
+                                Text(stringResource(R.string.library_removed_restore))
                             }
                             TextButton(
                                 onClick = { purge = entry },
@@ -203,7 +245,7 @@ fun RemovedBooksSheet(
                                         contentColor = MaterialTheme.colorScheme.error
                                     ),
                             ) {
-                                Text("Delete permanently")
+                                Text(stringResource(R.string.library_removed_delete))
                             }
                         }
                     }
@@ -214,12 +256,10 @@ fun RemovedBooksSheet(
     purge?.let { entry ->
         AlertDialog(
             onDismissRequest = { purge = null },
-            title = { Text("Delete ${entry.title} permanently?") },
-            text = {
-                Text(
-                    "Deletes the app-owned files and cached reading data on this phone. This cannot be undone. Downloads, Kindle and Hardcover remain untouched."
-                )
+            title = {
+                Text(stringResource(R.string.library_removed_delete_title, entry.title))
             },
+            text = { Text(stringResource(R.string.library_removed_delete_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -228,11 +268,13 @@ fun RemovedBooksSheet(
                     },
                     enabled = !busy,
                 ) {
-                    Text("Delete permanently")
+                    Text(stringResource(R.string.library_removed_delete))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { purge = null }) { Text("Keep removed book") }
+                TextButton(onClick = { purge = null }) {
+                    Text(stringResource(R.string.library_removed_keep))
+                }
             },
         )
     }
@@ -249,26 +291,32 @@ fun BatchManageSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp)) {
-            Text("Manage $count selected books", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "List and status changes apply on this phone. They do not publish Hardcover progress."
+                pluralStringResource(R.plurals.library_batch_title, count, count),
+                style = MaterialTheme.typography.headlineSmall,
             )
+            Text(stringResource(R.string.library_batch_body))
             shelves
                 .filter { it.ruleField == "Manual" }
                 .forEach { shelf ->
                     Text(shelf.name, style = MaterialTheme.typography.titleMedium)
                     Row {
                         TextButton(onClick = { onList(shelf.id, true) }, enabled = !busy) {
-                            Text("Add to list")
+                            Text(stringResource(R.string.library_batch_add_to_list))
                         }
                         TextButton(onClick = { onList(shelf.id, false) }, enabled = !busy) {
-                            Text("Remove from list")
+                            Text(stringResource(R.string.library_batch_remove_from_list))
                         }
                     }
                 }
-            Text("Phone reading status", style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.library_batch_status),
+                style = MaterialTheme.typography.titleMedium,
+            )
             phoneStatuses.forEach { status ->
-                TextButton(onClick = { onStatus(status) }, enabled = !busy) { Text(status) }
+                TextButton(onClick = { onStatus(status) }, enabled = !busy) {
+                    Text(libraryStatusLabel(status))
+                }
             }
         }
     }
@@ -290,8 +338,13 @@ fun ImportResultsSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("Import results", style = MaterialTheme.typography.headlineSmall)
-                TextButton(onClick = onChooseAgain, enabled = !busy) { Text("Choose files again") }
+                Text(
+                    stringResource(R.string.library_import_results_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                TextButton(onClick = onChooseAgain, enabled = !busy) {
+                    Text(stringResource(R.string.library_import_choose_again))
+                }
                 if (results.any { it.error != null })
                     TextButton(
                         onClick = {
@@ -299,7 +352,7 @@ fun ImportResultsSheet(
                         },
                         enabled = !busy,
                     ) {
-                        Text("Retry failed files")
+                        Text(stringResource(R.string.library_import_retry_failed))
                     }
             }
             items(results, key = { it.uri }) { result ->
@@ -313,12 +366,12 @@ fun ImportResultsSheet(
                                 onClick = { onRetry(listOf(Uri.parse(result.uri))) },
                                 enabled = !busy,
                             ) {
-                                Text("Retry this file")
+                                Text(stringResource(R.string.library_import_retry_one))
                             }
                         }
                         result.bookId?.let {
                             TextButton(onClick = { onOpen(it) }, enabled = !busy) {
-                                Text("Open book")
+                                Text(stringResource(R.string.library_import_open))
                             }
                         }
                     }
@@ -327,3 +380,16 @@ fun ImportResultsSheet(
         }
     }
 }
+
+/** Display text for a stored list rule; the stored rule name never changes. */
+@Composable
+internal fun libraryRuleLabel(rule: String): String =
+    when (rule) {
+        "Manual" -> stringResource(R.string.library_rule_manual)
+        "Status" -> stringResource(R.string.library_rule_status)
+        "Language" -> stringResource(R.string.library_rule_language)
+        "Series" -> stringResource(R.string.library_rule_series)
+        "Tag" -> stringResource(R.string.library_rule_tag)
+        "Missing on Kindle" -> stringResource(R.string.library_rule_not_on_device)
+        else -> rule
+    }

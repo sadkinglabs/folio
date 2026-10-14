@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
@@ -89,7 +90,7 @@ fun BookDetails(
             ?.takeIf { it.documentHash != book.currentHash }
             ?.let {
                 Text(
-                    "Saved progress belongs to the transferred edition. Its position and notes are retained.",
+                    stringResource(R.string.library_book_other_version),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -100,7 +101,10 @@ fun BookDetails(
             !busy,
         )
         if (book.description.isNotBlank())
-            ExpandableSection("About this book", "Description") {
+            ExpandableSection(
+                stringResource(R.string.library_book_about),
+                stringResource(R.string.library_book_about_summary),
+            ) {
                 Text(
                     android.text.Html.fromHtml(
                             book.description,
@@ -116,41 +120,66 @@ fun BookDetails(
                     Modifier.padding(FolioSpace.item),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Next in ${book.series}", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        stringResource(R.string.library_book_next_in_series, book.series),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                     Text(nextInSeries.title, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (nextOnDevice) "On your e-reader" else "Not on your e-reader yet",
+                        if (nextOnDevice) stringResource(R.string.library_book_next_on_device)
+                        else stringResource(R.string.library_book_next_not_on_device),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
-        ExpandableSection("Book information", "Publisher, language, identifiers and tags") {
-            if (book.publisher.isNotBlank()) DetailLine("Publisher", book.publisher)
-            if (book.language.isNotBlank()) DetailLine("Language", book.language)
+        ExpandableSection(
+            stringResource(R.string.library_book_info),
+            stringResource(R.string.library_book_info_summary),
+        ) {
+            if (book.publisher.isNotBlank())
+                DetailLine(stringResource(R.string.library_book_publisher), book.publisher)
+            if (book.language.isNotBlank())
+                DetailLine(stringResource(R.string.library_book_language), book.language)
             if (book.identifiers != "[]")
-                DetailLine("Identifiers", decode(book.identifiers).joinToString("\n"))
-            if (book.tags != "[]") DetailLine("Tags", decode(book.tags).joinToString(", "))
+                DetailLine(
+                    stringResource(R.string.library_book_identifiers),
+                    decode(book.identifiers).joinToString("\n"),
+                )
+            if (book.tags != "[]")
+                DetailLine(
+                    stringResource(R.string.library_book_tags),
+                    decode(book.tags).joinToString(", "),
+                )
             OutlinedButton(onClick = onLookup, enabled = !busy) {
-                Text("Find metadata & covers online")
+                Text(stringResource(R.string.library_book_find_details))
             }
         }
-        ExpandableSection("Highlights & notes", "${annotations.size} saved annotations") {
+        ExpandableSection(
+            stringResource(R.string.library_book_notes),
+            pluralStringResource(
+                R.plurals.library_book_notes_count,
+                annotations.size,
+                annotations.size,
+            ),
+        ) {
             if (annotations.isEmpty()) {
                 Text(
-                    "Close the book in KOReader, then refresh to retrieve its saved notes.",
+                    stringResource(R.string.library_book_notes_empty),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TextButton(onClick = onRefreshReading, enabled = !deviceBusy) {
-                    Text("Retrieve notes from Kindle")
+                    Text(stringResource(R.string.library_book_notes_get))
                 }
             } else {
                 OutlinedButton(onClick = onExport, enabled = !busy) {
-                    Text("Export Markdown for Obsidian")
+                    Text(stringResource(R.string.library_book_notes_export))
                 }
                 annotations.take(100).forEach { note ->
                     Text(
                         note.chapter.ifBlank {
-                            if (note.kind == "bookmark") "Bookmark" else "Highlight"
+                            if (note.kind == "bookmark")
+                                stringResource(R.string.library_book_bookmark)
+                            else stringResource(R.string.library_book_highlight)
                         },
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
@@ -163,9 +192,11 @@ fun BookDetails(
                     HorizontalDivider()
                 }
                 if (annotations.size > 100)
-                    Text("Showing 100 notes. Export includes all saved annotations.")
+                    Text(stringResource(R.string.library_book_notes_limited))
             }
-            TextButton(onClick = onReading) { Text("All reading activity") }
+            TextButton(onClick = onReading) {
+                Text(stringResource(R.string.library_book_activity))
+            }
         }
         if (onRemove != null)
             TextButton(
@@ -174,7 +205,7 @@ fun BookDetails(
                 colors =
                     ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
-                Text("Remove from library")
+                Text(stringResource(R.string.library_book_remove))
             }
         Spacer(Modifier.height(FolioSpace.item))
     }
@@ -208,7 +239,7 @@ private fun BookProgressCard(
                     AssistChip(
                         onClick = { statusMenu = true },
                         enabled = !busy,
-                        label = { Text(book.status) },
+                        label = { Text(libraryStatusLabel(book.status)) },
                         trailingIcon = {
                             Icon(
                                 Icons.Outlined.ArrowDropDown,
@@ -219,7 +250,7 @@ private fun BookProgressCard(
                     DropdownMenu(statusMenu, { statusMenu = false }) {
                         phoneStatuses.forEach { status ->
                             DropdownMenuItem(
-                                text = { Text(status) },
+                                text = { Text(libraryStatusLabel(status)) },
                                 onClick = {
                                     onStatus(status)
                                     statusMenu = false
@@ -250,8 +281,13 @@ private fun BookProgressCard(
             }
             HorizontalDivider()
             Text(
-                displayDeviceState(signals) +
-                    (signals.deviceVerifiedAt?.let { " · ${observationDate(it)}" } ?: ""),
+                signals.deviceVerifiedAt?.let {
+                    stringResource(
+                        R.string.library_book_device_state_checked,
+                        displayDeviceState(signals),
+                        observationDate(it),
+                    )
+                } ?: displayDeviceState(signals),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -275,7 +311,10 @@ private fun ProgressLine(
                     modifier = Modifier.weight(1f),
                 )
                 progress?.let {
-                    Text("${(it * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        stringResource(R.string.library_book_progress_percent, (it * 100).toInt()),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                 }
             }
             progress?.let {

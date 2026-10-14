@@ -10,7 +10,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.R
 
 @Composable
 fun LibraryRefineSheet(
@@ -38,39 +41,66 @@ fun LibraryRefineSheet(
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Refine library", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    stringResource(R.string.library_refine_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 if (scope != null)
                     Row {
-                        Text("List: $scope", Modifier.weight(1f))
-                        TextButton(onClick = onClearScope) { Text("Clear list") }
+                        Text(
+                            stringResource(R.string.library_refine_list, scope),
+                            Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onClearScope) {
+                            Text(stringResource(R.string.library_refine_clear_list))
+                        }
                     }
+                // The stored values are filter keys; only their labels are translated.
                 RefineChoices(
-                    "Reading status",
+                    stringResource(R.string.library_refine_status),
                     listOf(
-                        "All",
-                        "Want to Read",
-                        "Unread",
-                        "Reading",
-                        "Finished",
-                        "Paused",
-                        "Abandoned",
-                    ),
+                            "All",
+                            "Want to Read",
+                            "Unread",
+                            "Reading",
+                            "Finished",
+                            "Paused",
+                            "Abandoned",
+                        )
+                        .map { it to libraryStatusLabel(it) },
                     status,
                     onStatus,
                 )
                 RefineChoices(
-                    "Files",
-                    listOf("All books", "With EPUB", "Needs EPUB"),
+                    stringResource(R.string.library_refine_files),
+                    listOf(
+                        "All books" to stringResource(R.string.library_files_all),
+                        "With EPUB" to stringResource(R.string.library_files_with_epub),
+                        "Needs EPUB" to stringResource(R.string.library_files_needs_epub),
+                    ),
                     files,
                     onFiles,
                 )
-                RefineChoices("Sort", listOf("Recent", "Title", "Author"), sort, onSort)
-                Text("Tags", style = MaterialTheme.typography.titleMedium)
+                RefineChoices(
+                    stringResource(R.string.library_refine_sort),
+                    listOf(
+                        "Recent" to stringResource(R.string.library_sort_recent),
+                        "Title" to stringResource(R.string.library_sort_title),
+                        "Author" to stringResource(R.string.library_sort_author),
+                    ),
+                    sort,
+                    onSort,
+                )
+                Text(
+                    stringResource(R.string.library_refine_tags),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                val anyTag = stringResource(R.string.library_refine_any_tag)
                 OutlinedTextField(
                     tag,
                     onTag,
-                    label = { Text("Exact tag") },
-                    placeholder = { Text("Any tag") },
+                    label = { Text(stringResource(R.string.library_refine_exact_tag)) },
+                    placeholder = { Text(anyTag) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -79,7 +109,7 @@ fun LibraryRefineSheet(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        FilterChip(tag.isBlank(), { onTag("") }, label = { Text("Any tag") })
+                        FilterChip(tag.isBlank(), { onTag("") }, label = { Text(anyTag) })
                         tags
                             .filter { tag.isBlank() || it.contains(tag, true) }
                             .take(20)
@@ -96,7 +126,9 @@ fun LibraryRefineSheet(
                 Modifier.fillMaxWidth().padding(24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                OutlinedButton(onClick = onReset) { Text("Reset") }
+                OutlinedButton(onClick = onReset) {
+                    Text(stringResource(R.string.library_refine_reset))
+                }
                 Button(
                     onClick = {
                         keyboard?.hide()
@@ -104,7 +136,7 @@ fun LibraryRefineSheet(
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (count == 1) "Show 1 book" else "Show $count books")
+                    Text(pluralStringResource(R.plurals.library_refine_show, count, count))
                 }
             }
         }
@@ -114,7 +146,7 @@ fun LibraryRefineSheet(
 @Composable
 private fun RefineChoices(
     title: String,
-    values: List<String>,
+    values: List<Pair<String, String>>,
     selected: String,
     onSelect: (String) -> Unit,
 ) {
@@ -123,8 +155,22 @@ private fun RefineChoices(
         Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        values.forEach { value ->
-            FilterChip(value == selected, { onSelect(value) }, label = { Text(value) })
+        values.forEach { (value, label) ->
+            FilterChip(value == selected, { onSelect(value) }, label = { Text(label) })
         }
     }
 }
+
+/** Display text for a stored reading status; unknown values are shown as stored. */
+@Composable
+internal fun libraryStatusLabel(status: String): String =
+    when (status) {
+        "All" -> stringResource(R.string.library_status_all)
+        "Want to Read" -> stringResource(R.string.library_status_want_to_read)
+        "Unread" -> stringResource(R.string.library_status_unread)
+        "Reading" -> stringResource(R.string.library_status_reading)
+        "Finished" -> stringResource(R.string.library_status_finished)
+        "Paused" -> stringResource(R.string.library_status_paused)
+        "Abandoned" -> stringResource(R.string.library_status_abandoned)
+        else -> status
+    }

@@ -24,10 +24,13 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
@@ -91,6 +94,11 @@ fun LibraryScreen(
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
     val motionScope = rememberCoroutineScope()
+    val searchHint = stringResource(R.string.library_search_hint)
+    val bookActionsLabel = stringResource(R.string.library_book_actions)
+    val changeSelectionLabel = stringResource(R.string.library_change_selection)
+    val showGridLabel = stringResource(R.string.library_show_grid)
+    val showListLabel = stringResource(R.string.library_show_list)
     Column(modifier.fillMaxWidth()) {
         val activeFilters =
             listOf(
@@ -103,13 +111,16 @@ fun LibraryScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Search library") },
+            placeholder = { Text(searchHint) },
             leadingIcon = { Icon(Icons.Outlined.Search, null) },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (query.isNotEmpty())
                         IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Outlined.Close, "Clear search")
+                            Icon(
+                                Icons.Outlined.Close,
+                                stringResource(R.string.library_clear_search),
+                            )
                         }
                     TextButton(
                         onClick = {
@@ -119,7 +130,10 @@ fun LibraryScreen(
                     ) {
                         Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(if (activeFilters == 0) "Refine" else "Refine · $activeFilters")
+                        Text(
+                            if (activeFilters == 0) stringResource(R.string.library_refine)
+                            else stringResource(R.string.library_refine_count, activeFilters)
+                        )
                     }
                 }
             },
@@ -129,7 +143,7 @@ fun LibraryScreen(
             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
             modifier =
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).semantics {
-                    contentDescription = "Search library"
+                    contentDescription = searchHint
                 },
         )
         Row(
@@ -137,12 +151,21 @@ fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(filterName ?: "Library", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (results == null) "Loading books…"
-                    else if (filtered.size == books.size) {
-                        if (books.size == 1) "1 book" else "${books.size} books"
-                    } else "${filtered.size} of ${books.size} books",
+                    filterName ?: stringResource(R.string.library_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (results == null) stringResource(R.string.library_loading)
+                    else if (filtered.size == books.size)
+                        pluralStringResource(R.plurals.library_book_count, books.size, books.size)
+                    else
+                        pluralStringResource(
+                            R.plurals.library_book_count_filtered,
+                            books.size,
+                            filtered.size,
+                            books.size,
+                        ),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -164,7 +187,7 @@ fun LibraryScreen(
                     },
                     shape = SegmentedButtonDefaults.itemShape(0, 2),
                     icon = {},
-                    modifier = Modifier.semantics { contentDescription = "Show grid" },
+                    modifier = Modifier.semantics { contentDescription = showGridLabel },
                 ) {
                     Icon(Icons.Outlined.GridView, null, Modifier.size(20.dp))
                 }
@@ -184,21 +207,23 @@ fun LibraryScreen(
                     },
                     shape = SegmentedButtonDefaults.itemShape(1, 2),
                     icon = {},
-                    modifier = Modifier.semantics { contentDescription = "Show list" },
+                    modifier = Modifier.semantics { contentDescription = showListLabel },
                 ) {
                     Icon(Icons.AutoMirrored.Filled.List, null, Modifier.size(20.dp))
                 }
             }
             if (onFolderSync != null)
                 IconButton(onClick = onFolderSync, enabled = !busy) {
-                    Icon(Icons.Outlined.Sync, "Sync paired folders")
+                    Icon(Icons.Outlined.Sync, stringResource(R.string.library_sync_folders))
                 }
             if (onSettings != null)
-                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings") }
+                IconButton(onClick = onSettings) {
+                    Icon(Icons.Outlined.Settings, stringResource(R.string.library_settings))
+                }
         }
         if (selection.isNotEmpty())
             Text(
-                "Tap books to change the selection · Kindle actions use EPUBs only",
+                stringResource(R.string.library_selection_hint),
                 Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelMedium,
             )
@@ -208,11 +233,12 @@ fun LibraryScreen(
             }
         else if (filtered.isEmpty())
             EmptyState(
-                if (books.isEmpty() && filterName == null) "Make room for your next read"
-                else "No matching books",
                 if (books.isEmpty() && filterName == null)
-                    "Add an EPUB, enter a book, scan a cover or bring in your Hardcover library."
-                else "Try another search or reading filter.",
+                    stringResource(R.string.library_empty_title)
+                else stringResource(R.string.library_no_match_title),
+                if (books.isEmpty() && filterName == null)
+                    stringResource(R.string.library_empty_body)
+                else stringResource(R.string.library_no_match_body),
                 Icons.Outlined.AutoStories,
                 if (books.isEmpty() && filterName == null) onImport
                 else
@@ -225,7 +251,9 @@ fun LibraryScreen(
                     }),
                 actionEnabled = !busy,
                 actionLabel =
-                    if (books.isEmpty() && filterName == null) "Add books" else "Clear filters",
+                    if (books.isEmpty() && filterName == null)
+                        stringResource(R.string.library_empty_action)
+                    else stringResource(R.string.library_no_match_action),
             )
         else
             AnimatedContent(
@@ -259,7 +287,7 @@ fun LibraryScreen(
                                 signals = signals[book.id],
                                 selectable = true,
                                 longActionLabel =
-                                    if (selection.isEmpty() && onContext != null) "Book actions"
+                                    if (selection.isEmpty() && onContext != null) bookActionsLabel
                                     else null,
                             )
                         }
@@ -290,8 +318,8 @@ fun LibraryScreen(
                                             listOf(
                                                 CustomAccessibilityAction(
                                                     if (selection.isEmpty() && onContext != null)
-                                                        "Book actions"
-                                                    else "Change selection"
+                                                        bookActionsLabel
+                                                    else changeSelectionLabel
                                                 ) {
                                                     if (selection.isEmpty() && onContext != null)
                                                         onContext(book)
@@ -331,13 +359,16 @@ fun LibraryScreen(
                                         BookBadges(signals.getValue(book.id))
                                     else
                                         Text(
-                                            book.status,
+                                            libraryStatusLabel(book.status),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary,
                                         )
                                 }
                                 if (book.id in selection)
-                                    Icon(Icons.Outlined.CheckCircle, "Selected")
+                                    Icon(
+                                        Icons.Outlined.CheckCircle,
+                                        stringResource(R.string.library_selected),
+                                    )
                             }
                         }
                     }

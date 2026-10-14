@@ -8,7 +8,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.R
 import dev.sadking.folio.core.Metadata
 import dev.sadking.folio.data.*
 
@@ -34,20 +36,23 @@ fun MetadataLookupSheet(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Find metadata & covers", style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Online lookup sends your search text to Open Library. EPUB files and reading data stay on your phone.",
+                stringResource(R.string.library_lookup_title),
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Text(
+                stringResource(R.string.library_lookup_privacy),
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
                 query,
                 { query = it },
                 Modifier.fillMaxWidth(),
-                label = { Text("Title, author or ISBN") },
+                label = { Text(stringResource(R.string.library_lookup_query)) },
                 singleLine = true,
             )
             Button(onClick = { onSearch(query) }, enabled = !busy && query.isNotBlank()) {
-                Text("Search Open Library")
+                Text(stringResource(R.string.library_lookup_search))
             }
             if (proposal == null)
                 results.forEach { c ->
@@ -60,8 +65,13 @@ fun MetadataLookupSheet(
                             Text(c.title, style = MaterialTheme.typography.titleMedium)
                             Text(c.authors.joinToString(", "))
                             Text(
-                                if (c.editionKey == null) "Work metadata · edition unspecified"
-                                else "Edition ${c.editionKey.substringAfterLast('/')}",
+                                if (c.editionKey == null)
+                                    stringResource(R.string.library_lookup_work)
+                                else
+                                    stringResource(
+                                        R.string.library_lookup_edition,
+                                        c.editionKey.substringAfterLast('/'),
+                                    ),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                         }
@@ -70,7 +80,21 @@ fun MetadataLookupSheet(
             else {
                 val current = book.metadata()
                 val p = proposal.metadata
-                Text("Choose fields to replace", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(R.string.library_lookup_choose),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                // Field keys stay in English: they track which fields are selected.
+                val fieldLabels =
+                    mapOf(
+                        "Title" to stringResource(R.string.library_lookup_field_title),
+                        "Authors" to stringResource(R.string.library_lookup_field_authors),
+                        "Description" to stringResource(R.string.library_lookup_field_description),
+                        "Publisher" to stringResource(R.string.library_lookup_field_publisher),
+                        "Language" to stringResource(R.string.library_lookup_field_language),
+                        "Identifiers" to stringResource(R.string.library_lookup_field_identifiers),
+                    )
+                val emptyValue = stringResource(R.string.library_lookup_empty)
                 val fields =
                     listOf(
                         "Title" to (current.title to p.title),
@@ -97,12 +121,23 @@ fun MetadataLookupSheet(
                                 enabled = !busy,
                             )
                             Column(Modifier.weight(1f)) {
-                                Text(name, style = MaterialTheme.typography.titleSmall)
                                 Text(
-                                    "Current: ${values.first.ifBlank { "Empty" }.take(240)}",
+                                    fieldLabels[name] ?: name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    stringResource(
+                                        R.string.library_lookup_current,
+                                        values.first.ifBlank { emptyValue }.take(240),
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
-                                Text("Proposed: ${values.second.take(600)}")
+                                Text(
+                                    stringResource(
+                                        R.string.library_lookup_proposed,
+                                        values.second.take(600),
+                                    )
+                                )
                             }
                         }
                 }
@@ -120,7 +155,7 @@ fun MetadataLookupSheet(
                             },
                             enabled = !busy,
                         )
-                        Text("Replace cover from this edition")
+                        Text(stringResource(R.string.library_lookup_cover))
                     }
                 }
                 Button(
@@ -146,10 +181,10 @@ fun MetadataLookupSheet(
                     enabled = !busy && selected.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Apply selected fields")
+                    Text(stringResource(R.string.library_lookup_apply))
                 }
                 Text(
-                    "Series, tags and unselected fields are preserved. The original EPUB is retained.",
+                    stringResource(R.string.library_lookup_note),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
