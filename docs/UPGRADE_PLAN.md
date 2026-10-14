@@ -272,6 +272,16 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - `strings.xml` and the copy pass; tokens applied everywhere; Roborazzi screenshot tests (light, dark, 200% font).
 - **Device check:** run add → attach → edit → organise → read without dead ends, with back behaving as expected everywhere.
 
+**M2 status (2026-10-14):** done, apart from the device check, which needs your phone.
+- **Navigation:** a small saveable back stack (`FolioNav`: tab plus Book, Record, Edit and Settings routes) instead of Navigation-Compose. With four route types and no deep links, the library would add a dependency without a concrete benefit; `FolioNavTest` covers book → book → back, the editor, rotation and process-death restore.
+- **ViewModels:** `LibraryViewModel` (books, lists, editing, lookup, backups), `DeviceViewModel` (pairing, comparison, transfers, reading data, phone folder) and the existing `DiscoveryViewModel`. Book, Lists and Settings did not get their own: they would be thin wrappers over the same repository. A shared `OperationRunner` keeps one queue and one status line.
+- **Busy lock:** library work no longer waits for a transfer, device work does. A transfer banner shows on every other screen. Adding books and editing stay available while work runs; only double-submit guards remain.
+- **Book hub:** primary Read/Continue, secondary Send and Progress, the rest under ⋯; a progress card per source.
+- **Library:** grid or list and sort are remembered, filters last for the session, search survives opening a book, selection survives rotation, and sending a selection or list no longer jumps tabs. Covers stay on Folio's own decoder with a cache sized to the heap rather than adding Coil.
+- **Copy:** every screen's text is in string resources (about 830 strings and plurals), in plain, device-neutral language. Pairing (`ConnectionForm`) and the SSH reader handoff keep their wording until M4 and M3.
+- **Screenshots:** emulator captures in light, dark and 200% font instead of Roborazzi, so they come from real rendering. They are reviewed, not diffed automatically.
+- **Not audited:** that design tokens are applied on every screen.
+
 ### M3: Folio Link and progress that converges
 - **First, a spike on your phone:** a foreground-service HTTP server reached from KOReader over Wi-Fi and over the hotspot, with screen off for 30 minutes. If Doze breaks incoming connections, choose "only while open" plus a wake-on-open prompt, and record the result here.
 - A kosync-compatible server, using Ktor server CIO. It has a fake-client JVM test suite that replays real KOReader request and response captures.

@@ -2,6 +2,21 @@
 
 Release notes moved out of the README. Newest first. Detailed per-release design notes and validation records are in [docs/history](docs/history/).
 
+## 0.11.0 — A usable reader and a calmer app
+
+**Reader (M1).** Reading is full screen: the controls float over the page and hide with the system bars, so text no longer jumps when you tap. Turn pages with edge taps, arrow and page keys, or the volume buttons (a setting). Line spacing, margins and "use the book's own formatting" join text size, and any of them can apply to one book only. Your place is saved once per settled page and survives rotation, backgrounding and the app being closed. Positions shared with KOReader now count the whole spine, so books with non-linear sections land in the right chapter.
+
+**App shell (M2).**
+- Back works everywhere: book → next book → back returns to the first book, and the screen you were on survives rotation.
+- The book page leads with **Read** / **Continue · N%**, then **Send to device** and **Update progress**. A progress card shows this phone, your e-reader and Hardcover side by side.
+- Sending several books, or a whole list, happens where you are. A banner shows progress and lets you cancel; a short message says what was sent, what was already there and what differs. Different copies on the e-reader are never replaced.
+- Adding books and editing stay available while other work runs; work is queued and runs one item at a time.
+- Library grid or list and sort order are remembered; covers load from a larger cache; books without an EPUB are dimmed.
+- Plain, device-neutral wording throughout ("your e-reader", not "Kindle"), and every screen's text now lives in string resources.
+- Large text: the library grid widens its tiles so titles wrap between words.
+
+**Not changed.** Room schema 7, backups and the signing key are unchanged, so this installs over 0.10.1. Pairing still uses SSH (redone in M4); the KOReader plugin is unchanged.
+
 ## 0.10.1 — Reader startup fix
 
 The 0.10.0 reader tried to mount its fragment by container ID from AndroidView's factory, before that container entered the Activity view tree. This can throw `IllegalArgumentException: No view found for id … reader_container`. The hotfix uses FragmentContainerView and waits for an attached, resumed host before mounting. It also declares the directly used Fragment KTX dependency explicitly and reports EPUBs without readable chapters as an opening error. Room schema 7 and the signing key are unchanged.
