@@ -156,7 +156,7 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
         if (image != null)
             Image(
                 image!!,
-                "Cover of ${book.title}",
+                stringResource(R.string.shell_cover_of, book.title),
                 Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
@@ -189,17 +189,19 @@ internal fun BookTile(
     selectable: Boolean = true,
     longActionLabel: String? = null,
 ) {
+    val actionLabel =
+        longActionLabel
+            ?: stringResource(
+                if (!selectable) R.string.shell_open_book_details
+                else if (selected) R.string.shell_deselect_book else R.string.shell_select_book
+            )
     Column(
         Modifier.animateContentSize(animationSpec = spring())
             .semantics {
                 this.selected = selected
                 customActions =
                     listOf(
-                        CustomAccessibilityAction(
-                            if (longActionLabel != null) longActionLabel
-                            else if (!selectable) "Open book details"
-                            else if (selected) "Deselect book" else "Select book"
-                        ) {
+                        CustomAccessibilityAction(actionLabel) {
                             onLong()
                             true
                         }
@@ -229,7 +231,11 @@ internal fun BookTile(
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.primary,
                 ) {
-                    Icon(Icons.Outlined.Check, "Selected", Modifier.padding(6.dp).size(20.dp))
+                    Icon(
+                        Icons.Outlined.Check,
+                        stringResource(R.string.shell_selected),
+                        Modifier.padding(6.dp).size(20.dp),
+                    )
                 }
         }
         Spacer(Modifier.height(8.dp))
@@ -255,7 +261,7 @@ internal fun EmptyState(
     message: String,
     icon: ImageVector,
     action: (() -> Unit)? = null,
-    actionLabel: String = "Import an EPUB",
+    actionLabel: String = stringResource(R.string.shell_import_epub),
     actionEnabled: Boolean = true,
 ) {
     Column(
@@ -293,15 +299,17 @@ internal fun SelectionBar(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
     ) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClear) { Icon(Icons.Outlined.Close, "Clear selection") }
-            Text("$count selected", Modifier.weight(1f))
+            IconButton(onClick = onClear) {
+                Icon(Icons.Outlined.Close, stringResource(R.string.shell_clear_selection))
+            }
+            Text(stringResource(R.string.shell_selected_count, count), Modifier.weight(1f))
             Box {
                 if (onManage == null)
                     IconButton(
                         onClick = { menu = true },
                         enabled = enabled && shelves.isNotEmpty(),
                     ) {
-                        Icon(Icons.Outlined.BookmarkAdd, "Add to list")
+                        Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.shell_add_to_list))
                     }
                 DropdownMenu(menu, { menu = false }) {
                     shelves.forEach { shelf ->
@@ -317,7 +325,7 @@ internal fun SelectionBar(
             }
             if (onManage != null)
                 IconButton(onClick = onManage, enabled = enabled) {
-                    Icon(Icons.Outlined.MoreVert, "Manage selected books")
+                    Icon(Icons.Outlined.MoreVert, stringResource(R.string.shell_manage_selected))
                 }
             IconButton(onClick = onSync, enabled = enabled && syncEnabled) {
                 Icon(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.send_selected))
@@ -326,7 +334,7 @@ internal fun SelectionBar(
                 IconButton(onClick = onRemove, enabled = enabled) {
                     Icon(
                         Icons.Outlined.DeleteOutline,
-                        "Remove selected books",
+                        stringResource(R.string.shell_remove_selected),
                         tint = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -405,6 +413,8 @@ internal fun ExpandableSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
+    val expansionState =
+        stringResource(if (expanded) R.string.shell_expanded else R.string.shell_collapsed)
     OutlinedCard(Modifier.fillMaxWidth()) {
         ListItem(
             headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
@@ -414,7 +424,7 @@ internal fun ExpandableSection(
             },
             modifier =
                 Modifier.clickable(role = Role.Button) { expanded = !expanded }
-                    .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+                    .semantics { stateDescription = expansionState },
         )
         if (expanded)
             Column(
@@ -466,8 +476,15 @@ internal fun rememberOperationSnackbar(
 @Composable
 internal fun BookBadges(signals: BookSignals) {
     Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val progress = signals.progress
         Text(
-            signals.reading + (signals.progress?.let { " · ${(it * 100).toInt()}%" } ?: ""),
+            if (progress == null) signals.reading
+            else
+                stringResource(
+                    R.string.shell_reading_with_progress,
+                    signals.reading,
+                    (progress * 100).toInt(),
+                ),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -503,19 +520,21 @@ internal fun LibraryCover(
     val reading = signals?.reading ?: book.status
     val device = signals?.device
     val noEpub = device == "No EPUB"
+    val noEpubState = stringResource(R.string.shell_device_no_epub)
     val badge: Pair<ImageVector, String>? =
         when {
             reading.startsWith("Finished") -> Icons.Outlined.DoneAll to reading
-            device == "On Kindle" -> Icons.Outlined.TabletAndroid to "On your e-reader"
+            device == "On Kindle" ->
+                Icons.Outlined.TabletAndroid to stringResource(R.string.shell_device_on_ereader)
             device == "Sending" || device == "Queued" ->
-                Icons.Outlined.Sync to "Sending to your e-reader"
+                Icons.Outlined.Sync to stringResource(R.string.shell_device_sending_badge)
             device in listOf("Transfer failed", "Transfer paused", "Needs update") ->
-                Icons.Outlined.ErrorOutline to device!!
+                Icons.Outlined.ErrorOutline to displayDeviceState(signals!!)
             else -> null
         }
     Box(
         modifier.clip(RoundedCornerShape(8.dp)).semantics(mergeDescendants = false) {
-            if (noEpub) stateDescription = "No EPUB yet"
+            if (noEpub) stateDescription = noEpubState
         }
     ) {
         Cover(book, Modifier.matchParentSize().alpha(if (noEpub) 0.55f else 1f))

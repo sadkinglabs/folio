@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shell: bottom tabs -->
+    <string name="shell_tab_library">Library</string>
+    <string name="shell_tab_lists">Lists</string>
+    <string name="shell_tab_device">Device</string>
+    <string name="shell_tab_reading">Reading</string>
+
+    <!-- Shell: common actions -->
+    <string name="shell_back">Back</string>
+    <string name="shell_cancel">Cancel</string>
+    <string name="shell_done">Done</string>
+    <string name="shell_settings">Settings</string>
+    <string name="shell_add_books">Add books</string>
+
+    <!-- Shell: book screen top bar -->
+    <string name="shell_edit_book">Edit book</string>
+    <string name="shell_book_details">Book details</string>
+    <!-- Content description used by UI tests. -->
+    <string name="shell_edit_metadata">Edit metadata</string>
+    <string name="shell_book_actions">Book actions</string>
+
+    <!-- Shell: KOReader plugin install (the folder must be on a Kindle) -->
+    <string name="shell_companion_title">Install the KOReader plugin</string>
+    <string name="shell_companion_body">Enter the folder where KOReader keeps its plugins on your Kindle. Folio adds its plugin there and keeps any previous version. Restart KOReader afterwards.</string>
+    <string name="shell_companion_folder">KOReader plugins folder</string>
+    <string name="shell_companion_install">Install</string>
+
+    <!-- Shell: what a sync sends -->
+    <string name="shell_sync_scope_lists">Sync includes: %1$s. Books already on your e-reader are never removed.</string>
+    <string name="shell_sync_scope_all">Sync includes every book on this phone. To send fewer, choose which lists to include in sync.</string>
+
+    <!-- Shell: unsaved edits -->
+    <string name="shell_discard_title">Discard unsaved changes?</string>
+    <string name="shell_discard_body">Nothing has been saved to this book yet. Keep editing, or discard your changes.</string>
+    <string name="shell_discard">Discard</string>
+    <string name="shell_keep_editing">Keep editing</string>
+
+    <!-- Shell: detach an EPUB from its book entry -->
+    <string name="shell_detach_title">Detach this EPUB?</string>
+    <string name="shell_detach_body">The EPUB keeps its notes, progress and place on your e-reader. The book it was attached to becomes a separate entry again, with its details, Hardcover match and lists, ready for the right EPUB.</string>
+    <string name="shell_detach">Detach</string>
+    <string name="shell_keep_attached">Keep attached</string>
+
+    <!-- Shell: attach an imported EPUB to a book entry -->
+    <string name="shell_attach_title">Attach this edition?</string>
+    <string name="shell_attach_body">%1$s\n%2$s\n\nAttach it to %3$s? Its lists and Hardcover match stay. If you cancel, the imported EPUB stays a separate book.</string>
+    <string name="shell_attach_confirm">Confirm attachment</string>
+
+    <!-- Shell: book search -->
+    <string name="shell_no_browser">Install a browser to search for this book</string>
+
+    <!-- Shell: paired folder conflicts -->
+    <string name="shell_folder_review_title">Sync needs your review</string>
+    <string name="shell_folder_review_body">Both copies were kept. No reading data was overwritten.</string>
+
+    <!-- Shell: lists and status sheets -->
+    <string name="shell_lists_for_book">Lists · %1$s</string>
+    <string name="shell_create_list">Create a list</string>
+    <string name="shell_status_title">Reading status on this phone</string>
+    <string name="shell_status_body">This doesn\'t change your e-reader or Hardcover. They keep their own status.</string>
+    <string name="shell_status_current">%1$s · Current</string>
+
+    <!-- Shell: restore a backup -->
+    <string name="shell_restore_title">Restore this backup?</string>
+    <string name="shell_restore_body">Folio checks the whole backup before restoring. Missing books are added, books you already have are kept, and list memberships are combined. E-reader connection details are not included.</string>
+    <string name="shell_restore">Restore</string>
+
+    <!-- Shell: book tiles and covers -->
+    <string name="shell_cover_of">Cover of %1$s</string>
+    <string name="shell_open_book_details">Open book details</string>
+    <string name="shell_select_book">Select book</string>
+    <string name="shell_deselect_book">Deselect book</string>
+    <string name="shell_selected">Selected</string>
+    <string name="shell_import_epub">Import an EPUB</string>
+    <string name="shell_expanded">Expanded</string>
+    <string name="shell_collapsed">Collapsed</string>
+    <string name="shell_reading_with_progress">%1$s · %2$d%%</string>
+
+    <!-- Shell: selection bar -->
+    <string name="shell_clear_selection">Clear selection</string>
+    <string name="shell_selected_count">%1$d selected</string>
+    <string name="shell_add_to_list">Add to list</string>
+    <string name="shell_manage_selected">Manage selected books</string>
+    <string name="shell_remove_selected">Remove selected books</string>
+
+    <!-- Shell: where a book is, relative to the e-reader -->
+    <string name="shell_device_on_ereader">On your e-reader</string>
+    <string name="shell_device_needs_update">Changed since it was sent</string>
+    <string name="shell_device_not_sent">Not on your e-reader yet</string>
+    <string name="shell_device_queued">Waiting to send</string>
+    <string name="shell_device_sending">Sending to your e-reader…</string>
+    <string name="shell_device_sending_badge">Sending to your e-reader</string>
+    <string name="shell_device_paused">Sending paused</string>
+    <string name="shell_device_failed">Sending failed</string>
+    <string name="shell_device_no_epub">No EPUB yet</string>
+
+    <!-- Shell: book summary -->
+    <string name="shell_unknown_author">Unknown author</string>
+    <string name="shell_update_progress">Update progress</string>
+    <string name="shell_saved_progress">%1$d%% · saved progress</string>
+    <string name="shell_last_confirmed">Last confirmed on your e-reader %1$s</string>
+    <string name="shell_reading_checked">Progress from your e-reader checked %1$s</string>
+    <string name="shell_lists">Lists</string>
+    <string name="shell_no_lists">Not in any lists yet</string>
+    <string name="shell_manage_lists">Manage lists</string>
+    <string name="shell_all_lists">All lists</string>
+
+    <!-- Shell: book actions sheet -->
+    <string name="shell_action_select">Select multiple books</string>
+    <string name="shell_action_edit">Edit details and cover</string>
+    <string name="shell_action_status">Change reading status on this phone</string>
+    <string name="shell_action_export_notes">Export highlights and notes</string>
+    <string name="shell_action_attach">Attach EPUB from phone</string>
+    <string name="shell_action_search">Search Anna’s Archive ↗</string>
+    <string name="shell_action_remove">Remove from library</string>
+    <string name="shell_action_detach">Detach EPUB</string>
+    <string name="shell_action_export_epub">Save a copy of the EPUB</string>
+    <string name="shell_action_share_epub">Share EPUB</string>
+    <string name="shell_action_read">Read on this phone</string>
+    <string name="shell_action_external">Open in another app</string>
+
+    <!-- Shell: remove books -->
+    <string name="shell_remove_one_title">Remove %1$s?</string>
+    <plurals name="shell_remove_many_title">
+        <item quantity="one">Remove %1$d book?</item>
+        <item quantity="other">Remove %1$d books?</item>
+    </plurals>
+    <string name="shell_remove_body">These books move to Recently removed, where you can restore them. Their files, covers, lists and reading data are kept. Nothing changes on your e-reader, in Downloads or on Hardcover.</string>
+    <plurals name="shell_remove_notes">
+        <item quantity="one">%1$d highlight or note is kept with them.</item>
+        <item quantity="other">%1$d highlights and notes are kept with them.</item>
+    </plurals>
+    <string name="shell_remove_confirm">Move to Recently removed</string>
+    <string name="shell_keep_books">Keep books</string>
+</resources>

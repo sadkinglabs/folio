@@ -92,7 +92,9 @@ class BookActionsUiTest {
             }
         }
         compose.runOnIdle { assertEquals(0, confirms) }
-        compose.onNodeWithText("Kindle and Hardcover", substring = true).assertIsDisplayed()
+        compose
+            .onNodeWithText("Nothing changes on your e-reader", substring = true)
+            .assertIsDisplayed()
         compose.onNodeWithText("Move to Recently removed").performClick()
         compose.runOnIdle { assertEquals(1, confirms) }
     }

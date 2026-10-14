@@ -8,8 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 /** Shared rhythm, rather than per-screen dimensions and nested decorative cards. */
@@ -53,7 +55,7 @@ private fun BookBibliography(book: Book) {
     Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
         Text(book.title, style = MaterialTheme.typography.headlineSmall)
         Text(
-            book.authorLabel.ifBlank { "Unknown author" },
+            book.authorLabel.ifBlank { stringResource(R.string.shell_unknown_author) },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -95,11 +97,11 @@ internal fun BookPrimaryActions(
                 enabled = progressEnabled,
                 modifier = modifier,
             ) {
-                Text("Update progress")
+                Text(stringResource(R.string.shell_update_progress))
             }
         else
             OutlinedButton(onClick = onProgress, enabled = progressEnabled, modifier = modifier) {
-                Text("Update progress")
+                Text(stringResource(R.string.shell_update_progress))
             }
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -116,17 +118,18 @@ internal fun BookPrimaryActions(
     }
 }
 
+@Composable
 internal fun displayDeviceState(signals: BookSignals): String =
     when (signals.device) {
-        "On Kindle" -> "On your e-reader"
-        "Needs update" -> "Edited since it was sent"
+        "On Kindle" -> stringResource(R.string.shell_device_on_ereader)
+        "Needs update" -> stringResource(R.string.shell_device_needs_update)
         "Phone only",
-        "Not sent" -> "Not on your e-reader yet"
-        "Queued" -> "Waiting to send"
-        "Sending" -> "Sending to your e-reader…"
-        "Transfer paused" -> "Sending paused"
-        "Transfer failed" -> "Sending failed"
-        "No EPUB" -> "No EPUB yet"
+        "Not sent" -> stringResource(R.string.shell_device_not_sent)
+        "Queued" -> stringResource(R.string.shell_device_queued)
+        "Sending" -> stringResource(R.string.shell_device_sending)
+        "Transfer paused" -> stringResource(R.string.shell_device_paused)
+        "Transfer failed" -> stringResource(R.string.shell_device_failed)
+        "No EPUB" -> stringResource(R.string.shell_device_no_epub)
         else -> signals.device
     }
 
@@ -151,7 +154,7 @@ internal fun BookStateSummary(signals: BookSignals) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "${(it * 100).toInt()}% · saved reading progress",
+                    stringResource(R.string.shell_saved_progress, (it * 100).toInt()),
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -162,13 +165,13 @@ internal fun BookStateSummary(signals: BookSignals) {
             )
             signals.deviceVerifiedAt?.let {
                 Text(
-                    "Last verified ${observationDate(it)} · refresh to check the device",
+                    stringResource(R.string.shell_last_confirmed, observationDate(it)),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             signals.readingFetchedAt?.let {
                 Text(
-                    "Reading data retrieved ${observationDate(it)}",
+                    stringResource(R.string.shell_reading_checked, observationDate(it)),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -181,15 +184,18 @@ internal fun BookStateSummary(signals: BookSignals) {
 internal fun BookListsSummary(names: List<String>, onManage: () -> Unit, enabled: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Lists", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.shell_lists), style = MaterialTheme.typography.titleMedium)
             Text(
-                names.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "No custom lists yet",
+                names.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                    ?: stringResource(R.string.shell_no_lists),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = onManage, enabled = enabled) { Text("Manage lists") }
+        TextButton(onClick = onManage, enabled = enabled) {
+            Text(stringResource(R.string.shell_manage_lists))
+        }
     }
 }

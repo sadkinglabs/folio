@@ -22,23 +22,25 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
 import kotlinx.coroutines.flow.collectLatest
 
-private data class Destination(val title: String, val icon: ImageVector)
+private data class Destination(@androidx.annotation.StringRes val title: Int, val icon: ImageVector)
 
 private val destinations =
     listOf(
-        Destination("Library", Icons.Outlined.AutoStories),
-        Destination("Lists", Icons.Outlined.CollectionsBookmark),
-        Destination("Device", Icons.Outlined.TabletMac),
-        Destination("Reading", Icons.Outlined.MenuBook),
+        Destination(R.string.shell_tab_library, Icons.Outlined.AutoStories),
+        Destination(R.string.shell_tab_lists, Icons.Outlined.CollectionsBookmark),
+        Destination(R.string.shell_tab_device, Icons.Outlined.TabletMac),
+        Destination(R.string.shell_tab_reading, Icons.Outlined.MenuBook),
     )
 
 @Composable
@@ -218,16 +220,14 @@ fun FolioApp(model: LibraryViewModel) {
         if (installCompanion)
             AlertDialog(
                 onDismissRequest = { installCompanion = false },
-                title = { Text("KOReader companion") },
+                title = { Text(stringResource(R.string.shell_companion_title)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            "Enter KOReader’s existing plugins folder. Folio installs its companion and keeps a backup of any previous version. Restart KOReader afterwards."
-                        )
+                        Text(stringResource(R.string.shell_companion_body))
                         OutlinedTextField(
                             companionPath,
                             { companionPath = it },
-                            label = { Text("Kindle plugins folder") },
+                            label = { Text(stringResource(R.string.shell_companion_folder)) },
                             singleLine = true,
                         )
                     }
@@ -239,11 +239,13 @@ fun FolioApp(model: LibraryViewModel) {
                             devices.installCompanion(companionPath.trim())
                         }
                     ) {
-                        Text("Install")
+                        Text(stringResource(R.string.shell_companion_install))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { installCompanion = false }) { Text("Cancel") }
+                    TextButton(onClick = { installCompanion = false }) {
+                        Text(stringResource(R.string.shell_cancel))
+                    }
                 },
             )
         val phoneFolderPicker =
@@ -397,13 +399,23 @@ fun FolioApp(model: LibraryViewModel) {
                 topBar = {
                     if (book != null || catalogue != null)
                         TopAppBar(
-                            title = { Text(if (editing) "Edit book" else "Book details") },
+                            title = {
+                                Text(
+                                    stringResource(
+                                        if (editing) R.string.shell_edit_book
+                                        else R.string.shell_book_details
+                                    )
+                                )
+                            },
                             navigationIcon = {
                                 IconButton(
                                     onClick = { leaveBook() },
                                     enabled = !editing || !op.busy,
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        stringResource(R.string.shell_back),
+                                    )
                                 }
                             },
                             actions = {
@@ -417,22 +429,38 @@ fun FolioApp(model: LibraryViewModel) {
                                         },
                                         enabled = !op.busy,
                                     ) {
-                                        Icon(Icons.Outlined.Edit, "Edit metadata")
+                                        Icon(
+                                            Icons.Outlined.Edit,
+                                            stringResource(R.string.shell_edit_metadata),
+                                        )
                                     }
                                 if (!editing)
                                     IconButton(
                                         onClick = { actionsId = book?.id ?: catalogue?.id }
                                     ) {
-                                        Icon(Icons.Outlined.MoreVert, "Book actions")
+                                        Icon(
+                                            Icons.Outlined.MoreVert,
+                                            stringResource(R.string.shell_book_actions),
+                                        )
                                     }
                             },
                         )
                     else if (tab != 0)
                         TopAppBar(
-                            title = { Text(destinations.getOrNull(tab)?.title ?: "Library") },
+                            title = {
+                                Text(
+                                    stringResource(
+                                        destinations.getOrNull(tab)?.title
+                                            ?: R.string.shell_tab_library
+                                    )
+                                )
+                            },
                             actions = {
                                 IconButton(onClick = { nav.open(Route.Settings) }) {
-                                    Icon(Icons.Outlined.Settings, "Settings")
+                                    Icon(
+                                        Icons.Outlined.Settings,
+                                        stringResource(R.string.shell_settings),
+                                    )
                                 }
                             },
                         )
@@ -456,7 +484,7 @@ fun FolioApp(model: LibraryViewModel) {
                                             Icon(d.icon, null)
                                         }
                                     },
-                                    label = { Text(d.title) },
+                                    label = { Text(stringResource(d.title)) },
                                 )
                             }
                         }
@@ -470,7 +498,7 @@ fun FolioApp(model: LibraryViewModel) {
                             !op.busy
                     )
                         FloatingActionButton(onClick = { showAddBooks = true }) {
-                            Icon(Icons.Outlined.Add, "Add books")
+                            Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
                         }
                 },
             ) { padding ->
@@ -659,9 +687,13 @@ fun FolioApp(model: LibraryViewModel) {
                                         onOpenBook = { nav.open(Route.Book(it.id)) },
                                         syncScope =
                                             if (shelves.any { it.syncEnabled })
-                                                "Sync includes: ${shelves.filter { it.syncEnabled }.joinToString { it.name }}. No remote books are removed."
-                                            else
-                                                "Sync includes all phone books. Select collection sync preferences to limit it.",
+                                                stringResource(
+                                                    R.string.shell_sync_scope_lists,
+                                                    shelves
+                                                        .filter { it.syncEnabled }
+                                                        .joinToString { it.name },
+                                                )
+                                            else stringResource(R.string.shell_sync_scope_all),
                                     )
                                 3 ->
                                     ReadingScreen(
@@ -699,10 +731,13 @@ fun FolioApp(model: LibraryViewModel) {
                     Scaffold(
                         topBar = {
                             TopAppBar(
-                                title = { Text("Settings") },
+                                title = { Text(stringResource(R.string.shell_settings)) },
                                 navigationIcon = {
                                     IconButton(onClick = { nav.back() }) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowBack,
+                                            stringResource(R.string.shell_back),
+                                        )
                                     }
                                 },
                             )
@@ -755,9 +790,9 @@ fun FolioApp(model: LibraryViewModel) {
         if (confirmDiscard)
             AlertDialog(
                 onDismissRequest = { confirmDiscard = false },
-                title = { Text("Discard unsaved changes?") },
+                title = { Text(stringResource(R.string.shell_discard_title)) },
                 text = {
-                    Text("Your book has not been changed. Keep editing or discard this draft.")
+                    Text(stringResource(R.string.shell_discard_body))
                 },
                 confirmButton = {
                     TextButton(
@@ -767,11 +802,13 @@ fun FolioApp(model: LibraryViewModel) {
                             if (nav.editing) nav.back()
                         }
                     ) {
-                        Text("Discard")
+                        Text(stringResource(R.string.shell_discard))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") }
+                    TextButton(onClick = { confirmDiscard = false }) {
+                        Text(stringResource(R.string.shell_keep_editing))
+                    }
                 },
             )
         if (showAddBooks)
@@ -904,25 +941,26 @@ fun FolioApp(model: LibraryViewModel) {
         if (detachBook != null)
             AlertDialog(
                 onDismissRequest = { detachBookId = null },
-                title = { Text("Detach catalogue entry?") },
+                title = { Text(stringResource(R.string.shell_detach_title)) },
                 text = {
-                    Text(
-                        "Keeps this EPUB and its Kindle path, notes and progress. Its catalogue book returns as a separate entry with its metadata, Hardcover match and lists, ready for the correct EPUB."
-                    )
+                    Text(stringResource(R.string.shell_detach_body))
                 },
                 confirmButton = {
                     TextButton(
                         onClick = { model.detach(detachBook) { detachBookId = null } },
                         enabled = !op.busy,
                     ) {
-                        Text("Detach")
+                        Text(stringResource(R.string.shell_detach))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { detachBookId = null }) { Text("Keep attachment") }
+                    TextButton(onClick = { detachBookId = null }) {
+                        Text(stringResource(R.string.shell_keep_attached))
+                    }
                 },
             )
         val actionBook = catalogueBooks.firstOrNull { it.id == actionsId }
+        val noBrowser = stringResource(R.string.shell_no_browser)
         if (actionBook != null)
             BookActionsSheet(
                 actionBook,
@@ -988,7 +1026,7 @@ fun FolioApp(model: LibraryViewModel) {
                                     )
                                 )
                             } catch (_: android.content.ActivityNotFoundException) {
-                                discovery.report("Install a browser to search for this book")
+                                discovery.report(noBrowser)
                             }
                         }
                         BookAction.REMOVE -> removalIds = setOf(actionBook.id)
@@ -1009,11 +1047,11 @@ fun FolioApp(model: LibraryViewModel) {
                 LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(24.dp)) {
                     item {
                         Text(
-                            "Sync needs your review",
+                            stringResource(R.string.shell_folder_review_title),
                             style = MaterialTheme.typography.headlineSmall,
                         )
                         Text(
-                            "Both copies were kept. No reading data was overwritten.",
+                            stringResource(R.string.shell_folder_review_body),
                             Modifier.padding(vertical = 12.dp),
                         )
                     }
@@ -1021,7 +1059,11 @@ fun FolioApp(model: LibraryViewModel) {
                         Text(folderReport[index], Modifier.padding(vertical = 12.dp))
                         HorizontalDivider()
                     }
-                    item { TextButton(onClick = devices::clearFolderReport) { Text("Done") } }
+                    item {
+                        TextButton(onClick = devices::clearFolderReport) {
+                            Text(stringResource(R.string.shell_done))
+                        }
+                    }
                 }
             }
         val listBook = catalogueBooks.firstOrNull { it.id == listEntryId }
@@ -1031,7 +1073,7 @@ fun FolioApp(model: LibraryViewModel) {
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp)
                 ) {
                     Text(
-                        "Lists · ${listBook.title}",
+                        stringResource(R.string.shell_lists_for_book, listBook.title),
                         style = MaterialTheme.typography.headlineSmall,
                     )
                     val manual = shelves.filter { it.ruleField == "Manual" }
@@ -1042,7 +1084,7 @@ fun FolioApp(model: LibraryViewModel) {
                                 nav.root(1)
                             }
                         ) {
-                            Text("Create a list")
+                            Text(stringResource(R.string.shell_create_list))
                         }
                     manual.forEach { shelf ->
                         val owned = books.any { it.id == listBook.id }
@@ -1076,8 +1118,11 @@ fun FolioApp(model: LibraryViewModel) {
         if (statusBook != null)
             ModalBottomSheet(onDismissRequest = { statusEntryId = null }) {
                 Column(Modifier.fillMaxWidth().padding(24.dp)) {
-                    Text("Phone reading status", style = MaterialTheme.typography.headlineSmall)
-                    Text("Kindle observations and Hardcover are updated separately.")
+                    Text(
+                        stringResource(R.string.shell_status_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(stringResource(R.string.shell_status_body))
                     phoneStatuses.forEach { value ->
                         TextButton(
                             onClick = {
@@ -1086,7 +1131,11 @@ fun FolioApp(model: LibraryViewModel) {
                             },
                             enabled = !op.busy,
                         ) {
-                            Text(value + if (value == statusBook.status) " · Current" else "")
+                            Text(
+                                if (value == statusBook.status)
+                                    stringResource(R.string.shell_status_current, value)
+                                else value
+                            )
                         }
                     }
                 }
@@ -1099,10 +1148,15 @@ fun FolioApp(model: LibraryViewModel) {
                     attachWishId = null
                     attachReviewId = null
                 },
-                title = { Text("Attach this edition?") },
+                title = { Text(stringResource(R.string.shell_attach_title)) },
                 text = {
                     Text(
-                        "${attachmentBook.title}\n${attachmentBook.authorLabel}\n\nAttach to ${attachmentWish.title}? Lists and the Hardcover match are retained. Cancelling keeps the imported EPUB separate."
+                        stringResource(
+                            R.string.shell_attach_body,
+                            attachmentBook.title,
+                            attachmentBook.authorLabel,
+                            attachmentWish.title,
+                        )
                     )
                 },
                 confirmButton = {
@@ -1114,7 +1168,7 @@ fun FolioApp(model: LibraryViewModel) {
                         },
                         enabled = !discoveryState.busy,
                     ) {
-                        Text("Confirm attachment")
+                        Text(stringResource(R.string.shell_attach_confirm))
                     }
                 },
                 dismissButton = {
@@ -1124,7 +1178,7 @@ fun FolioApp(model: LibraryViewModel) {
                             attachReviewId = null
                         }
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.shell_cancel))
                     }
                 },
             )
@@ -1225,11 +1279,9 @@ fun FolioApp(model: LibraryViewModel) {
         if (restoreUri != null)
             AlertDialog(
                 onDismissRequest = { restoreUri = null },
-                title = { Text("Restore this backup?") },
+                title = { Text(stringResource(R.string.shell_restore_title)) },
                 text = {
-                    Text(
-                        "The entire archive is checked before restore. Missing books are added, existing books are retained and collection memberships are merged. SSH pairing is excluded."
-                    )
+                    Text(stringResource(R.string.shell_restore_body))
                 },
                 confirmButton = {
                     TextButton(
@@ -1239,10 +1291,14 @@ fun FolioApp(model: LibraryViewModel) {
                         },
                         enabled = !op.busy,
                     ) {
-                        Text("Restore")
+                        Text(stringResource(R.string.shell_restore))
                     }
                 },
-                dismissButton = { TextButton(onClick = { restoreUri = null }) { Text("Cancel") } },
+                dismissButton = {
+                    TextButton(onClick = { restoreUri = null }) {
+                        Text(stringResource(R.string.shell_cancel))
+                    }
+                },
             )
         if (showConnection)
             ModalBottomSheet(

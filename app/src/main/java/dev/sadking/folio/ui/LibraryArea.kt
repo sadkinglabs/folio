@@ -9,7 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 /** Library and list browsing share one selection, action contract and book browser. */
@@ -79,11 +81,11 @@ internal fun LibraryArea(
                     TextButton(onClick = { scope = null }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("All lists")
+                        Text(stringResource(R.string.shell_all_lists))
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onAdd, enabled = !busy) {
-                        Icon(Icons.Outlined.Add, "Add books")
+                        Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
                     }
                 }
             val visible =
