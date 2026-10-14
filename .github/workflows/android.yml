@@ -56,6 +56,8 @@ jobs:
     name: Instrumentation tests (emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write # publishes screenshots to a ci-screenshots/<branch> branch
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -81,7 +83,14 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+          # connectedDebugAndroidTest uninstalls the app afterwards, losing its screenshots, so
+          # the screenshot tests run once more on a kept install and the images are copied out.
+          script: |
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest || touch instrumentation-failed
+            ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest
+            adb shell am instrument -w -e class dev.sadking.folio.ReaderUiTest,dev.sadking.folio.ProductJourneyTest dev.sadking.folio.test/androidx.test.runner.AndroidJUnitRunner || true
+            mkdir -p screenshots && (adb exec-out run-as dev.sadking.folio tar c files/qa | tar x -C screenshots) || true
+            test ! -f instrumentation-failed
       - name: Print failed instrumentation tests
         if: failure()
         run: |
@@ -102,3 +111,19 @@ jobs:
         with:
           name: instrumentation-reports
           path: app/build/reports/androidTests/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/files/qa/
+      - name: Publish screenshots to ci-screenshots/<branch>
+        if: always() && github.event_name == 'push'
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          [ -d screenshots/files/qa ] || exit 0
+          cd screenshots/files/qa
+          git init -q -b screenshots && git add -A
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "Screenshots for ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}" "screenshots:ci-screenshots/${GITHUB_REF_NAME}"

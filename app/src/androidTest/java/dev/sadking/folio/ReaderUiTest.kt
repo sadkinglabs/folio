@@ -1,10 +1,12 @@
 package dev.sadking.folio
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.*
 import dev.sadking.folio.reader.ReaderActivity
 import java.io.File
@@ -98,6 +100,16 @@ class ReaderUiTest {
                 compose.onNodeWithText("A quiet beginning").assertExists()
                 compose.onNodeWithText("Bookmarks · 1").performClick()
                 compose.onNodeWithContentDescription("Delete bookmark").assertExists()
+                InstrumentationRegistry.getInstrumentation()
+                    .uiAutomation
+                    .performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                compose.waitForIdle()
+                QaScreenshots.capture("reader-controls")
+                QaScreenshots.tapScreenCentre()
+                QaScreenshots.capture("reader-immersive")
+                QaScreenshots.tapScreenCentre()
+                compose.onNodeWithContentDescription("Reading appearance").performClick()
+                QaScreenshots.capture("reader-appearance")
             }
             val saved = runBlocking { app.database.library().phoneReading(id, hash) }
             assertNotNull(saved)
