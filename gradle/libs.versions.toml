@@ -31,9 +31,9 @@ material = { module = "androidx.compose.material3:material3", version.ref = "mat
 activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-vm-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-lifecycle-vm = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
@@ -43,7 +43,6 @@ compose-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 android-test = { module = "androidx.test.ext:junit", version = "1.2.1" }
 [plugins]
 android = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

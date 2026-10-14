@@ -1,7 +1,15 @@
 name: Android checks
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  checks:
+    name: Format, unit, SFTP, lint, APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,12 +20,63 @@ jobs:
       - uses: android-actions/setup-android@v3
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - run: python3 -m pip install paramiko==5.0.0 lupa==2.8
-      - run: ./gradlew checkFormatting
+      - name: Restore preserved debug signing key
+        # Without it CI APKs get a random key and cannot install over an existing Folio.
+        env:
+          KEYSTORE_B64: ${{ secrets.FOLIO_DEBUG_KEYSTORE_B64 }}
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          mkdir -p development-signing
+          echo "$KEYSTORE_B64" | base64 -d > development-signing/debug.keystore
+      - run: python3 -m pip install paramiko==5.0.0 lupa==2.8 graphql-core==3.2.7
+      # Runs checkFormatting, core/transport/app unit tests (with real localhost SFTP),
+      # assembleDebug, assembleDebugAndroidTest and lint.
       - run: python3 scripts/check-with-sftp.py
       - run: python3 scripts/check-migration.py
+      - run: python3 scripts/check-library-basics.py
+      - run: python3 scripts/check-local-removal.py
       - run: python3 scripts/check-plugin.py
+      - name: Hardcover queries match the published schema
+        run: python3 scripts/check-hardcover-schema.py
       - uses: actions/upload-artifact@v4
         with:
           name: folio-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unit-test-reports
+          path: '**/build/reports/tests/'
+
+  instrumented:
+    name: Instrumentation tests (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run connected tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instrumentation-reports
+          path: app/build/reports/androidTests/

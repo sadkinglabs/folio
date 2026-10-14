@@ -53,12 +53,11 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
-    implementation(libs.compose.preview)
+    implementation(libs.compose.preview) // @Preview annotations live in main sources
     implementation(libs.compose.icons)
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.lifecycle.compose)
-    implementation(libs.lifecycle.vm)
     implementation(libs.lifecycle.vm.compose)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
@@ -74,6 +73,7 @@ dependencies {
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.test)
     androidTestImplementation(libs.android.test)
+    androidTestImplementation(libs.room.testing)
 }
 
 // Framework regression tests need Android's SDK jar; keep downloads on Maven Central.

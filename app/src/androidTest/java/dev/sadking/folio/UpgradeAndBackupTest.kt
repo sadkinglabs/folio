@@ -143,14 +143,7 @@ class UpgradeAndBackupTest {
         }
         val database =
             Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-                .addMigrations(
-                    MIGRATION_1_2,
-                    MIGRATION_2_3,
-                    MIGRATION_3_4,
-                    MIGRATION_4_5,
-                    MIGRATION_5_6,
-                    MIGRATION_6_7,
-                )
+                .addMigrations(*ALL_MIGRATIONS)
                 .build()
         try {
             assertEquals("Preserved title", database.library().allBooks().single().title)

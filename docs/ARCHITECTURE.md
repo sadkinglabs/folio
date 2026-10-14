@@ -103,12 +103,12 @@ BookSignals derives presentation from independent file transfer, queue, KOReader
 
 ## 0.7 extension
 
-See [Unified library](UNIFIED_LIBRARY_0.7.md) for schema 5, account-isolated observations, catalogue-only list memberships, attachment invariants and backup format 2. Transfer inputs still come exclusively from actual EPUB records.
+See [Unified library](history/UNIFIED_LIBRARY_0.7.md) for schema 5, account-isolated observations, catalogue-only list memberships, attachment invariants and backup format 2. Transfer inputs still come exclusively from actual EPUB records.
 
 ## 0.7.1 local removal
 
-Schema remains 5. Local deletion uses a fresh identity plan under the repository mutex and one database transaction; app-owned files are cleaned after commit. Pending sync tasks block deletion. No SFTP or Hardcover delete is issued. See [actions/removal](ACTIONS_0.7.1.md).
+Schema remains 5. Local deletion uses a fresh identity plan under the repository mutex and one database transaction; app-owned files are cleaned after commit. Pending sync tasks block deletion. No SFTP or Hardcover delete is issued. See [actions/removal](history/ACTIONS_0.7.1.md).
 
 ## 0.8 extension
 
-Schema 6 introduces removal markers and rich catalogue metadata/local status. Active queries exclude removal markers; files and reader observations remain for restore. Mixed batch changes and attachment correction share the repository mutex and Room transactions. See [everyday workflows](BASICS_0.8.md) for backup format 3 and FileProvider/SAF boundaries.
+Schema 6 introduces removal markers and rich catalogue metadata/local status. Active queries exclude removal markers; files and reader observations remain for restore. Mixed batch changes and attachment correction share the repository mutex and Room transactions. See [everyday workflows](history/BASICS_0.8.md) for backup format 3 and FileProvider/SAF boundaries.

@@ -71,7 +71,7 @@ These go into `CLAUDE.md` as standing rules for every future session:
 
 | Codex said | Change | Why |
 |---|---|---|
-| "Preserve existing technology unless a demonstrated problem" (which locks in SSH push/pull) | Treat the **sync transport as an open product decision** (see §5, Decision A) | The manual SSH model is the root cause of the friction, and the reviews demonstrate the problem |
+| "Preserve existing technology unless a demonstrated problem" (which locks in SSH push/pull) | Treat the **sync transport as an open product decision** (decided in §5: kosync with the phone as the server) | The manual SSH model is the root cause of the friction, and the reviews demonstrate the problem |
 | One mega-brief: "Do not stop at a plan" | Milestones of 1–2 weeks, each with its own brief and acceptance check | Big-bang briefs produce wide, unfinished work |
 | Hedging copy and per-release docs | Plain-language UI and one `CHANGELOG.md`; fold the 0.x design notes into `ARCHITECTURE.md` | Sprawl hides what's true *now* |
 | Implied: perfect bit-exact positions | Reconcile positions by **resolved progression with tolerance**; xpointer is used for *navigation*, not *equality* | Exact strings can't converge |
@@ -120,7 +120,7 @@ The approach is to replace parts one at a time while the app keeps working. The 
 - Map xpointer `DocFragment[N]` through the **manifest spine href**, not `readingOrder` index. Today non-linear spine items probably shift the chapter.
 - Later features: search (`SearchService`), highlights via the Decorator API (round-tripping KOReader `pos0`/`pos1`, which are already parsed), dictionary through `ACTION_PROCESS_TEXT`, TTS, a scrubber with time left.
 
-**Sync** (shape depends on Decision A)
+**Sync** (see §5.1 for the Folio Link design)
 - Positions: reconcile on a normalised `(spine href, progression)` with a tolerance of about half a screen. Store the baseline after **every** successful apply or observation.
 - Files:
   - Keep a `(path, size, mtime) → sha256` cache so a sync doesn't download the library again.
@@ -147,21 +147,78 @@ The approach is to replace parts one at a time while the app keeps working. The 
 
 ---
 
-## 5. Decisions only you can make
+## 5. Decisions (2026-10-14)
 
-**A. Progress sync transport.** This is the biggest lever.
-- *Option 1, recommended:* adopt **KOReader's kosync protocol**.
-  - Self-host `koreader-sync-server` (a small Docker container on a home server or VPS), or a Folio-compatible equivalent.
-  - The Kindle uses KOReader's **built-in** Progress sync plugin, which syncs automatically on open, close and suspend. No hotspot, no SSH, and no custom plugin needed for progress.
-  - The phone reader pushes and pulls through the same API. Folio already computes KOReader's partial-MD5 document key.
-  - Steady state: zero manual steps for progress.
-- *Option 2:* keep everything over SSH and fix the bugs above. This needs no server, but it stays manual.
+| Topic | Decision |
+|---|---|
+| Progress sync | **kosync, with the phone as the server.** Folio runs a small LAN server ("Folio Link"), and KOReader's built-in Progress sync points at it. |
+| Devices | **Device-agnostic: any device running KOReader** (Kindle, Kobo, PocketBook, Android e-ink). The Kindle-specific paths become a device profile. Stock Kobo and Kindle firmware is out of scope, since only KOReader can sync. |
+| Login | **A key generated on the phone is the default.** Password-free mode is used only once, to install the key. |
+| Audience | Personal for now, but built to release grade. |
+| Book search | An **in-app WebView** that opens a query on a configurable site (a URL template). No scraping. |
 
-**B. Book delivery.** Keep SFTP for now; it works, and you confirmed the 0.3.1 flow. The longer-term option is a slim plugin that pulls new books over HTTP when Wi-Fi connects, if a server exists from Decision A.
+### 5.1 Folio Link: how the phone acts as the server
 
-**C. Default Kindle authentication.** Fresh setup currently defaults to the KOReader **password-free root SSH** mode. I recommend making a phone-generated key the default: Folio generates the key pair and installs `authorized_keys` once over the password-free session, then the user switches password-free off.
+**Can the phone be the kosync server? Yes, within limits.** kosync is a small HTTP+JSON protocol.
+- KOReader endpoints:
+  - `POST /users/create`
+  - `GET /users/auth`
+  - `PUT /syncs/progress`
+  - `GET /syncs/progress/:document`
+- Auth uses the `x-auth-user` and `x-auth-key` headers.
+- The document key is KOReader's partial MD5. Folio already computes it (`koreaderDigest`).
+- KOReader accepts a custom server URL, so `http://<phone-ip>:<port>` works.
 
-**D. Distribution.** Is this personal-only, or ever Play/F-Droid? This affects how the Anna's Archive handoff is presented and how much release hardening matters.
+The same server can also expose an **OPDS catalog**. KOReader has an OPDS browser built in, so book delivery needs neither SSH nor a custom plugin.
+
+```
+Phone (Folio)                                     E-reader (KOReader)
+┌───────────────────────────────┐   LAN / hotspot   ┌───────────────────────────┐
+│ Folio Link (foreground svc)   │◄──────────────────┤ Progress sync (built-in)  │
+│  • kosync API  /syncs/...     │   HTTP + auth     │   push on page/close/sleep│
+│  • OPDS feed   /opds/...      │◄──────────────────┤ OPDS catalog (built-in)   │
+│  • /folio/...  (plugin API)   │◄──────────────────┤ Folio plugin (slim):      │
+│ Room: progress per device     │                   │   discovery, auto-download│
+│ Reader ⇄ kosync xpointer      │                   │   "Send to device" queue  │
+│ Hardcover outbox ─────► HTTPS │                   └───────────────────────────┘
+└───────────────────────────────┘
+```
+
+**Constraints, which are part of the design:**
+1. **Same network.** The e-reader must reach the phone: the same Wi-Fi, or the e-reader on the phone's hotspot. Sync happens whenever they're together, not over the internet. That fits a personal setup; a later optional relay could cover away-from-phone sync.
+2. **Android background rules.** A listening server needs a **foreground service** with a notification.
+   - It uses the `connectedDevice` type, because the `dataSync` type is capped at 6 h per 24 h on Android 15+.
+   - Modes:
+     - *Always on while on Wi-Fi or hotspot* (the default, with a quiet notification).
+     - *Only while Folio is open*.
+   - Whether incoming LAN connections survive Doze in this mode must be **measured on your phone**. That is the first thing M3 checks.
+3. **Changing addresses.** On home Wi-Fi the phone's IP changes. Mitigations:
+   - The slim Folio plugin finds the phone with a UDP broadcast (LuaSocket is bundled with KOReader) and updates kosync's server URL itself.
+   - Fallback: a stable hotspot gateway, or the URL shown in Folio for manual entry.
+4. **Conflicts.**
+   - KOReader already handles them on its side: it can be set to jump forward automatically and to ask before going backward.
+   - Folio stores *every device's* latest report with its timestamp, never only "the furthest". So the book's Progress panel can show divergence, and the phone reader asks before jumping backward.
+   - Hardcover is updated from the outbox after a progress change, either reviewed or automatically by setting.
+5. **Security.**
+   - Bind only to the Wi-Fi/hotspot interface.
+   - Generate random per-device credentials, which the plugin installs, so there's no typing.
+   - Require auth on every route, rate-limit it, and never serve outside the library.
+   - kosync's auth is weak (an MD5 key over HTTP). That's acceptable on a trusted LAN and documented as such.
+6. **Fidelity.** kosync carries KOReader's xpointer plus a percentage. The phone reader turns the xpointer into a Readium locator using the existing converter, once the M1 fixes (spine href mapping, caret capture) are in.
+
+**What happens to SSH:** it becomes **bootstrap and advanced only**.
+- First-time setup: generate a key on the phone, install it, install the plugin and its config.
+- Optional bulk folder mirroring.
+- USB copy instructions are the device-agnostic fallback for installing the plugin.
+
+**Explicitly not doing:**
+- Mirroring `.sdr` sidecars.
+- Writing live KOReader settings from the phone. Only the plugin, running inside KOReader, changes KOReader state.
+
+### 5.2 Book search
+Settings hold a list of search sources, each a name and a URL template with `{query}`, `{title}` and `{author}` placeholders. Want to Read → **Find EPUB** opens the chosen source in an in-app WebView.
+- **A `DownloadListener` catches EPUB downloads.** Each file streams into the normal import pipeline (validated and hashed) and is offered as a one-tap **Attach to "<book>"**, then **Send to device?**
+- **Out of scope:** scraping, link-following and background downloads. The user drives the page.
 
 ---
 
@@ -186,6 +243,11 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - Docs: collapse the per-version notes into `ARCHITECTURE.md` and `CHANGELOG.md`, and slim the README.
 - **Done when:** every existing test has actually executed in CI, and the migration chain is verified at runtime.
 
+**M0 status (2026-10-14):**
+- **Done:** the repo baseline and executable `gradlew`; CI rewritten into a checks job and an emulator job, with signing from a secret, every check script included, and the Hardcover schema check; `MigrationTest` covering every schema → 7; a shared `ALL_MIGRATIONS` list; removal of the duplicate lifecycle alias and the unused plugin; docs consolidated into README, CHANGELOG and `docs/history/`.
+- **Pending:** a green CI run once the GitHub repo exists. `:app` could not be built in this container.
+- **Material3 beta:** kept for now (`MaterialExpressiveTheme` needs it). Revisit when 1.5.0 is stable.
+
 ### M1: A reader you can actually use
 - Fix the overlay resize, edge-tap and volume-key turns, immersive mode, state restore, debounced durable saves, and the spine href mapping.
 - Expose the typography controls, and make preferences per book.
@@ -200,24 +262,37 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - `strings.xml` and the copy pass; tokens applied everywhere; Roborazzi screenshot tests (light, dark, 200% font).
 - **Device check:** run add → attach → edit → organise → read without dead ends, with back behaving as expected everywhere.
 
-### M3: Progress that converges
-- Position reconciliation by tolerance-based progression, with a baseline after every apply.
-- Plugin fixes: the apply check, acks and pruning, the version handshake, the config pushed from the phone, real error messages.
-- **If Decision A = kosync:** a kosync client in the phone reader, plus a pairing screen with server URL and account.
-- One **Progress** panel per book showing phone, Kindle and Hardcover side by side, with one "Sync progress" action and an explicit conflict prompt.
-- Hardcover: a durable outbox with offline pending state; cache `me`.
-- **Device check:** read on the phone → continue on the Kindle → back to the phone with no conflict prompt; then Hardcover shows the right page.
+### M3: Folio Link and progress that converges
+- **First, a spike on your phone:** a foreground-service HTTP server reached from KOReader over Wi-Fi and over the hotspot, with screen off for 30 minutes. If Doze breaks incoming connections, choose "only while open" plus a wake-on-open prompt, and record the result here.
+- A kosync-compatible server, using Ktor server CIO. It has a fake-client JVM test suite that replays real KOReader request and response captures.
+- Phone reader as a kosync client: push on pause and close, and pull on open, with "Continue from Kindle at 43%?" when the device is ahead.
+- Progress panel per book showing phone, each device and Hardcover; a Hardcover outbox (offline, retried, reviewed or automatic); and a cached `me`.
+- Fix the existing SSH handoff path too (tolerance reconciliation, plugin apply check), or retire it once kosync is verified.
+- **Device check:** read on phone → open on Kindle (auto-jumps) → read → close → open on phone, which offers the Kindle position → Hardcover shows the right page. Repeat with the screen off for 30 minutes.
 
-### M4: Kindle pairing and delivery
-- Pairing wizard: reachability test, fingerprint, auth (key generated on the phone), folder picker, then plugin install and version check, each a step.
-- Sync speed: hash cache, case-insensitive paths, readable filenames, `WifiLock`, folder operations in the service.
-- Phone-folder enrolment visible from the book hub ("Keep in synced folder").
-- **Device check:** fresh pair from zero in under 3 minutes; sending 20 books takes one tap; a second sync with no changes finishes in seconds.
+### M4: Device pairing and delivery (device-agnostic)
+- Device profiles: Kindle, Kobo, PocketBook and generic KOReader, with the default paths for each.
+- Pairing wizard:
+  1. Connect to the same network or hotspot.
+  2. Reachability test.
+  3. SSH one-time bootstrap: read the fingerprint, password-free once, install the phone-generated key, prompt to turn password-free off.
+  4. Install the plugin and its config (Folio Link URL and credentials) with a version check.
+  5. Restart KOReader.
+  - USB fallback with on-screen steps.
+- Slim plugin v2:
+  - discovery;
+  - auto-download of the "Send to device" queue over HTTP into the configured folder, with readable `Author - Title.epub` filenames;
+  - acks;
+  - the version handshake;
+  - KOReader `PathChooser`;
+  - real error messages.
+- An OPDS feed: "Sent to this device", lists, recently added.
+- The SSH folder mirror stays as an advanced feature, with a hash cache, case-insensitive paths and a `WifiLock`.
+- **Device check:** fresh pairing of a Kindle (and a Kobo, if available) in under 3 minutes from zero; "Send to device" lands the book on the next Wi-Fi connect with no Kindle-side steps.
 
 ### M5: Acquisition loop
-- The Anna's Archive domain becomes a setting. Broaden the VIEW intent filter (`application/octet-stream` plus `.epub`).
-- **Pending acquisition:** "Find EPUB" on a Want to Read entry remembers that entry; the next imported EPUB that matches is offered as a one-tap attach, then "Send to Kindle?".
-- **Device check:** Want to Read → EPUB on the Kindle in 5 taps or fewer, excluding browser steps.
+- Search sources in Settings; the in-app WebView with download interception; the pending-acquisition → attach → send chain; a broader VIEW intent filter for `.epub` from other apps.
+- **Device check:** Want to Read → EPUB on the e-reader in 5 taps or fewer, excluding the steps inside the web page.
 
 ### M6: Reader depth and polish
 - Search, highlights and notes (round-tripping KOReader), dictionary, TTS, time left.

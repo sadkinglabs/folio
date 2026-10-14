@@ -8,14 +8,7 @@ import dev.sadking.folio.device.DeviceSettings
 class FolioApplication : Application() {
     val database by lazy {
         Room.databaseBuilder(this, LibraryDatabase::class.java, "folio.db")
-            .addMigrations(
-                MIGRATION_1_2,
-                MIGRATION_2_3,
-                MIGRATION_3_4,
-                MIGRATION_4_5,
-                MIGRATION_5_6,
-                MIGRATION_6_7,
-            )
+            .addMigrations(*ALL_MIGRATIONS)
             .build()
     }
     val repository by lazy { LibraryRepository(this, database) }

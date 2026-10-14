@@ -72,14 +72,14 @@ Use shared SectionHeading, FeatureRow and ExpandableSection for hierarchy, conte
 
 ## Library space in 0.8.1
 
-The book viewport has priority: one compact count/refine/layout strip and a compact Add FAB. Search/status/files/tags/sort live in a sheet; additions live in a separate Add sheet. No persistent chip bank or provider buttons sit above covers. See [implementation and acceptance](LIBRARY_SPACE_0.8.1.md).
+The book viewport has priority: one compact count/refine/layout strip and a compact Add FAB. Search/status/files/tags/sort live in a sheet; additions live in a separate Add sheet. No persistent chip bank or provider buttons sit above covers. See [implementation and acceptance](history/LIBRARY_SPACE_0.8.1.md).
 
 
 ## Library polish 0.8.2
 
-Persistent search with inline Refine; separate compact count and explicit segmented layout toggle. Cover overlays keep reading/device states independent; opaque semantic Material surfaces avoid relying on the image for contrast. Selection occupies top-right, status bottom-left and progress the bottom edge. Title/author remain outside the cover. Reference inspection and mobile acceptance limits are recorded in [LIBRARY_POLISH_0.8.2.md](LIBRARY_POLISH_0.8.2.md).
+Persistent search with inline Refine; separate compact count and explicit segmented layout toggle. Cover overlays keep reading/device states independent; opaque semantic Material surfaces avoid relying on the image for contrast. Selection occupies top-right, status bottom-left and progress the bottom edge. Title/author remain outside the cover. Reference inspection and mobile acceptance limits are recorded in [LIBRARY_POLISH_0.8.2.md](history/LIBRARY_POLISH_0.8.2.md).
 
 
 ## Lists 0.8.3
 
-One scroll surface: compact pinned reading lists, then user lists. No separate wishlist destination. List contents reuse the library browser inside Lists; search/view state is scoped by list. Transfer controls move to a contextual bottom sheet. See [LISTS_0.8.3.md](LISTS_0.8.3.md).
+One scroll surface: compact pinned reading lists, then user lists. No separate wishlist destination. List contents reuse the library browser inside Lists; search/view state is scoped by list. Transfer controls move to a contextual bottom sheet. See [LISTS_0.8.3.md](history/LISTS_0.8.3.md).
