@@ -79,6 +79,21 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - name: Print failed instrumentation tests
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          for path in glob.glob('app/build/outputs/androidTest-results/connected/**/*.xml', recursive=True):
+              root = ET.parse(path).getroot()
+              print(f"{path}: tests={root.get('tests')} failures={root.get('failures')} errors={root.get('errors')} skipped={root.get('skipped')}")
+              for case in root.iter('testcase'):
+                  for kind in ('failure', 'error'):
+                      node = case.find(kind)
+                      if node is not None:
+                          print(f"\n=== {kind.upper()}: {case.get('classname')}.{case.get('name')}")
+                          print((node.text or node.get('message') or '')[:4000])
+          EOF
       - uses: actions/upload-artifact@v4
         if: always()
         with:
