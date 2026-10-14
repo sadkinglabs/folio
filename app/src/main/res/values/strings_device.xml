@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Device tab (KindleScreen.kt) -->
+    <string name="device_title">Your e-reader</string>
+    <string name="device_subtitle_not_set_up">Connect once, then send books over Wi-Fi.</string>
+    <string name="device_subtitle_checked">Last checked %1$s</string>
+    <string name="device_subtitle_not_checked">Set up · not checked yet</string>
+    <string name="device_sync_scope_default">Sync includes every book on your phone.</string>
+
+    <!-- Device tab: sending in progress -->
+    <string name="device_job_complete">Books sent</string>
+    <string name="device_job_failed">Sending didn\'t finish</string>
+    <string name="device_job_paused">Sending paused</string>
+    <string name="device_job_cancelled">Sending cancelled</string>
+    <string name="device_job_cancelling">Cancelling…</string>
+    <string name="device_job_sending">Sending your books</string>
+    <plurals name="device_job_progress">
+        <item quantity="one">%1$d of %2$d book sent · %3$d of %4$d MB</item>
+        <item quantity="other">%1$d of %2$d books sent · %3$d of %4$d MB</item>
+    </plurals>
+    <string name="device_job_resume">Send the rest</string>
+    <string name="device_job_cancel">Cancel sending</string>
+
+    <!-- Device tab: transfer states (stored values mapped to display text) -->
+    <string name="device_state_waiting">Waiting</string>
+    <string name="device_state_connecting">Connecting</string>
+    <string name="device_state_sending">Sending</string>
+    <string name="device_state_checking">Checking the copy</string>
+    <string name="device_state_finishing">Finishing</string>
+    <string name="device_state_comparing">Comparing</string>
+    <string name="device_state_complete">Sent</string>
+    <string name="device_state_failed">Failed</string>
+    <string name="device_state_paused">Paused</string>
+    <string name="device_state_cancelled">Cancelled</string>
+    <string name="device_state_cancelling">Cancelling</string>
+    <string name="device_state_interrupted">Interrupted</string>
+
+    <!-- Device tab: connection and actions -->
+    <string name="device_set_up">Set up your e-reader</string>
+    <string name="device_set_up_summary">Phone hotspot or shared Wi-Fi · no computer needed</string>
+    <string name="device_connection_settings">Connection settings</string>
+    <string name="device_set_up_hint">Start the SSH server on your e-reader and connect both devices to the same Wi-Fi. Then check the fingerprint shown here to pair.</string>
+    <string name="device_send_missing">Send missing books</string>
+    <string name="device_check">Check your e-reader</string>
+    <string name="device_no_books">Add an EPUB to your library to send it to your e-reader.</string>
+    <string name="device_browse_library">Browse library</string>
+
+    <!-- Device tab: preview before sending -->
+    <string name="device_preview_title">Before you send</string>
+    <string name="device_preview_counts">To send: %1$d · Already there: %2$d · Different copy: %3$d</string>
+    <plurals name="device_preview_send">
+        <item quantity="one">Send %1$d book</item>
+        <item quantity="other">Send %1$d books</item>
+    </plurals>
+    <string name="device_preview_note">Folio only adds books. If your e-reader has a different copy, it is left as it is. Nothing is deleted, including reading data.</string>
+
+    <!-- Device tab: KOReader collections -->
+    <string name="device_collections_title">KOReader collections</string>
+    <string name="device_collections_summary">Optional · add your lists to KOReader, after you review them</string>
+    <string name="device_collections_send">Send list additions</string>
+    <string name="device_collections_hint">Send the books first, then review the additions in the Folio plugin on your e-reader. Books already in a collection stay there.</string>
+
+    <!-- Device tab: books on the e-reader -->
+    <string name="device_inventory_title">On your e-reader</string>
+    <plurals name="device_inventory_summary_dated">
+        <item quantity="one">%1$d EPUB · checked %2$s</item>
+        <item quantity="other">%1$d EPUBs · checked %2$s</item>
+    </plurals>
+    <plurals name="device_inventory_summary_session">
+        <item quantity="one">%1$d EPUB · checked this session</item>
+        <item quantity="other">%1$d EPUBs · checked this session</item>
+    </plurals>
+    <string name="device_inventory_book_line">%1$s · %2$d KB</string>
+    <string name="device_inventory_file_line">%1$d KB · %2$s</string>
+    <string name="device_inventory_more">Showing the first 100 of %1$d EPUBs</string>
+
+    <!-- Device tab: history -->
+    <string name="device_history_title">Recent transfers</string>
+    <string name="device_history_empty_summary">Nothing sent yet</string>
+    <plurals name="device_history_summary">
+        <item quantity="one">%1$d entry</item>
+        <item quantity="other">%1$d entries</item>
+    </plurals>
+    <string name="device_history_empty">Books you send will appear here.</string>
+    <string name="device_history_unknown_book">Sent book</string>
+    <string name="device_history_line">%1$s · %2$s</string>
+
+    <!-- Lists (CollectionsScreen.kt) -->
+    <string name="lists_title">Lists</string>
+    <string name="lists_subtitle">Reading plans and collections</string>
+    <string name="lists_create">Create list</string>
+    <string name="lists_pinned">Pinned</string>
+    <plurals name="lists_book_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="lists_yours">Your lists</string>
+    <string name="lists_discover">Discover</string>
+    <string name="lists_empty">Create a list for a topic, series or reading plan. Add books from their details or by selecting them in your library.</string>
+    <string name="lists_rule">%1$s: %2$s</string>
+    <string name="lists_transfer_options">Transfer options</string>
+    <string name="lists_in_sync">Included in sync</string>
+    <string name="lists_manage">Edit or delete %1$s</string>
+    <string name="lists_sync_toggle">Include in one-tap sync</string>
+    <string name="lists_sync_toggle_hint">Sync sends this list\'s books that have an EPUB</string>
+    <string name="lists_new_title">New list</string>
+    <string name="lists_new_subtitle">Pick books yourself, or let a rule fill the list.</string>
+    <string name="lists_name">List name</string>
+    <string name="lists_name_taken">A list with this name already exists</string>
+    <string name="lists_rule_value_status">Unread, Reading, Finished or Abandoned</string>
+    <string name="lists_rule_value_language">A language code, such as en or es</string>
+    <string name="lists_rule_value_other">Must match the book\'s details exactly</string>
+    <string name="lists_rule_missing_hint">Based on the last check of your e-reader. Sync checks again before sending.</string>
+
+    <!-- Settings (SettingsScreen.kt) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_subtitle">Appearance, connections and your library</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_wallpaper_colours">Use wallpaper colours</string>
+    <string name="settings_folder_title">Phone folder</string>
+    <string name="settings_folder_none">Choose a folder on your phone. Folio imports its EPUBs and swaps new books with your e-reader\'s folder.</string>
+    <string name="settings_folder_current">Folder: %1$s</string>
+    <string name="settings_folder_hint">Subfolders are kept, and files are compared both ways. If two copies of a book differ, you review them. Deleting a book on one side never deletes it on the other, and KOReader\'s reading data files are not copied. Tap Check for new books to pick up new files on the phone.</string>
+    <string name="settings_folder_choose">Choose phone folder</string>
+    <string name="settings_folder_change">Change phone folder</string>
+    <string name="settings_folder_refresh">Check for new books</string>
+    <string name="settings_folder_disconnect">Disconnect folder</string>
+    <string name="settings_plugin_install">Install the KOReader plugin</string>
+    <string name="settings_plugin_hint">The Folio plugin lets KOReader pick up your phone\'s reading position, and asks you first. Restart KOReader after installing. Plugin files already on your e-reader are kept.</string>
+    <string name="settings_storage_title">Library storage</string>
+    <plurals name="settings_storage_entries">
+        <item quantity="one">%1$d book in your library</item>
+        <item quantity="other">%1$d books in your library</item>
+    </plurals>
+    <plurals name="settings_storage_files">
+        <item quantity="one">%1$d EPUB on this phone</item>
+        <item quantity="other">%1$d EPUBs on this phone</item>
+    </plurals>
+    <string name="settings_storage_summary">%1$s · %2$s. Your original files are kept when you edit book details.</string>
+    <string name="settings_recently_removed">Recently removed · %1$d</string>
+    <string name="settings_last_import">Last import results</string>
+    <string name="settings_backup_hint">Back up your books, covers, lists and saved reading data. Keep the backup private; it contains your books and notes.</string>
+    <string name="settings_backup_export">Export library backup</string>
+    <string name="settings_backup_restore">Restore from backup</string>
+    <string name="settings_restore_hint">Restoring adds books you don\'t have and merges list contents. Books, files and details already here are kept. Lists added by a restore start with sync turned off.</string>
+    <string name="settings_connections_title">Connections</string>
+    <string name="settings_connections_subtitle">Your library works offline. Connect only the services you use.</string>
+    <string name="settings_hardcover">Hardcover</string>
+    <string name="settings_hardcover_connect">Connect to use Want to Read and send progress updates you\'ve reviewed</string>
+    <string name="settings_hardcover_connected">Connected as @%1$s</string>
+    <string name="settings_device_title">Your e-reader</string>
+    <string name="settings_connection_settings">Connection settings</string>
+    <string name="settings_device_hint">Folio checks each book arrived intact before marking it sent. Books already on your e-reader stay as they are; if a book has changed, you review it first.</string>
+    <string name="settings_forget_device">Forget e-reader</string>
+    <string name="settings_about_version">Folio · %1$s</string>
+    <string name="settings_about">An independent ebook library. No account needed and no analytics. Looking up books online and Hardcover are optional.</string>
+    <string name="settings_forget_title">Forget this e-reader?</string>
+    <string name="settings_forget_body">Folio will remove the saved address and sign-in details for your e-reader. Books on your phone and e-reader are not touched.</string>
+    <string name="settings_forget_confirm">Forget</string>
+    <string name="settings_cancel">Cancel</string>
+
+    <!-- Reading (ReadingScreen.kt) -->
+    <string name="reading_title">Reading</string>
+    <string name="reading_subtitle">Your reading, with saved progress and notes</string>
+    <string name="reading_refresh">Refresh progress and notes</string>
+    <string name="reading_connect">Connect your e-reader</string>
+    <string name="reading_connect_summary">Bring in KOReader progress and notes over Wi-Fi</string>
+    <string name="reading_filter_reading">Reading</string>
+    <string name="reading_filter_finished">Finished</string>
+    <string name="reading_filter_all">All activity</string>
+    <string name="reading_empty_reading">Choose your next read</string>
+    <string name="reading_empty_other">No activity here yet</string>
+    <string name="reading_empty_body">Set a book\'s status in its details, or refresh to get your progress from your e-reader.</string>
+    <string name="reading_browse_library">Browse library</string>
+    <string name="reading_phone_status">Phone · %1$s</string>
+    <string name="reading_device_percent">E-reader · %1$d%%</string>
+    <string name="reading_checked">Checked %1$s</string>
+    <plurals name="reading_notes">
+        <item quantity="one">%1$d saved note</item>
+        <item quantity="other">%1$d saved notes</item>
+    </plurals>
+    <string name="reading_update_hardcover">Update Hardcover</string>
+    <string name="reading_about_title">About reading updates</string>
+    <string name="reading_about_summary">Close the book in KOReader before refreshing</string>
+    <string name="reading_about_body">KOReader saves progress and notes when you close a book. Refreshing reads them without changing anything on your e-reader. The status you set on the phone stays separate, and nothing is sent to Hardcover until you review it.</string>
+    <string name="reading_time_title">Reading time</string>
+    <string name="reading_time_total">%1$d h %2$d min · from your last export</string>
+    <string name="reading_time_none">Optional · reading statistics from KOReader</string>
+    <string name="reading_time_hint">Export your reading statistics from the Folio plugin in KOReader, then get them here.</string>
+    <string name="reading_time_get">Get reading statistics</string>
+    <string name="reading_time_exported">Exported %1$s</string>
+    <string name="reading_time_minutes">%1$d min</string>
+</resources>

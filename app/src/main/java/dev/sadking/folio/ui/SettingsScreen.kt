@@ -13,9 +13,12 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.*
+import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
@@ -47,38 +50,58 @@ internal fun SettingsScreen(
 ) {
     var confirmForget by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        PageHeading("Settings", "Appearance, connections and your library")
+        PageHeading(
+            stringResource(R.string.settings_title),
+            stringResource(R.string.settings_subtitle),
+        )
         Column(
             Modifier.padding(horizontal = FolioSpace.page),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text("Appearance", style = MaterialTheme.typography.titleLarge)
+            Text(
+                stringResource(R.string.settings_appearance),
+                style = MaterialTheme.typography.titleLarge,
+            )
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("System", "Light", "Dark").forEach { mode ->
-                    FilterChip(appearance == mode, { onTheme(mode) }, label = { Text(mode) })
-                }
+                // "System", "Light" and "Dark" are stored preference values; only the label is
+                // translated.
+                listOf(
+                        "System" to R.string.appearance_theme_system,
+                        "Light" to R.string.appearance_theme_light,
+                        "Dark" to R.string.appearance_theme_dark,
+                    )
+                    .forEach { (mode, labelRes) ->
+                        FilterChip(
+                            appearance == mode,
+                            { onTheme(mode) },
+                            label = { Text(stringResource(labelRes)) },
+                        )
+                    }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Use wallpaper colours", Modifier.weight(1f))
+                val wallpaper = stringResource(R.string.settings_wallpaper_colours)
+                Text(wallpaper, Modifier.weight(1f))
                 Switch(
                     dynamic,
                     onDynamic,
-                    Modifier.semantics { contentDescription = "Use wallpaper colours" },
+                    Modifier.semantics { contentDescription = wallpaper },
                 )
             }
             HorizontalDivider()
-            Text("Paired folders", style = MaterialTheme.typography.titleLarge)
             Text(
-                if (phoneFolder.isBlank())
-                    "Choose a phone folder to import its EPUBs and exchange additions with the Kindle folder."
-                else "Phone · $phoneFolder",
+                stringResource(R.string.settings_folder_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                if (phoneFolder.isBlank()) stringResource(R.string.settings_folder_none)
+                else stringResource(R.string.settings_folder_current, phoneFolder),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "Sync keeps EPUB subfolders and checks file contents in both directions. Different editions need review; deletions and KOReader sidecars are never mirrored. Refresh reads phone additions on demand.",
+                stringResource(R.string.settings_folder_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedButton(
@@ -86,13 +109,18 @@ internal fun SettingsScreen(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (phoneFolder.isBlank()) "Choose phone folder" else "Change phone folder")
+                Text(
+                    if (phoneFolder.isBlank()) stringResource(R.string.settings_folder_choose)
+                    else stringResource(R.string.settings_folder_change)
+                )
             }
             if (phoneFolder.isNotBlank())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onRefreshFolder, enabled = !busy) { Text("Refresh EPUBs") }
+                    TextButton(onClick = onRefreshFolder, enabled = !busy) {
+                        Text(stringResource(R.string.settings_folder_refresh))
+                    }
                     TextButton(onClick = onForgetFolder, enabled = !busy) {
-                        Text("Disconnect folder")
+                        Text(stringResource(R.string.settings_folder_disconnect))
                     }
                 }
             HorizontalDivider()
@@ -101,16 +129,27 @@ internal fun SettingsScreen(
                 enabled = !busy && paired,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Install KOReader companion")
+                Text(stringResource(R.string.settings_plugin_install))
             }
             Text(
-                "The companion applies safe position handoffs through KOReader. Installation needs a restart; existing plugin files are retained.",
+                stringResource(R.string.settings_plugin_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
             HorizontalDivider()
-            Text("Library storage", style = MaterialTheme.typography.titleLarge)
             Text(
-                "$recordCount library entries · $count EPUBs on this phone. Original files are retained when metadata is edited.",
+                stringResource(R.string.settings_storage_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                stringResource(
+                    R.string.settings_storage_summary,
+                    pluralStringResource(
+                        R.plurals.settings_storage_entries,
+                        recordCount,
+                        recordCount,
+                    ),
+                    pluralStringResource(R.plurals.settings_storage_files, count, count),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (onRemoved != null)
@@ -119,12 +158,14 @@ internal fun SettingsScreen(
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Recently removed · $removedCount")
+                    Text(stringResource(R.string.settings_recently_removed, removedCount))
                 }
             if (onImports != null)
-                TextButton(onClick = onImports, enabled = !busy) { Text("Last import results") }
+                TextButton(onClick = onImports, enabled = !busy) {
+                    Text(stringResource(R.string.settings_last_import))
+                }
             Text(
-                "Back up your books, covers, lists and saved reading data. Keep the backup private; it contains your books and notes.",
+                stringResource(R.string.settings_backup_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -133,55 +174,60 @@ internal fun SettingsScreen(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Export library backup")
+                Text(stringResource(R.string.settings_backup_export))
             }
             OutlinedButton(
                 onClick = onRestore,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Restore from backup")
+                Text(stringResource(R.string.settings_backup_restore))
             }
             Text(
-                "Restore adds missing books and merges collection memberships. Existing EPUBs and metadata are retained. Sync preferences on new restored shelves are disabled.",
+                stringResource(R.string.settings_restore_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
             HorizontalDivider()
             SectionHeading(
-                "Connections",
-                "Your library works offline. Connect only the services you use.",
+                stringResource(R.string.settings_connections_title),
+                stringResource(R.string.settings_connections_subtitle),
             )
             FeatureRow(
-                "Hardcover",
-                if (hardcoverUsername.isBlank())
-                    "Connect for Want to Read and reviewed progress updates"
-                else "Connected as @$hardcoverUsername",
+                stringResource(R.string.settings_hardcover),
+                if (hardcoverUsername.isBlank()) stringResource(R.string.settings_hardcover_connect)
+                else stringResource(R.string.settings_hardcover_connected, hardcoverUsername),
                 Icons.Outlined.AccountCircle,
                 enabled = !busy,
                 onClick = onHardcover,
             )
-            Text("Kindle & sync", style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.settings_device_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
             OutlinedButton(
                 onClick = onConnection,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Connection settings")
+                Text(stringResource(R.string.settings_connection_settings))
             }
             Text(
-                "File transfers are verified before completion. Existing Kindle editions stay in place; changed EPUBs require review.",
+                stringResource(R.string.settings_device_hint),
                 style = MaterialTheme.typography.bodyMedium,
             )
             TextButton(onClick = { confirmForget = true }, enabled = !busy && paired) {
-                Text("Forget Kindle pairing")
+                Text(stringResource(R.string.settings_forget_device))
             }
             HorizontalDivider()
             Text(
-                "Folio · ${dev.sadking.folio.BuildConfig.VERSION_NAME}",
+                stringResource(
+                    R.string.settings_about_version,
+                    dev.sadking.folio.BuildConfig.VERSION_NAME,
+                ),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "An independent ebook library. No required account or analytics. Online discovery and Hardcover are optional.",
+                stringResource(R.string.settings_about),
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -189,12 +235,8 @@ internal fun SettingsScreen(
     if (confirmForget)
         AlertDialog(
             onDismissRequest = { confirmForget = false },
-            title = { Text("Forget this pairing?") },
-            text = {
-                Text(
-                    "The saved host and credential will be removed. Books on both devices remain intact."
-                )
-            },
+            title = { Text(stringResource(R.string.settings_forget_title)) },
+            text = { Text(stringResource(R.string.settings_forget_body)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -203,9 +245,13 @@ internal fun SettingsScreen(
                     },
                     enabled = !busy,
                 ) {
-                    Text("Forget")
+                    Text(stringResource(R.string.settings_forget_confirm))
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmForget = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { confirmForget = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
+            },
         )
 }

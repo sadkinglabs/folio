@@ -10,7 +10,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 @Composable
@@ -34,6 +37,7 @@ fun ReadingScreen(
             snapshots.groupBy { it.bookId }.mapValues { it.value.maxBy { r -> r.fetchedAt } }
         }
     val notes = remember(annotations) { annotations.groupingBy { it.bookId }.eachCount() }
+    // Filter identifiers stay in English; only their labels come from resources.
     var filter by rememberSaveable { mutableStateOf("Reading") }
     val activity =
         remember(books, latest, filter, signals) {
@@ -55,7 +59,12 @@ fun ReadingScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { PageHeading("Reading", "Your reading, with saved progress and notes") }
+        item {
+            PageHeading(
+                stringResource(R.string.reading_title),
+                stringResource(R.string.reading_subtitle),
+            )
+        }
         item {
             Column(
                 Modifier.padding(horizontal = 24.dp),
@@ -69,12 +78,12 @@ fun ReadingScreen(
                     ) {
                         Icon(Icons.Outlined.Sync, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Refresh progress & notes")
+                        Text(stringResource(R.string.reading_refresh))
                     }
                 else
                     FeatureRow(
-                        "Connect your Kindle",
-                        "Retrieve KOReader progress and annotations over Wi-Fi",
+                        stringResource(R.string.reading_connect),
+                        stringResource(R.string.reading_connect_summary),
                         Icons.Outlined.TabletMac,
                         enabled = !busy,
                         onClick = onConnect,
@@ -83,20 +92,30 @@ fun ReadingScreen(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    listOf("Reading", "Finished", "All activity").forEach { choice ->
-                        FilterChip(filter == choice, { filter = choice }, label = { Text(choice) })
-                    }
+                    listOf(
+                            "Reading" to R.string.reading_filter_reading,
+                            "Finished" to R.string.reading_filter_finished,
+                            "All activity" to R.string.reading_filter_all,
+                        )
+                        .forEach { (choice, labelRes) ->
+                            FilterChip(
+                                filter == choice,
+                                { filter = choice },
+                                label = { Text(stringResource(labelRes)) },
+                            )
+                        }
                 }
             }
         }
         if (activity.isEmpty())
             item {
                 EmptyState(
-                    "${if(filter=="Reading") "Choose your next read" else "No activity here yet"}",
-                    "Set a book's phone status in its details, or refresh saved reading data from your Kindle.",
+                    if (filter == "Reading") stringResource(R.string.reading_empty_reading)
+                    else stringResource(R.string.reading_empty_other),
+                    stringResource(R.string.reading_empty_body),
                     Icons.Outlined.MenuBook,
                     action = onLibrary,
-                    actionLabel = "Browse library",
+                    actionLabel = stringResource(R.string.reading_browse_library),
                 )
             }
         items(activity, key = { it.id }) { b ->
@@ -115,7 +134,11 @@ fun ReadingScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            signals[b.id]?.reading ?: "Phone · ${b.status}",
+                            signals[b.id]?.reading
+                                ?: stringResource(
+                                    R.string.reading_phone_status,
+                                    libraryStatusLabel(b.status),
+                                ),
                             style = MaterialTheme.typography.labelMedium,
                         )
                         r?.percent?.let { fraction ->
@@ -124,17 +147,24 @@ fun ReadingScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Text(
-                                "KOReader · ${(fraction*100).toInt()}%",
+                                stringResource(
+                                    R.string.reading_device_percent,
+                                    (fraction * 100).toInt(),
+                                ),
                                 style = MaterialTheme.typography.labelLarge,
                             )
                             Text(
-                                "Retrieved ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(r.fetchedAt))}",
+                                stringResource(
+                                    R.string.reading_checked,
+                                    observationDate(r.fetchedAt),
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        if ((notes[b.id] ?: 0) > 0)
+                        val noteCount = notes[b.id] ?: 0
+                        if (noteCount > 0)
                             Text(
-                                "${notes[b.id]} saved annotations",
+                                pluralStringResource(R.plurals.reading_notes, noteCount, noteCount),
                                 style = MaterialTheme.typography.labelMedium,
                             )
                         TextButton(
@@ -142,7 +172,7 @@ fun ReadingScreen(
                             enabled = !busy,
                             contentPadding = PaddingValues(0.dp),
                         ) {
-                            Text("Update Hardcover")
+                            Text(stringResource(R.string.reading_update_hardcover))
                         }
                     }
                 }
@@ -154,22 +184,26 @@ fun ReadingScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ExpandableSection(
-                    "About reading updates",
-                    "Close the book in KOReader before refreshing",
+                    stringResource(R.string.reading_about_title),
+                    stringResource(R.string.reading_about_summary),
                 ) {
                     Text(
-                        "KOReader saves progress and notes when you close a book. Refresh imports supported adjacent sidecars without changing Kindle data. Phone status stays separate; Hardcover updates require your review.",
+                        stringResource(R.string.reading_about_body),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 ExpandableSection(
-                    "Reading time",
+                    stringResource(R.string.reading_time_title),
                     statistics?.let {
-                        "${it.totalSeconds/3600} h ${(it.totalSeconds%3600)/60} min · imported snapshot"
-                    } ?: "Optional KOReader bridge statistics",
+                        stringResource(
+                            R.string.reading_time_total,
+                            it.totalSeconds / 3600,
+                            (it.totalSeconds % 3600) / 60,
+                        )
+                    } ?: stringResource(R.string.reading_time_none),
                 ) {
                     Text(
-                        "Export reading statistics from the Folio bridge in KOReader, then retrieve them here.",
+                        stringResource(R.string.reading_time_hint),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(
@@ -177,11 +211,15 @@ fun ReadingScreen(
                         enabled = !busy && paired,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Retrieve exported statistics")
+                        Text(stringResource(R.string.reading_time_get))
                     }
                     statistics?.let { stats ->
                         Text(
-                            "Exported ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(stats.exportedAt*1000))}",
+                            stringResource(
+                                R.string.reading_time_exported,
+                                java.text.DateFormat.getDateTimeInstance()
+                                    .format(java.util.Date(stats.exportedAt * 1000)),
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         val days = org.json.JSONArray(stats.days)
@@ -192,7 +230,12 @@ fun ReadingScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(day.getString("date"))
-                                Text("${day.getLong("seconds")/60} min")
+                                Text(
+                                    stringResource(
+                                        R.string.reading_time_minutes,
+                                        day.getLong("seconds") / 60,
+                                    )
+                                )
                             }
                         }
                     }

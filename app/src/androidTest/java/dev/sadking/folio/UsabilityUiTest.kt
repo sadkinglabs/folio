@@ -104,7 +104,7 @@ class UsabilityUiTest {
         }
         compose.onNodeWithText("The Orchard").assertIsDisplayed()
         compose.onNodeWithText("Phone · Reading").assertIsDisplayed()
-        compose.onNodeWithText("Connect your Kindle").assertHasClickAction()
+        compose.onNodeWithText("Connect your e-reader").assertHasClickAction()
     }
 
     @Test

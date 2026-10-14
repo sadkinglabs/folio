@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
@@ -46,13 +47,14 @@ fun CollectionsScreen(
 ) {
     var transferId by rememberSaveable { mutableStateOf<String?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    // Rule field identifiers are stored in the database; only their display text is translated.
     var field by rememberSaveable { mutableStateOf("Manual") }
     var value by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
-        PageHeading("Lists", "Reading plans and collections") {
+        PageHeading(stringResource(R.string.lists_title), stringResource(R.string.lists_subtitle)) {
             FilledTonalIconButton(onClick = { creating = true }, enabled = !busy) {
-                Icon(Icons.Outlined.Add, "Create list")
+                Icon(Icons.Outlined.Add, stringResource(R.string.lists_create))
             }
         }
         LazyColumn(
@@ -60,7 +62,12 @@ fun CollectionsScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { Text("Pinned", style = MaterialTheme.typography.titleMedium) }
+            item {
+                Text(
+                    stringResource(R.string.lists_pinned),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
             items(ReadingList.entries, key = { "pinned-${it.name}" }) { list ->
                 FilledTonalButton(
                     onClick = { onReadingList(list) },
@@ -80,8 +87,9 @@ fun CollectionsScreen(
                     Column(Modifier.weight(1f)) {
                         Text(list.title, style = MaterialTheme.typography.titleMedium)
                     }
+                    val listCount = readingCounts[list] ?: 0
                     Text(
-                        "${readingCounts[list] ?: 0} books",
+                        pluralStringResource(R.plurals.lists_book_count, listCount, listCount),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Spacer(Modifier.width(12.dp))
@@ -91,7 +99,7 @@ fun CollectionsScreen(
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Your lists",
+                        stringResource(R.string.lists_yours),
                         Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -99,19 +107,19 @@ fun CollectionsScreen(
                         TextButton(onClick = onDiscover, enabled = !busy) {
                             Icon(Icons.Outlined.PhotoCamera, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Discover")
+                            Text(stringResource(R.string.lists_discover))
                         }
                 }
             }
             if (shelves.isEmpty())
                 item {
                     Text(
-                        "Create a list for a topic, series or reading plan. Add books from their details or a library selection.",
+                        stringResource(R.string.lists_empty),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = { creating = true }, enabled = !busy) {
-                        Text("Create list")
+                        Text(stringResource(R.string.lists_create))
                     }
                 }
             items(shelves, key = { it.id }) { shelf ->
@@ -140,16 +148,29 @@ fun CollectionsScreen(
 
                         Column(Modifier.weight(1f)) {
                             Text(shelf.name, style = MaterialTheme.typography.titleMedium)
+                            val shelfCount =
+                                counts[shelf.id] ?: members.count { it.shelfId == shelf.id }
                             Text(
-                                "${counts[shelf.id] ?: members.count { it.shelfId == shelf.id }} books",
+                                pluralStringResource(
+                                    R.plurals.lists_book_count,
+                                    shelfCount,
+                                    shelfCount,
+                                ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (shelf.ruleField != "Manual")
+                            if (shelf.ruleField != "Manual") {
+                                val ruleLabel = libraryRuleLabel(shelf.ruleField)
+                                val ruleValue =
+                                    if (shelf.ruleField == "Status")
+                                        libraryStatusLabel(shelf.ruleValue)
+                                    else shelf.ruleValue
                                 Text(
-                                    "${shelf.ruleField} ${shelf.ruleValue}",
+                                    if (ruleValue.isBlank()) ruleLabel
+                                    else stringResource(R.string.lists_rule, ruleLabel, ruleValue),
                                     style = MaterialTheme.typography.labelMedium,
                                 )
+                            }
                         }
                     }
                     Row(
@@ -159,14 +180,21 @@ fun CollectionsScreen(
                         TextButton(onClick = { transferId = shelf.id }, enabled = !busy) {
                             Icon(Icons.Outlined.TabletAndroid, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Transfer options")
+                            Text(stringResource(R.string.lists_transfer_options))
                         }
                         Spacer(Modifier.weight(1f))
                         if (shelf.syncEnabled)
-                            Icon(Icons.Outlined.Sync, "Included in sync", Modifier.size(20.dp))
+                            Icon(
+                                Icons.Outlined.Sync,
+                                stringResource(R.string.lists_in_sync),
+                                Modifier.size(20.dp),
+                            )
                         if (onManage != null)
                             IconButton(onClick = { onManage(shelf) }, enabled = !busy) {
-                                Icon(Icons.Outlined.MoreVert, "Edit or delete ${shelf.name}")
+                                Icon(
+                                    Icons.Outlined.MoreVert,
+                                    stringResource(R.string.lists_manage, shelf.name),
+                                )
                             }
                     }
                 }
@@ -199,13 +227,11 @@ fun CollectionsScreen(
                         Text(stringResource(R.string.send_list))
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        val syncToggle = stringResource(R.string.lists_sync_toggle)
                         Column(Modifier.weight(1f)) {
+                            Text(syncToggle, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Include in one-tap sync",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                "Uses this list's attached EPUBs",
+                                stringResource(R.string.lists_sync_toggle_hint),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -213,10 +239,7 @@ fun CollectionsScreen(
                             shelf.syncEnabled,
                             { onPolicy(shelf, it) },
                             enabled = !busy,
-                            modifier =
-                                Modifier.semantics {
-                                    contentDescription = "Include in one-tap sync"
-                                },
+                            modifier = Modifier.semantics { contentDescription = syncToggle },
                         )
                     }
                 }
@@ -232,18 +255,18 @@ fun CollectionsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 SectionHeading(
-                    "New list",
-                    "Choose books yourself, or build a collection from a rule.",
+                    stringResource(R.string.lists_new_title),
+                    stringResource(R.string.lists_new_subtitle),
                 )
                 EditorField(
-                    "List name",
+                    stringResource(R.string.lists_name),
                     name,
                     { name = it.take(200) },
                     enabled = !busy,
                     error = shelves.any { it.name.equals(name.trim(), true) },
                     supporting =
                         if (shelves.any { it.name.equals(name.trim(), true) })
-                            "A list with this name already exists"
+                            stringResource(R.string.lists_name_taken)
                         else null,
                 )
                 Row(
@@ -257,26 +280,26 @@ fun CollectionsScreen(
                                 field = option
                                 value = ""
                             },
-                            label = { Text(option) },
+                            label = { Text(libraryRuleLabel(option)) },
                             enabled = !busy,
                         )
                     }
                 }
                 if (field !in listOf("Manual", "Missing on Kindle"))
                     EditorField(
-                        "$field equals",
+                        libraryRuleLabel(field),
                         value,
                         { value = it },
                         enabled = !busy,
                         supporting =
-                            if (field == "Status") "Unread, Reading, Finished or Abandoned"
+                            if (field == "Status") stringResource(R.string.lists_rule_value_status)
                             else if (field == "Language")
-                                "Use the book's language code, such as en or es"
-                            else "Match the value stored in your books",
+                                stringResource(R.string.lists_rule_value_language)
+                            else stringResource(R.string.lists_rule_value_other),
                     )
                 if (field == "Missing on Kindle")
                     Text(
-                        "Uses the last verified Kindle inventory. Sync refreshes availability before transferring.",
+                        stringResource(R.string.lists_rule_missing_hint),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 Button(
@@ -294,7 +317,7 @@ fun CollectionsScreen(
                             (field in listOf("Manual", "Missing on Kindle") || value.isNotBlank()),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Create list")
+                    Text(stringResource(R.string.lists_create))
                 }
             }
         }
