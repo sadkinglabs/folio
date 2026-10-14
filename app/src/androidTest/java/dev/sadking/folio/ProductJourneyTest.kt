@@ -96,10 +96,18 @@ class ProductJourneyTest {
         image.recycle()
     }
 
-    private fun waitText(text: String) =
-        compose.waitUntil(15000) {
-            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    private fun waitText(text: String) {
+        try {
+            compose.waitUntil(15000) {
+                compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError(
+                "'$text' did not appear. Screen:\n" + compose.onAllNodes(isRoot()).printToString(),
+                timeout,
+            )
         }
+    }
 
     private fun tab(text: String) =
         compose.onNode(hasText(text) and hasClickAction()).performClick()

@@ -92,7 +92,7 @@ jobs:
                       node = case.find(kind)
                       if node is not None:
                           print(f"\n=== {kind.upper()}: {case.get('classname')}.{case.get('name')}")
-                          print((node.text or node.get('message') or '')[:4000])
+                          print((node.text or node.get('message') or '')[:12000])
           EOF
       - uses: actions/upload-artifact@v4
         if: always()

@@ -94,7 +94,9 @@ class UpgradeAndBackupTest {
         path.parentFile!!.mkdirs()
         val schema =
             JSONObject(
-                    context.assets
+                    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                        .context
+                        .assets
                         .open("dev.sadking.folio.data.LibraryDatabase/1.json")
                         .bufferedReader()
                         .readText()

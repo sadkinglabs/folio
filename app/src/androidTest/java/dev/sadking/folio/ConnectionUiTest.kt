@@ -38,7 +38,7 @@ class ConnectionUiTest {
                 }
             }
         }
-        compose.onNodeWithText("Trust this Kindle").performClick()
+        compose.onNode(hasText("Trust this Kindle") and hasClickAction()).performClick()
         compose.onNodeWithText("Save pairing").performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(pin, saved!!.fingerprint)
@@ -60,7 +60,7 @@ class ConnectionUiTest {
                 }
             }
         }
-        compose.onNodeWithText("Trust this Kindle").assertIsNotEnabled()
+        compose.onNode(hasText("Trust this Kindle") and hasClickAction()).assertIsNotEnabled()
         compose
             .onNodeWithText("The address changed. Cancel and read its fingerprint again.")
             .assertIsDisplayed()
