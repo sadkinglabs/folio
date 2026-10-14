@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="folio-sftp-") as tmp:
     server = Fixture(books, root / "host", root / "client")
     env = dict(os.environ, FOLIO_SFTP_PORT=str(server.port), FOLIO_SFTP_ROOT=str(books), FOLIO_SFTP_FINGERPRINT=fingerprint, FOLIO_SFTP_KEY=str(root / "client"), FOLIO_SFTP_AUTH_LOG=str(server.metrics))
     try:
-        command = [os.environ.get("FOLIO_GRADLE_EXECUTABLE", str(project / "gradlew")), "--no-daemon", "--max-workers=2", "checkFormatting", ":core:test", ":transport:test", ":app:testDebugUnitTest", ":app:assembleDebug", ":app:assembleDebugAndroidTest", ":app:lintDebug"]
+        command = [os.environ.get("FOLIO_GRADLE_EXECUTABLE", str(project / "gradlew")), "--no-daemon", "checkFormatting", ":core:test", ":transport:test", ":app:testDebugUnitTest", ":app:assembleDebug", ":app:assembleDebugAndroidTest", ":app:lintDebug"]
         # A per-process proxy is needed only in the hosted build environment.
         if os.environ.get("FOLIO_USE_ENV_PROXY"):
             from urllib.parse import urlparse

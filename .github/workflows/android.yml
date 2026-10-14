@@ -1,7 +1,9 @@
 name: Android checks
 on:
   push:
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -74,6 +76,27 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # A booted emulator snapshot is cached, so later runs resume it instead of cold-booting.
+      - name: Emulator snapshot cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64-pixel_6
+      - name: Create emulator snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: echo "Emulator snapshot created"
       - name: Run connected tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -81,14 +104,12 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          force-avd-creation: false
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          # connectedDebugAndroidTest uninstalls the app afterwards, losing its screenshots, so
-          # the screenshot tests run once more on a kept install and the images are copied out.
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # The app stays installed after the run so the screenshots it saved can be copied out.
           script: |
-            ./gradlew --no-daemon :app:connectedDebugAndroidTest || touch instrumentation-failed
-            ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest
-            adb shell am instrument -w -e class dev.sadking.folio.ReaderUiTest,dev.sadking.folio.ProductJourneyTest dev.sadking.folio.test/androidx.test.runner.AndroidJUnitRunner || true
+            ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest || touch instrumentation-failed
             mkdir -p screenshots && (adb exec-out run-as dev.sadking.folio tar c files/qa | tar x -C screenshots) || true
             test ! -f instrumentation-failed
       - name: Print failed instrumentation tests
