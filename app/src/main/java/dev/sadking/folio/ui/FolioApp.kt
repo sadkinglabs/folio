@@ -287,7 +287,17 @@ fun FolioApp(model: LibraryViewModel) {
         var editorDirty by rememberSaveable { mutableStateOf(false) }
         var confirmDiscard by rememberSaveable { mutableStateOf(false) }
         val editing = nav.editing
-        var selection by remember { mutableStateOf(setOf<String>()) }
+        // Multi-select survives rotation and process recreation.
+        var selection by
+            rememberSaveable(
+                stateSaver =
+                    androidx.compose.runtime.saveable.Saver<Set<String>, ArrayList<String>>(
+                        save = { ArrayList(it) },
+                        restore = { it.toSet() },
+                    )
+            ) {
+                mutableStateOf(setOf<String>())
+            }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
         var showConnection by rememberSaveable { mutableStateOf(false) }
         val picker =

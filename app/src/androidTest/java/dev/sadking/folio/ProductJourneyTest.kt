@@ -144,6 +144,8 @@ class ProductJourneyTest {
                 "Refusing to replace non-fixture library data"
             }
             app.database.clearAllTables()
+            // Start from the default grid layout; the test switches to list view later.
+            app.getSharedPreferences("library-view", 0).edit().clear().commit()
             val p = epub("Pride and Prejudice", "Jane Austen", Color.rgb(233, 215, 181))
             pride = app.repository.import(Uri.fromFile(p)).first
             app.repository.manageBatch(setOf(pride.id), status = "Reading")
@@ -307,6 +309,8 @@ class ProductJourneyTest {
         capture("library-dark")
         compose.onNodeWithContentDescription("Show list").performClick()
         capture("library-list-dark")
+        // The layout is remembered across launches; leave the grid for the tests that follow.
+        compose.onNodeWithContentDescription("Show grid").performClick()
         tab("Kindle")
         capture("kindle-dark")
         tab("Reading")

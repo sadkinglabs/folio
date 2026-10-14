@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -105,7 +106,7 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                 image!!,
                 "Cover of ${book.title}",
                 Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
             )
         else
             Column(
@@ -179,10 +180,10 @@ internal fun BookTile(
                     Icon(Icons.Outlined.Check, "Selected", Modifier.padding(6.dp).size(20.dp))
                 }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             book.title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -436,7 +437,10 @@ internal fun BookBadges(signals: BookSignals) {
     }
 }
 
-/** Opaque Material surfaces keep status legible on arbitrary artwork, without tinting covers. */
+/**
+ * A cover with at most one small status icon, so artwork stays readable. Records without an EPUB
+ * are dimmed; reading progress is the thin bar along the bottom.
+ */
 @Composable
 internal fun LibraryCover(
     book: Book,
@@ -446,39 +450,30 @@ internal fun LibraryCover(
 ) {
     val reading = signals?.reading ?: book.status
     val device = signals?.device
-    Box(modifier.clip(RoundedCornerShape(8.dp))) {
-        Cover(book, Modifier.matchParentSize())
-        if (compact) {
-            if (reading.startsWith("Finished") || device == "On Kindle")
-                Surface(
-                    Modifier.align(Alignment.BottomEnd).padding(4.dp),
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Icon(
-                        if (reading.startsWith("Finished")) Icons.Outlined.DoneAll
-                        else Icons.Outlined.TabletAndroid,
-                        if (reading.startsWith("Finished")) reading else device,
-                        Modifier.padding(4.dp).size(16.dp),
-                    )
-                }
-        } else {
-            Column(
-                Modifier.align(Alignment.BottomStart).padding(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+    val noEpub = device == "No EPUB"
+    val badge: Pair<ImageVector, String>? =
+        when {
+            reading.startsWith("Finished") -> Icons.Outlined.DoneAll to reading
+            device == "On Kindle" -> Icons.Outlined.TabletAndroid to "On your Kindle"
+            device == "Sending" || device == "Queued" -> Icons.Outlined.Sync to "$device to Kindle"
+            device in listOf("Transfer failed", "Transfer paused", "Needs update") ->
+                Icons.Outlined.ErrorOutline to device!!
+            else -> null
+        }
+    Box(
+        modifier.clip(RoundedCornerShape(8.dp)).semantics(mergeDescendants = false) {
+            if (noEpub) stateDescription = "No EPUB yet"
+        }
+    ) {
+        Cover(book, Modifier.matchParentSize().alpha(if (noEpub) 0.55f else 1f))
+        badge?.let { (icon, description) ->
+            Surface(
+                Modifier.align(if (compact) Alignment.BottomEnd else Alignment.TopEnd)
+                    .padding(if (compact) 4.dp else 6.dp),
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
-                if (reading.substringBefore(" ·") != "Unread")
-                    CoverStatusBadge(
-                        reading.substringBefore(" ·"),
-                        reading,
-                        reading.startsWith("Finished"),
-                    )
-                if (device != null)
-                    CoverStatusBadge(
-                        if (device == "On Kindle") "Verified" else device,
-                        if (device == "On Kindle") "Last verified on Kindle" else "Device: $device",
-                        device == "On Kindle",
-                    )
+                Icon(icon, description, Modifier.padding(4.dp).size(16.dp))
             }
         }
         signals?.progress?.let { progress ->
@@ -487,24 +482,5 @@ internal fun LibraryCover(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun CoverStatusBadge(label: String, description: String, positive: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color =
-            if (positive) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = Modifier.semantics { contentDescription = description },
-    ) {
-        Text(
-            label,
-            Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }

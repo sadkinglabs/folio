@@ -54,8 +54,11 @@ fun LibraryScreen(
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     var query by rememberSaveable { mutableStateOf("") }
-    var grid by rememberSaveable { mutableStateOf(true) }
-    var sort by rememberSaveable { mutableStateOf("Recent") }
+    // Layout and sort are remembered between launches. Search and filters last for the session,
+    // so a forgotten filter never hides books on the next start.
+    val view = rememberLibraryView()
+    var grid by view.grid
+    var sort by view.sort
     var status by rememberSaveable { mutableStateOf("All") }
     var files by rememberSaveable { mutableStateOf("All books") }
     var showRefine by rememberSaveable { mutableStateOf(false) }
@@ -234,11 +237,12 @@ fun LibraryScreen(
                 if (showGrid)
                     LazyVerticalGrid(
                         state = gridState,
-                        columns = GridCells.Adaptive(140.dp),
+                        // Three covers across a typical phone; more on wider screens.
+                        columns = GridCells.Adaptive(104.dp),
                         contentPadding =
-                            PaddingValues(start = 20.dp, end = 20.dp, bottom = 88.dp, top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                            PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp, top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(filtered, key = { it.id }) { book ->
