@@ -46,6 +46,8 @@ jobs:
         run: npm ci --prefix tools/reader-interop && npm test --prefix tools/reader-interop
       - name: Room's exported schemas are committed
         run: |
+          # The build cache can skip Room's processor, which writes the schema files; run it again.
+          ./gradlew --no-daemon -q :app:kspDebugKotlin --rerun
           if [ -n "$(git status --porcelain -- app/schemas)" ]; then
             echo "Room exported a schema that differs from the committed one:"
             git status --porcelain -- app/schemas
