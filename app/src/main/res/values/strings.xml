@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Book page -->
+    <string name="book_read">Read</string>
+    <string name="book_continue">Continue · %1$d%%</string>
+    <string name="book_send">Send to device</string>
+    <string name="progress_title">Progress</string>
+    <string name="progress_change_status">Change status</string>
+    <string name="progress_phone">This phone</string>
+    <string name="progress_device">Kindle</string>
+    <string name="progress_hardcover">Hardcover</string>
+    <string name="progress_not_started">Not started</string>
+    <string name="progress_not_checked">Not checked yet</string>
+    <string name="progress_checked">Checked %1$s</string>
+    <string name="progress_refresh">Refresh from Kindle</string>
+
     <!-- Reader -->
     <string name="reader_title_fallback">Reader</string>
     <string name="reader_back">Return to book</string>

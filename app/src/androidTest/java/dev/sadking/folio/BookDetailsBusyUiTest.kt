@@ -39,9 +39,9 @@ class BookDetailsBusyUiTest {
                 )
             }
         }
-        compose.onNodeWithText("Read on phone").assertIsEnabled()
+        compose.onNodeWithText("Read").assertIsEnabled()
         compose.onNodeWithText("Update progress").assertIsEnabled()
         compose.onNodeWithText("Send to device").assertIsNotEnabled()
-        compose.onNodeWithText("Refresh from Kindle").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Refresh from Kindle").assertIsNotEnabled()
     }
 }

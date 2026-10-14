@@ -75,33 +75,43 @@ internal fun BookPrimaryActions(
     onProgress: () -> Unit,
     enabled: Boolean,
     progressEnabled: Boolean = enabled,
+    /** False when another action on the screen is primary: both buttons are then outlined. */
+    prominent: Boolean = true,
 ) {
+    @Composable
+    fun FileButton(modifier: Modifier) {
+        if (prominent)
+            Button(onClick = onFile, enabled = enabled, modifier = modifier) { Text(fileLabel) }
+        else
+            OutlinedButton(onClick = onFile, enabled = enabled, modifier = modifier) {
+                Text(fileLabel)
+            }
+    }
+    @Composable
+    fun ProgressButton(modifier: Modifier) {
+        if (prominent)
+            FilledTonalButton(
+                onClick = onProgress,
+                enabled = progressEnabled,
+                modifier = modifier,
+            ) {
+                Text("Update progress")
+            }
+        else
+            OutlinedButton(onClick = onProgress, enabled = progressEnabled, modifier = modifier) {
+                Text("Update progress")
+            }
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth < 340.dp || LocalDensity.current.fontScale > 1.3f)
             Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
-                Button(onClick = onFile, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Text(fileLabel)
-                }
-                FilledTonalButton(
-                    onClick = onProgress,
-                    enabled = progressEnabled,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Update progress")
-                }
+                FileButton(Modifier.fillMaxWidth())
+                ProgressButton(Modifier.fillMaxWidth())
             }
         else
             Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
-                Button(onClick = onFile, enabled = enabled, modifier = Modifier.weight(1f)) {
-                    Text(fileLabel)
-                }
-                FilledTonalButton(
-                    onClick = onProgress,
-                    enabled = progressEnabled,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("Update progress")
-                }
+                FileButton(Modifier.weight(1f))
+                ProgressButton(Modifier.weight(1f))
             }
     }
 }
