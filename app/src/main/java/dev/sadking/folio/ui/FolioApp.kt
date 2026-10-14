@@ -98,10 +98,10 @@ fun FolioApp(model: LibraryViewModel) {
         val activeTasks by model.activeSyncTasks.collectAsStateWithLifecycle()
         val syncJobs by model.syncJobs.collectAsStateWithLifecycle()
         val syncJob = syncJobs.firstOrNull()
-        val op =
-            foregroundOp.copy(
-                busy = foregroundOp.busy || discoveryState.busy || syncJobs.any { it.active }
-            )
+        // A running operation disables only controls that would start another one. A transfer
+        // runs in its own service: it blocks device actions, never reading or library changes.
+        val op = foregroundOp
+        val deviceBusy = foregroundOp.busy || syncJobs.any { it.active }
         val snackbar = rememberOperationSnackbar(model.notices)
         val stateHolder = rememberSaveableStateHolder()
         val hardcoverUsername by discovery.username.collectAsStateWithLifecycle()
@@ -499,6 +499,7 @@ fun FolioApp(model: LibraryViewModel) {
                                     tab = 3
                                 },
                                 busy = op.busy,
+                                deviceBusy = deviceBusy,
                                 reading =
                                     reading
                                         .filter { it.bookId == book.id && it.deviceId == device.id }
@@ -605,7 +606,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         inventory,
                                         plan,
                                         history,
-                                        op.busy,
+                                        deviceBusy,
                                         inventoryCheckedAt = inventoryCheckedAt,
                                         localBookCount = books.size,
                                         onLibrary = { tab = 0 },
@@ -639,7 +640,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         library.entries,
                                         reading,
                                         annotations,
-                                        op.busy,
+                                        deviceBusy,
                                         model::refreshReading,
                                         onOpen = { entry ->
                                             if (books.any { it.id == entry.id }) detailId = entry.id
@@ -730,7 +731,7 @@ fun FolioApp(model: LibraryViewModel) {
                                     showSettings = false
                                     showAccount = true
                                 },
-                                busy = op.busy,
+                                busy = deviceBusy,
                                 onBackup = {
                                     backupPicker.launch(
                                         "Folio-backup-${java.time.LocalDate.now()}.zip"
@@ -1274,7 +1275,7 @@ fun FolioApp(model: LibraryViewModel) {
                 Box {
                     ConnectionForm(
                         device,
-                        op.busy,
+                        deviceBusy,
                         save = { config, password, key ->
                             model.saveDevice(config, password, key) {
                                 showConnection = false

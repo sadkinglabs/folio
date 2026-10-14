@@ -22,6 +22,7 @@ fun BookDetails(
     onStatus: (String) -> Unit,
     onSync: () -> Unit,
     busy: Boolean = false,
+    deviceBusy: Boolean = busy,
     reading: ReadingSnapshot? = null,
     annotations: List<BookAnnotation> = emptyList(),
     onLookup: () -> Unit = {},
@@ -46,7 +47,6 @@ fun BookDetails(
         BookHero(book)
         FilledTonalButton(
             onClick = onRead,
-            enabled = !busy,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) {
             Text(
@@ -55,7 +55,13 @@ fun BookDetails(
                 else "Read on phone"
             )
         }
-        BookPrimaryActions("Send to device", onSync, onHardcover, !busy)
+        BookPrimaryActions(
+            "Send to device",
+            onSync,
+            onHardcover,
+            enabled = !deviceBusy,
+            progressEnabled = !busy,
+        )
         BookStateSummary(
             signals
                 ?: BookSignals(
@@ -82,7 +88,9 @@ fun BookDetails(
                     }
                 }
             }
-            TextButton(onClick = onRefreshReading, enabled = !busy) { Text("Refresh from Kindle") }
+            TextButton(onClick = onRefreshReading, enabled = !deviceBusy) {
+                Text("Refresh from Kindle")
+            }
         }
         reading
             ?.takeIf { it.documentHash != book.currentHash }
@@ -139,7 +147,7 @@ fun BookDetails(
                     "Close the book in KOReader, then refresh to retrieve its saved notes.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                TextButton(onClick = onRefreshReading, enabled = !busy) {
+                TextButton(onClick = onRefreshReading, enabled = !deviceBusy) {
                     Text("Retrieve notes from Kindle")
                 }
             } else {

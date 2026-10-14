@@ -53,14 +53,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val folderReport = MutableStateFlow<List<String>>(emptyList())
 
     fun installCompanion(folder: String) =
-        run("Installing KOReader companion…") { BridgeInstaller(app).install(folder) }
+        runOnDevice("Installing KOReader companion…") { BridgeInstaller(app).install(folder) }
 
     fun clearFolderReport() {
         folderReport.value = emptyList()
     }
 
     fun syncPairedFolder() =
-        run("Comparing paired folders…") {
+        runOnDevice("Comparing paired folders…") {
             try {
                 pairedFolder.reconcile()
             } finally {
@@ -128,16 +128,24 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun run(label: String, work: suspend () -> String) {
+    /** Library work. A transfer job never blocks it: queued transfers re-check revisions. */
+    private fun run(label: String, work: suspend () -> String) = operation(label, false, work)
+
+    /** Work that talks to the device or changes pairing; it waits for the transfer job. */
+    private fun runOnDevice(label: String, work: suspend () -> String) =
+        operation(label, true, work)
+
+    private fun operation(label: String, device: Boolean, work: suspend () -> String) {
         viewModelScope.launch {
             operations.withLock {
                 operation.value = Operation(true, label)
                 try {
                     val result =
                         withContext(Dispatchers.IO) {
-                            check(syncJobs.value.none { it.active }) {
-                                "Finish or cancel the active sync before changing the library or pairing"
-                            }
+                            if (device)
+                                check(syncJobs.value.none { it.active }) {
+                                    "Finish or cancel the current transfer first"
+                                }
                             work()
                         }
                     operation.value = Operation(message = result)
@@ -391,7 +399,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         val generation = probeGeneration.incrementAndGet()
         observedHost.value = null
         probeStatus.value = Operation(true, "Reading Kindle fingerprint…")
-        run("Reading Kindle SSH fingerprint…") {
+        runOnDevice("Reading Kindle SSH fingerprint…") {
             try {
                 val observed = HostFingerprint.read(host.trim(), port)
                 if (probeGeneration.get() == generation) {
@@ -435,7 +443,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         create: String? = null,
     ) {
         val generation = folderGeneration.incrementAndGet()
-        run(if (create == null) "Reading Kindle folders…" else "Creating Kindle folder…") {
+        runOnDevice(if (create == null) "Reading Kindle folders…" else "Creating Kindle folder…") {
             folderStatus.value = Operation(busy = true, message = "Reading Kindle folders…")
             try {
                 val saved = app.deviceSettings.load()
@@ -499,7 +507,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         keyUri: Uri? = null,
         onSaved: () -> Unit = {},
     ) =
-        run("Saving Kindle connection…") {
+        runOnDevice("Saving Kindle connection…") {
             val keyBytes =
                 keyUri
                     ?.takeIf { config.authentication == "Key" }
@@ -522,7 +530,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun forgetDevice() =
-        run("Removing pairing…") {
+        runOnDevice("Removing pairing…") {
             app.deviceSettings.forget()
             device.value = DeviceConfig()
             plan.value = emptyList()
@@ -534,7 +542,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun connect() = SftpDevice(device.value, app.deviceSettings.credential())
 
     fun preview(selected: Set<String>? = null) =
-        run("Connecting and comparing books…") { prepare(selected) }
+        runOnDevice("Connecting and comparing books…") { prepare(selected) }
 
     private suspend fun prepare(selected: Set<String>?): String {
         require(selected == null || selected.isNotEmpty()) {
@@ -587,10 +595,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         return "Comparison ready · ${inventory.value.size} EPUBs in Kindle folder"
     }
 
-    fun sync() = run("Synchronising…") { performSync() }
+    fun sync() = runOnDevice("Synchronising…") { performSync() }
 
     fun syncMissing() =
-        run("Checking Kindle for missing books…") {
+        runOnDevice("Checking Kindle for missing books…") {
             val enabled = dao.allShelves().filter { it.syncEnabled }
             prepare(null)
             val presentIds =
@@ -627,7 +635,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun sendBook(book: Book) =
-        run("Sending ${book.title} to Kindle…") {
+        runOnDevice("Sending ${book.title} to Kindle…") {
             check(device.value.host.isNotBlank()) { "Pair your Kindle first" }
             prepare(setOf(book.id))
             val item = plan.value.singleOrNull() ?: error("Book is no longer available")
@@ -660,7 +668,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun resumeSync(id: String) =
-        run("Resuming queued sync…") {
+        runOnDevice("Resuming queued sync…") {
             coordinator.prepareResume(id)
             startJob(id)
             "Sync resumed; completed files are verified without duplicate uploads"
@@ -787,7 +795,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun refreshBookReading(bookId: String) = refreshReadingFor(setOf(bookId))
 
     private fun refreshReadingFor(selected: Set<String>?) =
-        run("Retrieving KOReader reading data…") {
+        runOnDevice("Retrieving KOReader reading data…") {
             var imported = 0
             var missing = 0
             var failed = 0
@@ -883,7 +891,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun sendCollections() =
-        run("Preparing KOReader collection additions…") {
+        runOnDevice("Preparing KOReader collection additions…") {
             val shelves = dao.allShelves().filter { it.syncEnabled }
             require(shelves.isNotEmpty()) { "Select Include in Sync on at least one collection" }
             val local = dao.allBooks()
@@ -954,7 +962,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     fun refreshStatistics() =
-        run("Retrieving exported reading statistics…") {
+        runOnDevice("Retrieving exported reading statistics…") {
             val config = device.value
             connect().use { remote ->
                 require(remote.exists(".folio-statistics.json")) {

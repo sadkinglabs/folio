@@ -74,6 +74,7 @@ internal fun BookPrimaryActions(
     onFile: () -> Unit,
     onProgress: () -> Unit,
     enabled: Boolean,
+    progressEnabled: Boolean = enabled,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth < 340.dp || LocalDensity.current.fontScale > 1.3f)
@@ -83,7 +84,7 @@ internal fun BookPrimaryActions(
                 }
                 FilledTonalButton(
                     onClick = onProgress,
-                    enabled = enabled,
+                    enabled = progressEnabled,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Update progress")
@@ -96,7 +97,7 @@ internal fun BookPrimaryActions(
                 }
                 FilledTonalButton(
                     onClick = onProgress,
-                    enabled = enabled,
+                    enabled = progressEnabled,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("Update progress")
