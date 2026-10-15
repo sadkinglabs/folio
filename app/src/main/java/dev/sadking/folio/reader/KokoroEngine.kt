@@ -161,8 +161,10 @@ internal class KokoroEngine(
     initial: KokoroPreferences,
 ) : TtsEngine<KokoroSettings, KokoroPreferences, KokoroError, KokoroVoice> {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val synthesis = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
-    private val output = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    private val synthesisThread = Executors.newSingleThreadExecutor()
+    private val outputThread = Executors.newSingleThreadExecutor()
+    private val synthesis = synthesisThread.asCoroutineDispatcher()
+    private val output = outputThread.asCoroutineDispatcher()
     private val sampleRate = tts.sampleRate()
     private val track =
         AudioTrack.Builder()
@@ -237,8 +239,10 @@ internal class KokoroEngine(
         val key = key(text)
         speaking = scope.launch {
             try {
-                val samples = audioFor(text).await()
+                val samples = awaitAudio(text)
                 audio.remove(key)
+                // Never report an empty sentence as heard: the player would race through the book.
+                if (samples.isEmpty()) throw IllegalStateException("Kokoro produced no audio")
                 listener?.onStart(requestId)
                 withContext(output) { play(samples) }
                 speakingId = null
@@ -248,6 +252,22 @@ internal class KokoroEngine(
             } catch (failure: Exception) {
                 speakingId = null
                 listener?.onError(requestId, KokoroError(failure.message ?: "Kokoro failed"))
+            }
+        }
+    }
+
+    /**
+     * Waits for [text]'s audio. A voice or speed change drops sentences generated for the old
+     * settings, including one being waited for; it is then generated again with the new ones rather
+     * than leaving the player waiting for an answer that never comes.
+     */
+    private suspend fun awaitAudio(text: String): FloatArray {
+        while (true) {
+            val pending = audioFor(text)
+            try {
+                return pending.await()
+            } catch (cancel: CancellationException) {
+                kotlin.coroutines.coroutineContext.ensureActive()
             }
         }
     }
@@ -311,13 +331,18 @@ internal class KokoroEngine(
         }
     }
 
+    /**
+     * Frees the voice. Kokoro's native memory is released on its own thread, after any sentence
+     * being generated there finishes, and the audio output on its thread after the last write:
+     * releasing either while in use crashes the app.
+     */
     override fun close() {
         stop()
         scope.cancel()
-        track.release()
-        synthesis.close()
-        output.close()
-        tts.release()
+        outputThread.execute { track.release() }
+        synthesisThread.execute { tts.release() }
+        outputThread.shutdown()
+        synthesisThread.shutdown()
     }
 
     private companion object {
@@ -345,11 +370,7 @@ internal class KokoroEngineProvider(private val context: Context) :
     ): Try<KokoroEngine, Error> =
         try {
             val dir = KokoroModel.dir(context)
-            val british =
-                KOKORO_VOICES.firstOrNull { it.speaker == initialPreferences.speaker }
-                    ?.language
-                    ?.code == "en-GB"
-            val tts = withContext(Dispatchers.IO) { OfflineTts(null, config(dir, british)) }
+            val tts = withContext(Dispatchers.IO) { OfflineTts(null, config(dir)) }
             Try.success(KokoroEngine(tts, publication, initialPreferences).also { engine = it })
         } catch (cancel: CancellationException) {
             throw cancel
@@ -358,15 +379,19 @@ internal class KokoroEngineProvider(private val context: Context) :
             Try.failure(KokoroError(failure.message ?: "Kokoro could not start"))
         }
 
-    private fun config(dir: File, british: Boolean): OfflineTtsConfig {
+    /**
+     * Every voice uses the American English pronunciation rules. The British rules ("en-gb") make
+     * this model produce no audio at all; British voices keep their accent through the voice.
+     */
+    private fun config(dir: File): OfflineTtsConfig {
         val kokoro =
             OfflineTtsKokoroModelConfig(
                 model = File(dir, "model.int8.onnx").path,
                 voices = File(dir, "voices.bin").path,
                 tokens = File(dir, "tokens.txt").path,
                 dataDir = File(dir, "espeak-ng-data").path,
-                lexicon = File(dir, if (british) "lexicon-gb-en.txt" else "lexicon-us-en.txt").path,
-                lang = if (british) "en-gb" else "en-us",
+                lexicon = File(dir, "lexicon-us-en.txt").path,
+                lang = "en-us",
             )
         val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
         return OfflineTtsConfig(

@@ -234,19 +234,23 @@ class ReaderActivity : FragmentActivity() {
                         spoken != null && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                     )
                         model.listened(spoken)
-                    fragment.applyDecorations(
-                        listOfNotNull(
-                            spoken?.let {
-                                Decoration(
-                                    "spoken",
-                                    it,
-                                    Decoration.Style.Highlight(tint = listenTint),
-                                )
-                            }
-                        ),
-                        "listen",
-                    )
+                    // Turn to the sentence first: the highlight waits on the page's script and
+                    // must never hold the page back.
                     if (spoken != null) fragment.go(spoken, animated = false)
+                    withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
+                        fragment.applyDecorations(
+                            listOfNotNull(
+                                spoken?.let {
+                                    Decoration(
+                                        "spoken",
+                                        it,
+                                        Decoration.Style.Highlight(tint = listenTint),
+                                    )
+                                }
+                            ),
+                            "listen",
+                        )
+                    }
                 }
         }
         lifecycleScope.launch {
@@ -789,6 +793,7 @@ class ReaderActivity : FragmentActivity() {
         private const val SETTLE_ATTEMPTS = 30
         private const val SETTLE_STEP_MS = 100L
         private const val CHAPTER_WAIT_MS = 10_000L
+        private const val HIGHLIGHT_WAIT_MS = 3_000L
         private const val BRIDGE_WAIT_MS = 8_000L
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
         private const val LEGACY_ROW = "legacy-ssh"

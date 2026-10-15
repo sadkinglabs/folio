@@ -142,6 +142,36 @@ class ReaderUiTest {
                 compose.waitUntil(15000) { listening() || noVoice() }
                 QaScreenshots.capture("reader-listen")
                 if (listening()) {
+                    // The page follows the voice: skip well past the first page and the place
+                    // saved for the book moves on with it.
+                    compose.waitUntil(15000) {
+                        compose
+                            .onAllNodesWithContentDescription("Pause")
+                            .fetchSemanticsNodes()
+                            .isNotEmpty()
+                    }
+                    val before =
+                        runBlocking { app.database.library().phoneReading(id, hash) }?.percent
+                            ?: 0.0
+                    repeat(30) {
+                        compose.onNodeWithContentDescription("Next sentence").performClick()
+                        Thread.sleep(150)
+                    }
+                    try {
+                        compose.waitUntil(15000) {
+                            (runBlocking { app.database.library().phoneReading(id, hash) }?.percent
+                                ?: 0.0) > before + 0.05
+                        }
+                    } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+                        QaScreenshots.capture("reader-listen-not-following")
+                        throw AssertionError(
+                            "The page did not follow the voice. Saved: " +
+                                runBlocking { app.database.library().phoneReading(id, hash) }
+                                    ?.locator,
+                            timeout,
+                        )
+                    }
+                    QaScreenshots.capture("reader-listen-followed")
                     // The Listening sheet offers the natural voice for this English book.
                     compose.onNodeWithContentDescription("Voice and sleep timer").performClick()
                     compose.waitUntil(5000) {

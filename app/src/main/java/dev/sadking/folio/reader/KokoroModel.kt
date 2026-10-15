@@ -53,7 +53,6 @@ internal object KokoroModel {
                 "voices.bin",
                 "tokens.txt",
                 "lexicon-us-en.txt",
-                "lexicon-gb-en.txt",
                 "LICENSE",
             ) || path.startsWith("espeak-ng-data/")
 

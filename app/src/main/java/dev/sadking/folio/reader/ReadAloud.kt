@@ -308,13 +308,12 @@ internal class ReadAloud(
 
     /**
      * Picks a voice: a natural one (`kokoro:<speaker>`), a phone voice, or null for the phone's
-     * default. Moving between Kokoro and the phone, or between American and British Kokoro voices
-     * (each has its own pronunciation dictionary), restarts at the sentence being read.
+     * default. Moving between Kokoro and the phone restarts at the sentence being read.
      */
     fun chooseVoice(id: String?) {
         val chosen = naturalSpeaker(id)
         if (chosen != null) {
-            val restart = !natural || accent(chosen) != accent(speaker)
+            val restart = !natural
             settings
                 .edit()
                 .putString("listenEngine", "natural")
@@ -337,9 +336,6 @@ internal class ReadAloud(
             .apply()
         applyPreferences()
     }
-
-    private fun accent(speaker: Int) =
-        KOKORO_VOICES.firstOrNull { it.speaker == speaker }?.language?.code
 
     /** Stops and starts again at the sentence being read, with the voice now chosen. */
     private fun restartHere() {
