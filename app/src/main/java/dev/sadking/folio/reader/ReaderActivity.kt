@@ -43,8 +43,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import dev.sadking.folio.R
 import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
@@ -454,7 +452,6 @@ class ReaderActivity : FragmentActivity() {
         var panel by rememberSaveable { mutableStateOf<ReaderPanel?>(null) }
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
-        val hazeState = remember { HazeState() }
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
@@ -533,7 +530,10 @@ class ReaderActivity : FragmentActivity() {
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+                        // Not a blur source: blurring the page means drawing the WebView into a
+                        // layer the moment a bar appears, and on a phone that shows as the text
+                        // blinking. The bars use a flat tint instead.
+                        modifier = Modifier.fillMaxSize(),
                     )
             }
             AnimatedVisibility(
@@ -543,7 +543,7 @@ class ReaderActivity : FragmentActivity() {
                 exit = fadeOut(fade),
             ) {
                 ReaderTopBar(
-                    hazeState,
+                    null,
                     book?.title,
                     enabled = book != null,
                     backEnabled = !closing,
@@ -566,7 +566,7 @@ class ReaderActivity : FragmentActivity() {
                 val positions = model.positions
                 val progression = location?.locations?.totalProgression
                 ReaderBottomBar(
-                    hazeState,
+                    null,
                     fraction = progressFraction(progression),
                     label =
                         pageLabel(progression, location?.locations?.position, model.positionCount),
@@ -597,7 +597,11 @@ class ReaderActivity : FragmentActivity() {
                         end = 16.dp,
                         bottom = if (showBars) barHeight + 12.dp else 24.dp,
                     )
-            if (listen.state != ListenState.OFF)
+            // While it reads, the player steps aside with the bars so it never covers the lines
+            // being read; a tap in the centre brings both back, and a pause keeps it in view.
+            if (
+                listen.state != ListenState.OFF && (showBars || listen.state != ListenState.PLAYING)
+            )
                 ListenBar(
                     playing = listen.state == ListenState.PLAYING,
                     starting = listen.state == ListenState.STARTING,

@@ -139,7 +139,21 @@ class ReaderUiTest {
                         .onAllNodesWithText("No voice is available", substring = true)
                         .fetchSemanticsNodes()
                         .isNotEmpty()
-                compose.waitUntil(15000) { listening() || noVoice() }
+                // While it plays the player steps aside with the bars; a tap in the centre brings
+                // both back. Give the voice a moment to start first.
+                compose.waitUntil(15000) {
+                    noVoice() ||
+                        compose
+                            .onAllNodesWithContentDescription("Pause")
+                            .fetchSemanticsNodes()
+                            .isNotEmpty() ||
+                        !listening()
+                }
+                Thread.sleep(1500)
+                if (!noVoice() && !listening()) {
+                    QaScreenshots.tapScreenCentre()
+                    compose.waitUntil(5000) { listening() }
+                }
                 QaScreenshots.capture("reader-listen")
                 if (listening()) {
                     // The page follows the voice: skip well past the first page and the place
@@ -194,7 +208,7 @@ class ReaderUiTest {
                     compose.onNodeWithContentDescription("Stop listening").performClick()
                     compose.waitUntil(5000) { !listening() }
                 }
-                QaScreenshots.tapScreenCentre()
+                if (!controlsShown()) QaScreenshots.tapScreenCentre()
                 compose.waitUntil(5000) { controlsShown() }
                 compose.onNodeWithContentDescription("Bookmark this page").performClick()
                 compose.waitUntil(10000) {
