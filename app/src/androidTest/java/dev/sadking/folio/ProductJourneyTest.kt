@@ -103,6 +103,11 @@ class ProductJourneyTest {
             compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
         }
 
+    private fun waitTag(tag: String) =
+        waitFor("'$tag' to appear") {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+        }
+
     /** Waits for [condition]; on timeout, fails with what was on screen. */
     private fun waitFor(what: String, condition: () -> Boolean) {
         try {
@@ -267,9 +272,10 @@ class ProductJourneyTest {
         // Pride and Prejudice is being read, so it leads the Reading shelf.
         compose.onNodeWithTag(LIBRARY_SHELF_TAG).assertIsDisplayed()
         cover("Pride and Prejudice, Jane Austen, 37%").performClick()
-        compose.onNodeWithText("Send to device").assertIsDisplayed()
-        compose.onNodeWithText("Update progress").assertIsDisplayed()
-        compose.onNodeWithText("Manage lists").performClick()
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Continue · 37%")
+        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(BOOK_ACTION_PROGRESS_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(BOOK_LISTS_ADD_TAG).performClick()
         compose.onNode(isToggleable() and hasAnySibling(hasText("Slow Sundays"))).performClick()
         compose.onNodeWithText("Lists · Pride and Prejudice").assertIsDisplayed()
         // Close the sheet through its scrim's own action. A system back gesture did not always
@@ -283,9 +289,11 @@ class ProductJourneyTest {
                 .fetchSemanticsNodes()
                 .isEmpty()
         }
-        waitText("Send to device")
+        waitTag(BOOK_ACTION_SEND_TAG)
+        // The list the book was just added to shows as a chip.
+        compose.onNodeWithText("Slow Sundays").assertIsDisplayed()
         capture("book-light")
-        compose.onNodeWithContentDescription("Edit metadata").performClick()
+        compose.onNodeWithTag(BOOK_ACTION_EDIT_TAG).performClick()
         capture("metadata-light")
         compose.onNodeWithText("Title").performTextClearance()
         compose.onNodeWithText("Title").performTextInput("Pride and Prejudice · Edited")
@@ -328,7 +336,8 @@ class ProductJourneyTest {
         cover("A Room of One’s Own, Virginia Woolf")
             .assert(hasStateDescription("No EPUB yet"))
             .performClick()
-        compose.onNodeWithText("Add EPUB").assertIsDisplayed()
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
+        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertDoesNotExist()
         capture("catalogue-light")
         val input = epub("A Room of One’s Own", "Virginia Woolf", Color.rgb(223, 202, 215))
         val values =
@@ -341,17 +350,19 @@ class ProductJourneyTest {
         app.contentResolver.openOutputStream(uri)!!.use { out ->
             input.inputStream().use { it.copyTo(out) }
         }
-        compose.onNodeWithText("Add EPUB").performClick()
+        // Attach: pick a file from the phone, then confirm with both covers in view.
+        compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).performClick()
+        compose.onNodeWithTag(ATTACH_PICK_FILE_TAG).performClick()
         compose.waitUntil(20000) {
             find(automation.rootInActiveWindow, "Folio-Journey.epub") != null
         }
         var node = find(automation.rootInActiveWindow, "Folio-Journey.epub")!!
         while (!node.isClickable && node.parent != null) node = node.parent
         assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-        waitText("Attach this edition?")
-        compose.onNodeWithText("Confirm attachment").performClick()
-        waitText("Send to device")
-        compose.onNodeWithText("Add EPUB").assertDoesNotExist()
+        waitText("Attach to A Room of One’s Own?")
+        compose.onNodeWithTag(CONFIRM_SHEET_CONFIRM_TAG).performClick()
+        waitTag(BOOK_ACTION_SEND_TAG)
+        compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).assertDoesNotExist()
         app.contentResolver.delete(uri, null, null)
         compose.onNodeWithContentDescription("Back").performClick()
         // Attaching the EPUB keeps the record where it was, without the dashed frame.
@@ -378,12 +389,12 @@ class ProductJourneyTest {
         waitText("Continue · 37%")
         capture("now-reading-dark")
         compose.onNodeWithText("Open book page").performClick()
-        waitText("Send to device")
+        waitTag(BOOK_ACTION_SEND_TAG)
         compose.onNodeWithContentDescription("Back").performClick()
         // Hamlet is read without an EPUB; it sits on the Library's Reading shelf all the same.
         tab("Library")
         cover("Hamlet, William Shakespeare").performClick()
-        compose.onNodeWithText("Update progress").performScrollTo().performClick()
+        compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).performScrollTo().performClick()
         waitText("Hardcover reading")
         compose.onNodeWithText("1 · Manual progress").assertIsDisplayed()
         compose.onNodeWithText("Get latest from e-reader").assertDoesNotExist()

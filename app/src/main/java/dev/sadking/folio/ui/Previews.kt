@@ -97,12 +97,8 @@ internal fun DetailsPreview() {
         Surface {
             BookDetails(
                 sampleBooks[0],
-                listOf(Shelf("s1", "Slow Sundays")),
-                setOf("s1"),
-                true,
-                { _, _ -> },
-                {},
-                {},
+                lists = listOf("Slow Sundays"),
+                signals = BookSignals("On Kindle", "Reading · phone", 0.41, null),
             )
         }
     }

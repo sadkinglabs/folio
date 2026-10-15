@@ -30,4 +30,41 @@
 
     <!-- Redesign: Settings, reading section (moved from the Reading tab) -->
     <string name="rd_settings_reading">Reading</string>
+
+    <!-- Redesign: Book page -->
+    <string name="rd_find_epub">Find EPUB</string>
+    <string name="rd_action_attach">Attach</string>
+    <string name="rd_action_read">Read</string>
+    <string name="rd_action_find">Find</string>
+    <string name="rd_action_select">Select</string>
+    <!-- TalkBack and the Send tile for 1.5 s after a send is queued. -->
+    <string name="rd_action_queued">Queued</string>
+    <string name="rd_strip_phone">Phone</string>
+    <string name="rd_ereader_sent">Sent</string>
+    <string name="rd_ereader_changed">Changed</string>
+    <string name="rd_ereader_not_sent">Not sent</string>
+    <string name="rd_ereader_queued">Queued</string>
+    <string name="rd_ereader_sending">Sending</string>
+    <string name="rd_ereader_paused">Paused</string>
+    <string name="rd_ereader_failed">Failed</string>
+    <string name="rd_ereader_no_epub">No EPUB</string>
+    <string name="rd_hardcover_page">Page %1$d</string>
+    <string name="rd_hardcover_linked">Linked</string>
+    <string name="rd_hardcover_not_linked">Not linked</string>
+    <string name="rd_progress_ahead">%1$s is ahead at %2$d%%</string>
+    <string name="rd_status_on_phone">Status on this phone</string>
+    <string name="rd_add_to_list">Add to list</string>
+    <string name="rd_more">More</string>
+    <string name="rd_less">Less</string>
+    <string name="rd_remove_body_many">They go to Recently removed. Files, notes and progress are kept.</string>
+
+    <!-- Redesign: attach an EPUB to a record -->
+    <string name="rd_attach_sheet_title">Attach an EPUB</string>
+    <string name="rd_attach_pick_file">Pick a file</string>
+    <string name="rd_attach_in_folio">Already in Folio</string>
+    <string name="rd_suggested">Suggested</string>
+    <string name="rd_attach_confirm_title">Attach to %1$s?</string>
+    <string name="rd_attach_confirm_body">%1$s by %2$s becomes this book’s file. Lists and the Hardcover match stay.</string>
+    <string name="rd_attach">Attach</string>
+    <string name="rd_keep_separate">Keep separate</string>
 </resources>

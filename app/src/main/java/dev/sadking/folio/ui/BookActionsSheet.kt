@@ -2,98 +2,122 @@
 
 package dev.sadking.folio.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
+internal const val BOOK_ACTIONS_SHEET_TAG = "book-actions-sheet"
+
+internal fun bookActionTag(action: BookAction) = "book-actions-${action.name.lowercase()}"
+
+/**
+ * Quick actions for a book from the library, without opening its page: the cover and title, six
+ * icon actions and a row to the page. A record offers Find and Attach instead of Read and Send.
+ */
 @Composable
 fun BookActionsSheet(
     book: Book,
     hasEpub: Boolean,
-    hasAnnotations: Boolean,
     busy: Boolean,
     onAction: (BookAction) -> Unit,
-    attached: Boolean = false,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item {
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
-                    Text(book.title, style = MaterialTheme.typography.headlineSmall)
-                    Text(book.authorLabel, style = MaterialTheme.typography.bodyMedium)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .padding(start = FolioSpace.section, end = FolioSpace.section, bottom = 32.dp)
+                .testTag(BOOK_ACTIONS_SHEET_TAG),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.section),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(FolioSpace.item),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CoverTile(book, Modifier.width(72.dp), lifted = false)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        book.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        book.authorLabel.ifBlank { stringResource(R.string.shell_unknown_author) },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
-            items(
-                availableBookActions(hasEpub, hasAnnotations).filter {
-                    it != BookAction.DETACH || attached
-                }
-            ) { action ->
-                val label =
-                    when (action) {
-                        BookAction.OPEN -> R.string.shell_open_book_details
-                        BookAction.SELECT -> R.string.shell_action_select
-                        BookAction.SEND -> R.string.book_send
-                        BookAction.PROGRESS -> R.string.shell_update_progress
-                        BookAction.EDIT -> R.string.shell_action_edit
-                        BookAction.LISTS -> R.string.shell_manage_lists
-                        BookAction.STATUS -> R.string.shell_action_status
-                        BookAction.EXPORT_NOTES -> R.string.shell_action_export_notes
-                        BookAction.ATTACH -> R.string.shell_action_attach
-                        BookAction.SEARCH -> R.string.shell_action_search
-                        BookAction.REMOVE -> R.string.shell_action_remove
-                        BookAction.DETACH -> R.string.shell_action_detach
-                        BookAction.EXPORT_EPUB -> R.string.shell_action_export_epub
-                        BookAction.SHARE_EPUB -> R.string.shell_action_share_epub
-                        BookAction.OPEN_READER -> R.string.shell_action_read
-                        BookAction.EXTERNAL_READER -> R.string.shell_action_external
+            ActionRow(
+                quickBookActions(hasEpub).map { action ->
+                    val (icon, label) =
+                        when (action) {
+                            BookAction.OPEN_READER ->
+                                Icons.Outlined.AutoStories to R.string.rd_action_read
+                            BookAction.SEARCH -> Icons.Outlined.Search to R.string.rd_action_find
+                            BookAction.SEND ->
+                                Icons.AutoMirrored.Outlined.Send to R.string.rd_action_send
+                            BookAction.ATTACH ->
+                                Icons.Outlined.AttachFile to R.string.rd_action_attach
+                            BookAction.LISTS ->
+                                Icons.Outlined.CollectionsBookmark to R.string.shell_lists
+                            BookAction.STATUS ->
+                                Icons.Outlined.Bookmark to R.string.rd_action_status
+                            BookAction.SELECT ->
+                                Icons.Outlined.CheckCircle to R.string.rd_action_select
+                            BookAction.REMOVE ->
+                                Icons.Outlined.DeleteOutline to R.string.rd_action_remove
+                            else -> Icons.Outlined.AutoStories to R.string.rd_open_book_page
+                        }
+                    // Selecting and searching start nothing on the phone, so a running operation
+                    // does not block them.
+                    IconAction(
+                        icon,
+                        stringResource(label),
+                        enabled = !busy || action in listOf(BookAction.SELECT, BookAction.SEARCH),
+                        destructive = action == BookAction.REMOVE,
+                        tag = bookActionTag(action),
+                    ) {
+                        onAction(action)
                     }
-                val icon =
-                    when (action) {
-                        BookAction.OPEN -> Icons.Outlined.AutoStories
-                        BookAction.SELECT -> Icons.Outlined.CheckCircle
-                        BookAction.SEND -> Icons.Outlined.Send
-                        BookAction.PROGRESS -> Icons.Outlined.Sync
-                        BookAction.EDIT -> Icons.Outlined.Edit
-                        BookAction.LISTS -> Icons.Outlined.CollectionsBookmark
-                        BookAction.STATUS -> Icons.Outlined.Bookmark
-                        BookAction.EXPORT_NOTES -> Icons.Outlined.FileDownload
-                        BookAction.ATTACH -> Icons.Outlined.AttachFile
-                        BookAction.SEARCH -> Icons.Outlined.Search
-                        BookAction.REMOVE -> Icons.Outlined.DeleteOutline
-                        BookAction.DETACH -> Icons.Outlined.LinkOff
-                        BookAction.EXPORT_EPUB -> Icons.Outlined.FileDownload
-                        BookAction.SHARE_EPUB -> Icons.Outlined.Share
-                        BookAction.OPEN_READER -> Icons.Outlined.AutoStories
-                        BookAction.EXTERNAL_READER -> Icons.Outlined.OpenInNew
-                    }
-                TextButton(
-                    onClick = { onAction(action) },
-                    enabled =
-                        !busy ||
-                            action in listOf(BookAction.OPEN, BookAction.SELECT, BookAction.SEARCH),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    colors =
-                        ButtonDefaults.textButtonColors(
-                            contentColor =
-                                if (action == BookAction.REMOVE) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurface
-                        ),
-                ) {
-                    Icon(icon, null)
-                    Spacer(Modifier.width(16.dp))
-                    Text(stringResource(label), Modifier.weight(1f))
                 }
-            }
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.rd_open_book_page)) },
+                trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier =
+                    Modifier.clickable(role = Role.Button) { onAction(BookAction.OPEN) }
+                        .testTag(bookActionTag(BookAction.OPEN)),
+            )
         }
     }
 }

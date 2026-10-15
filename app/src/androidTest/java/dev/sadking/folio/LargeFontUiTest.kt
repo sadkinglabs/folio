@@ -9,6 +9,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.*
+import dev.sadking.folio.ui.*
 import java.io.File
 import java.util.zip.*
 import kotlinx.coroutines.runBlocking
@@ -106,13 +107,10 @@ class LargeFontUiTest {
             QaScreenshots.capture("library-font200")
 
             compose.onNode(middlemarch).performClick()
-            val send = hasText(app.getString(R.string.book_send)) and hasClickAction()
+            val send = hasTestTag(BOOK_ACTION_SEND_TAG)
             waitFor("the book page") { compose.onAllNodes(send).fetchSemanticsNodes().isNotEmpty() }
             // The primary actions must be reachable, scrolling if the large text pushes them down.
-            compose
-                .onNode(hasText(app.getString(R.string.book_read)) and hasClickAction())
-                .performScrollTo()
-                .assertIsDisplayed()
+            compose.onNodeWithTag(BOOK_PRIMARY_TAG).performScrollTo().assertIsDisplayed()
             compose.onNode(send).performScrollTo().assertIsDisplayed()
             QaScreenshots.capture("book-font200")
 

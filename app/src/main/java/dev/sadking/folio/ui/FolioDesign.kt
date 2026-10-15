@@ -12,15 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
@@ -112,99 +109,6 @@ internal fun lift(shape: Shape, elevation: Dp = 6.dp): Modifier {
 }
 
 @Composable
-internal fun BookHero(book: Book) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val stacked = maxWidth < 340.dp || LocalDensity.current.fontScale > 1.3f
-        if (stacked)
-            Column(
-                Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
-            ) {
-                Cover(book, Modifier.width(132.dp).aspectRatio(0.68f))
-                BookBibliography(book)
-            }
-        else
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(FolioSpace.page),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Cover(book, Modifier.width(116.dp).aspectRatio(0.68f))
-                Column(Modifier.weight(1f)) { BookBibliography(book) }
-            }
-    }
-}
-
-@Composable
-private fun BookBibliography(book: Book) {
-    Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
-        Text(book.title, style = MaterialTheme.typography.headlineSmall)
-        Text(
-            book.authorLabel.ifBlank { stringResource(R.string.shell_unknown_author) },
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (book.series.isNotBlank())
-            Text(
-                listOf(book.series, book.seriesIndex)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · "),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-    }
-}
-
-@Composable
-internal fun BookPrimaryActions(
-    fileLabel: String,
-    onFile: () -> Unit,
-    onProgress: () -> Unit,
-    enabled: Boolean,
-    progressEnabled: Boolean = enabled,
-    /** False when another action on the screen is primary: both buttons are then outlined. */
-    prominent: Boolean = true,
-) {
-    @Composable
-    fun FileButton(modifier: Modifier) {
-        if (prominent)
-            Button(onClick = onFile, enabled = enabled, modifier = modifier) { Text(fileLabel) }
-        else
-            OutlinedButton(onClick = onFile, enabled = enabled, modifier = modifier) {
-                Text(fileLabel)
-            }
-    }
-    @Composable
-    fun ProgressButton(modifier: Modifier) {
-        if (prominent)
-            FilledTonalButton(
-                onClick = onProgress,
-                enabled = progressEnabled,
-                modifier = modifier,
-            ) {
-                Text(stringResource(R.string.shell_update_progress))
-            }
-        else
-            OutlinedButton(onClick = onProgress, enabled = progressEnabled, modifier = modifier) {
-                Text(stringResource(R.string.shell_update_progress))
-            }
-    }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth < 340.dp || LocalDensity.current.fontScale > 1.3f)
-            Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
-                FileButton(Modifier.fillMaxWidth())
-                ProgressButton(Modifier.fillMaxWidth())
-            }
-        else
-            Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
-                FileButton(Modifier.weight(1f))
-                ProgressButton(Modifier.weight(1f))
-            }
-    }
-}
-
-@Composable
 internal fun displayDeviceState(signals: BookSignals): String =
     when (signals.device) {
         "On Kindle" -> stringResource(R.string.shell_device_on_ereader)
@@ -225,63 +129,3 @@ internal fun observationDate(time: Long): String =
             java.text.DateFormat.SHORT,
         )
         .format(java.util.Date(time))
-
-@Composable
-internal fun BookStateSummary(signals: BookSignals) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = FolioSpace.panelShape) {
-        Column(
-            Modifier.fillMaxWidth().padding(FolioSpace.item),
-            verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
-        ) {
-            Text(signals.reading, style = MaterialTheme.typography.titleSmall)
-            signals.progress?.let {
-                LinearProgressIndicator(
-                    progress = { it.toFloat() },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    stringResource(R.string.shell_saved_progress, (it * 100).toInt()),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-            Text(
-                displayDeviceState(signals),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            signals.deviceVerifiedAt?.let {
-                Text(
-                    stringResource(R.string.shell_last_confirmed, observationDate(it)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            signals.readingFetchedAt?.let {
-                Text(
-                    stringResource(R.string.shell_reading_checked, observationDate(it)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            signals.hardcover?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
-        }
-    }
-}
-
-@Composable
-internal fun BookListsSummary(names: List<String>, onManage: () -> Unit, enabled: Boolean) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.shell_lists), style = MaterialTheme.typography.titleMedium)
-            Text(
-                names.takeIf { it.isNotEmpty() }?.joinToString(" · ")
-                    ?: stringResource(R.string.shell_no_lists),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        TextButton(onClick = onManage, enabled = enabled) {
-            Text(stringResource(R.string.shell_manage_lists))
-        }
-    }
-}

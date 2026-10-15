@@ -14,9 +14,7 @@
 
     <!-- Shell: book screen top bar -->
     <string name="shell_edit_book">Edit book</string>
-    <string name="shell_book_details">Book details</string>
     <!-- Content description used by UI tests. -->
-    <string name="shell_edit_metadata">Edit metadata</string>
     <string name="shell_book_actions">Book actions</string>
 
     <!-- Shell: KOReader plugin install (the folder must be on a Kindle) -->
@@ -36,15 +34,10 @@
     <string name="shell_keep_editing">Keep editing</string>
 
     <!-- Shell: detach an EPUB from its book entry -->
-    <string name="shell_detach_title">Detach this EPUB?</string>
-    <string name="shell_detach_body">The EPUB keeps its notes, progress and place on your e-reader. The book it was attached to becomes a separate entry again, with its details, Hardcover match and lists, ready for the right EPUB.</string>
+    <string name="shell_detach_title">Detach EPUB?</string>
+    <string name="shell_detach_body">The book keeps its details and lists. The EPUB stays in your library with its notes and progress.</string>
     <string name="shell_detach">Detach</string>
-    <string name="shell_keep_attached">Keep attached</string>
-
-    <!-- Shell: attach an imported EPUB to a book entry -->
-    <string name="shell_attach_title">Attach this edition?</string>
-    <string name="shell_attach_body">%1$s\n%2$s\n\nAttach it to %3$s? Its lists and Hardcover match stay. If you cancel, the imported EPUB stays a separate book.</string>
-    <string name="shell_attach_confirm">Confirm attachment</string>
+    <string name="shell_keep_attached">Keep</string>
 
     <!-- Shell: book search -->
     <string name="shell_no_browser">Install a browser to search for this book</string>
@@ -67,7 +60,6 @@
 
     <!-- Shell: book tiles and covers -->
     <string name="shell_cover_of">Cover of %1$s</string>
-    <string name="shell_open_book_details">Open book details</string>
     <string name="shell_select_book">Select book</string>
     <string name="shell_deselect_book">Deselect book</string>
     <string name="shell_import_epub">Import an EPUB</string>
@@ -92,26 +84,13 @@
 
     <!-- Shell: book summary -->
     <string name="shell_unknown_author">Unknown author</string>
-    <string name="shell_update_progress">Update progress</string>
-    <string name="shell_saved_progress">%1$d%% · saved progress</string>
-    <string name="shell_last_confirmed">Last confirmed on your e-reader %1$s</string>
-    <string name="shell_reading_checked">Progress from your e-reader checked %1$s</string>
     <string name="shell_lists">Lists</string>
-    <string name="shell_no_lists">Not in any lists yet</string>
-    <string name="shell_manage_lists">Manage lists</string>
     <string name="shell_all_lists">All lists</string>
 
-    <!-- Shell: book actions sheet -->
-    <string name="shell_action_select">Select multiple books</string>
-    <string name="shell_action_edit">Edit details and cover</string>
-    <string name="shell_action_status">Change reading status on this phone</string>
-    <string name="shell_action_export_notes">Export highlights and notes</string>
-    <string name="shell_action_attach">Attach EPUB from phone</string>
-    <string name="shell_action_search">Search Anna’s Archive ↗</string>
-    <string name="shell_action_remove">Remove from library</string>
+    <!-- Shell: book page overflow menu -->
+    <string name="shell_action_export_notes">Export notes</string>
     <string name="shell_action_detach">Detach EPUB</string>
-    <string name="shell_action_export_epub">Save a copy of the EPUB</string>
-    <string name="shell_action_share_epub">Share EPUB</string>
+    <string name="shell_action_export_epub">Save a copy</string>
     <string name="shell_action_read">Read on this phone</string>
     <string name="shell_action_external">Open in another app</string>
 
@@ -121,11 +100,7 @@
         <item quantity="one">Remove %1$d book?</item>
         <item quantity="other">Remove %1$d books?</item>
     </plurals>
-    <string name="shell_remove_body">These books move to Recently removed, where you can restore them. Their files, covers, lists and reading data are kept. Nothing changes on your e-reader, in Downloads or on Hardcover.</string>
-    <plurals name="shell_remove_notes">
-        <item quantity="one">%1$d highlight or note is kept with them.</item>
-        <item quantity="other">%1$d highlights and notes are kept with them.</item>
-    </plurals>
-    <string name="shell_remove_confirm">Move to Recently removed</string>
-    <string name="shell_keep_books">Keep books</string>
+    <string name="shell_remove_body">It goes to Recently removed. Files, notes and progress are kept.</string>
+    <string name="shell_remove_confirm">Remove</string>
+    <string name="shell_keep_books">Keep</string>
 </resources>

@@ -4,12 +4,9 @@
     <string name="discovery_back">Back</string>
     <string name="discovery_cancel">Cancel</string>
     <string name="discovery_close">Close</string>
-    <string name="discovery_description">Description</string>
-    <string name="discovery_about">About this book</string>
     <string name="discovery_series">Series</string>
     <string name="discovery_publisher">Publisher</string>
     <string name="discovery_language">Language</string>
-    <string name="discovery_book_line">%1$s · %2$s</string>
 
     <!-- Discover books (photo or text search) -->
     <string name="discovery_title">Discover books</string>
@@ -28,20 +25,9 @@
     <string name="discovery_add_want_to_read">Add to Want to Read</string>
 
     <!-- Catalogue book (no EPUB yet) -->
-    <string name="discovery_add_epub">Add EPUB</string>
-    <string name="discovery_hardcover_checked">Checked on Hardcover %1$s</string>
-    <string name="discovery_hardcover_checked_page">Checked on Hardcover %1$s · page %2$d</string>
     <string name="discovery_add_to_hardcover_want_to_read">Add to Want to Read on Hardcover</string>
     <string name="discovery_no_browser_search">Install a browser to search for this book.</string>
-    <string name="discovery_search_annas_archive">Search Anna’s Archive ↗</string>
-    <string name="discovery_search_annas_archive_hint">Searches by title and author in your browser. Come back here to add the EPUB.</string>
-    <string name="discovery_choose_existing_epub">Choose an EPUB already in Folio</string>
     <string name="discovery_search_epubs">Search your EPUBs</string>
-    <string name="discovery_book_line_suggested">%1$s · %2$s · Suggested</string>
-    <string name="discovery_remove">Remove from library</string>
-    <string name="discovery_attach_title">Attach this edition?</string>
-    <string name="discovery_attach_body">%1$s\n%2$s\n\nAdd this EPUB to %3$s? Its file, highlights, notes and reading history are kept. If you cancel, it stays a separate book in your library.</string>
-    <string name="discovery_attach_confirm">Confirm attachment</string>
 
     <!-- Hardcover account -->
     <string name="hardcover_connect">Connect Hardcover</string>

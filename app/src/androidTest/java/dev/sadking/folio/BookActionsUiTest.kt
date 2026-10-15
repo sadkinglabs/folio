@@ -1,5 +1,6 @@
 package dev.sadking.folio
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import dev.sadking.folio.data.*
@@ -21,8 +22,13 @@ class BookActionsUiTest {
             currentHash = "a",
         )
 
+    private fun cover() =
+        compose
+            .onAllNodes(hasContentDescription(book.title, substring = true) and hasClickAction())
+            .onFirst()
+
     @Test
-    fun gridLongPressOpensContextRatherThanStartingSelection() {
+    fun gridLongPressSelectsAndTheAccessibilityActionOpensQuickActions() {
         var context = ""
         var selection = ""
         compose.setContent {
@@ -36,66 +42,133 @@ class BookActionsUiTest {
                 )
             }
         }
-        compose.onNode(hasText(book.title) and hasClickAction()).performTouchInput { longClick() }
+        cover().performTouchInput { longClick() }
         compose.runOnIdle {
-            assertEquals(book.id, context)
-            assertEquals("", selection)
+            assertEquals(book.id, selection)
+            assertEquals("", context)
         }
-    }
-
-    @Test
-    fun listLongPressUsesSameContextFlow() {
-        var context = ""
-        compose.setContent {
-            FolioTheme(dynamic = false) {
-                LibraryScreen(
-                    listOf(book),
-                    emptySet(),
-                    onOpen = {},
-                    onSelect = {},
-                    onContext = { context = it.id },
-                )
+        val actions =
+            cover().fetchSemanticsNode().config[SemanticsActions.CustomActions].first {
+                it.label == "Book actions"
             }
-        }
-        compose.onNodeWithContentDescription("Show list").performClick()
-        compose.onNode(hasText(book.title) and hasClickAction()).performTouchInput { longClick() }
+        compose.runOnIdle { actions.action() }
         compose.runOnIdle { assertEquals(book.id, context) }
     }
 
     @Test
-    fun catalogueMenuOffersAttachmentAndRemovalWithoutSend() {
-        var chosen: BookAction? = null
+    fun listLongPressUsesTheSameSelectionFlow() {
+        var selection = ""
         compose.setContent {
             FolioTheme(dynamic = false) {
-                BookActionsSheet(
-                    book,
-                    false,
-                    false,
-                    false,
-                    onAction = { chosen = it },
-                    onDismiss = {},
-                )
+                LibraryScreen(listOf(book), emptySet(), onOpen = {}, onSelect = { selection = it })
             }
         }
-        compose.onNodeWithText("Send to device").assertDoesNotExist()
-        compose.onNodeWithText("Attach EPUB from phone").assertHasClickAction()
-        compose.onNodeWithText("Remove from library").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(BookAction.REMOVE, chosen) }
+        compose.onNodeWithContentDescription("Show list").performClick()
+        cover().performTouchInput { longClick() }
+        compose.runOnIdle { assertEquals(book.id, selection) }
     }
 
     @Test
-    fun removalRequiresConfirmationAndDescribesLocalScope() {
+    fun recordQuickActionsOfferAttachAndRemovalWithoutSend() {
+        var chosen: BookAction? = null
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BookActionsSheet(book, false, false, onAction = { chosen = it }, onDismiss = {})
+            }
+        }
+        compose.onNodeWithTag(bookActionTag(BookAction.SEND)).assertDoesNotExist()
+        compose.onNodeWithTag(bookActionTag(BookAction.ATTACH)).assertHasClickAction()
+        compose.onNodeWithTag(bookActionTag(BookAction.REMOVE)).performClick()
+        compose.runOnIdle { assertEquals(BookAction.REMOVE, chosen) }
+        compose.onNodeWithTag(bookActionTag(BookAction.OPEN)).performClick()
+        compose.runOnIdle { assertEquals(BookAction.OPEN, chosen) }
+    }
+
+    @Test
+    fun epubQuickActionsOfferSendAndReadAndStayOpenWhileBusyOnlyForSelecting() {
+        var chosen: BookAction? = null
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BookActionsSheet(book, true, true, onAction = { chosen = it }, onDismiss = {})
+            }
+        }
+        compose.onNodeWithTag(bookActionTag(BookAction.SEND)).assertIsNotEnabled()
+        compose.onNodeWithTag(bookActionTag(BookAction.OPEN_READER)).assertIsNotEnabled()
+        compose.onNodeWithTag(bookActionTag(BookAction.SELECT)).assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(BookAction.SELECT, chosen) }
+    }
+
+    @Test
+    fun removalRequiresConfirmationAndSaysWhatIsKept() {
         var confirms = 0
         compose.setContent {
             FolioTheme(dynamic = false) {
-                RemoveBooksDialog(listOf(book), 1, false, null, { confirms++ }, {})
+                RemoveBooksSheet(listOf(book), false, null, { confirms++ }, {})
             }
         }
         compose.runOnIdle { assertEquals(0, confirms) }
+        compose.onNodeWithText("Remove Library book?").assertIsDisplayed()
         compose
-            .onNodeWithText("Nothing changes on your e-reader", substring = true)
+            .onNodeWithText("Files, notes and progress are kept", substring = true)
             .assertIsDisplayed()
-        compose.onNodeWithText("Move to Recently removed").performClick()
+        compose.onNodeWithTag(CONFIRM_SHEET_CONFIRM_TAG).assertTextEquals("Remove").performClick()
         compose.runOnIdle { assertEquals(1, confirms) }
+    }
+
+    @Test
+    fun bookPageActionsAndOverflow() {
+        var hardcover = false
+        var send = false
+        var lists = false
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BookDetails(
+                    book,
+                    lists = listOf("Slow Sundays"),
+                    onSend = { send = true },
+                    onHardcover = { hardcover = true },
+                    onLists = { lists = true },
+                )
+            }
+        }
+        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).performClick()
+        compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).performClick()
+        compose.onNodeWithText("Slow Sundays").assertIsDisplayed()
+        compose.onNodeWithTag(BOOK_LISTS_ADD_TAG).performClick()
+        compose.runOnIdle {
+            assertTrue(send)
+            assertTrue(hardcover)
+            assertTrue(lists)
+        }
+        // The status strip opens the Progress sheet, where the status on this phone changes.
+        compose
+            .onNodeWithTag(STATUS_TILE_PHONE_TAG)
+            .assertTextContains("Not started")
+            .performClick()
+        compose.onNodeWithTag(PROGRESS_SHEET_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Status on this phone", ignoreCase = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun recordPageFindsAnEpubAndNeverSends() {
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BookDetails(
+                    book.copy(
+                        originalPath = "",
+                        currentPath = "",
+                        originalHash = "",
+                        currentHash = "",
+                    ),
+                    hasEpub = false,
+                )
+            }
+        }
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
+        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).assertHasClickAction()
+        compose.onNodeWithTag(STATUS_TILE_PHONE_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(STATUS_TILE_HARDCOVER_TAG).assertIsDisplayed()
     }
 }

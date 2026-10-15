@@ -175,32 +175,23 @@
     <string name="library_lookup_note">Series, tags and anything you didn\'t select stay as they are. Your original EPUB is kept.</string>
 
     <!-- Library: book page -->
-    <string name="library_book_other_version">Your e-reader progress is for a different version of this book\'s EPUB. Its position and notes are kept.</string>
-    <string name="library_book_about">About this book</string>
-    <string name="library_book_about_summary">Description</string>
+    <string name="library_book_other_version">Your e-reader’s progress is for another version of this EPUB.</string>
     <string name="library_book_next_in_series">Next in %1$s</string>
-    <string name="library_book_next_on_device">On your e-reader</string>
-    <string name="library_book_next_not_on_device">Not on your e-reader yet</string>
-    <string name="library_book_info">Book information</string>
+    <string name="library_book_info">Details</string>
     <string name="library_book_info_summary">Publisher, language, identifiers and tags</string>
     <string name="library_book_publisher">Publisher</string>
     <string name="library_book_language">Language</string>
     <string name="library_book_identifiers">Identifiers</string>
     <string name="library_book_tags">Tags</string>
-    <string name="library_book_find_details">Find details and covers online</string>
-    <string name="library_book_notes">Highlights &amp; notes</string>
+    <string name="library_book_find_details">Find details online</string>
+    <string name="library_book_notes">Notes</string>
     <plurals name="library_book_notes_count">
         <item quantity="one">%1$d highlight or note</item>
         <item quantity="other">%1$d highlights and notes</item>
     </plurals>
-    <string name="library_book_notes_empty">Close the book in KOReader, then refresh to get its notes.</string>
+    <string name="library_book_notes_empty">Close the book in KOReader, then get its notes.</string>
     <string name="library_book_notes_get">Get notes from e-reader</string>
-    <string name="library_book_notes_export">Export Markdown for Obsidian</string>
     <string name="library_book_bookmark">Bookmark</string>
     <string name="library_book_highlight">Highlight</string>
-    <string name="library_book_notes_limited">Showing the first 100 notes. The export includes all of them.</string>
-    <string name="library_book_activity">All reading activity</string>
-    <string name="library_book_remove">Remove from library</string>
-    <string name="library_book_device_state_checked">%1$s · %2$s</string>
-    <string name="library_book_progress_percent">%1$d%%</string>
+    <string name="library_book_notes_limited">Showing the first 100. The export has them all.</string>
 </resources>

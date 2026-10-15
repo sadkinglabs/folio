@@ -477,52 +477,81 @@ fun FolioApp(model: LibraryViewModel) {
                     snackbarHost = { SnackbarHost(snackbar) },
                     containerColor = MaterialTheme.colorScheme.surface,
                     topBar = {
-                        if (book != null || catalogue != null)
+                        if (editing && book != null)
                             TopAppBar(
-                                title = {
-                                    Text(
-                                        stringResource(
-                                            if (editing) R.string.shell_edit_book
-                                            else R.string.shell_book_details
-                                        )
-                                    )
-                                },
+                                title = { Text(stringResource(R.string.shell_edit_book)) },
                                 navigationIcon = {
-                                    IconButton(
-                                        onClick = { leaveBook() },
-                                        enabled = !editing || !op.busy,
-                                    ) {
+                                    IconButton(onClick = { leaveBook() }, enabled = !op.busy) {
                                         Icon(
                                             Icons.AutoMirrored.Filled.ArrowBack,
                                             stringResource(R.string.shell_back),
                                         )
                                     }
                                 },
-                                actions = {
-                                    if (!editing)
-                                        IconButton(
-                                            onClick = {
-                                                if (book != null) {
-                                                    editorDirty = false
-                                                    nav.open(Route.Edit(book.id))
-                                                } else catalogueEditorId = catalogue?.id
-                                            }
-                                        ) {
-                                            Icon(
-                                                Icons.Outlined.Edit,
-                                                stringResource(R.string.shell_edit_metadata),
+                            )
+                        else if (book != null || catalogue != null)
+                            BookTopBar(
+                                hazeState,
+                                onBack = { leaveBook() },
+                                overflow =
+                                    if (book == null) emptyList()
+                                    else
+                                        bookOverflow(
+                                                hasEpub = true,
+                                                attached =
+                                                    wishes.any { it.linkedBookId == book.id },
+                                                hasNotes = annotations.any { it.bookId == book.id },
                                             )
-                                        }
-                                    if (!editing)
-                                        IconButton(
-                                            onClick = { actionsId = book?.id ?: catalogue?.id }
-                                        ) {
-                                            Icon(
-                                                Icons.Outlined.MoreVert,
-                                                stringResource(R.string.shell_book_actions),
-                                            )
-                                        }
-                                },
+                                            .map { item ->
+                                                when (item) {
+                                                    BookOverflow.EXTERNAL_READER ->
+                                                        OverflowItem(
+                                                            Icons.Outlined.OpenInNew,
+                                                            stringResource(
+                                                                R.string.shell_action_external
+                                                            ),
+                                                            enabled = !op.busy,
+                                                        ) {
+                                                            model.openEpub(book, false)
+                                                        }
+                                                    BookOverflow.SAVE_COPY ->
+                                                        OverflowItem(
+                                                            Icons.Outlined.FileDownload,
+                                                            stringResource(
+                                                                R.string.shell_action_export_epub
+                                                            ),
+                                                            enabled = !op.busy,
+                                                        ) {
+                                                            epubExportId = book.id
+                                                            epubExportPicker.launch(
+                                                                "${book.id}.epub"
+                                                            )
+                                                        }
+                                                    BookOverflow.DETACH ->
+                                                        OverflowItem(
+                                                            Icons.Outlined.LinkOff,
+                                                            stringResource(
+                                                                R.string.shell_action_detach
+                                                            ),
+                                                            enabled = !op.busy,
+                                                        ) {
+                                                            detachBookId = book.id
+                                                        }
+                                                    BookOverflow.EXPORT_NOTES ->
+                                                        OverflowItem(
+                                                            Icons.Outlined.EditNote,
+                                                            stringResource(
+                                                                R.string.shell_action_export_notes
+                                                            ),
+                                                            enabled = !op.busy,
+                                                        ) {
+                                                            exportBookId = book.id
+                                                            markdownPicker.launch(
+                                                                "Folio-${book.id}.md"
+                                                            )
+                                                        }
+                                                }
+                                            },
                             )
                     },
                     bottomBar = {
@@ -593,30 +622,35 @@ fun FolioApp(model: LibraryViewModel) {
                     // and pad their own content by the bar's height; a book screen, which has no
                     // bar, keeps the window inset as ordinary padding.
                     val bottom = padding.calculateBottomPadding()
+                    val top = padding.calculateTopPadding()
+                    // A book page scrolls under its glass top bar and pads its content instead.
+                    val bookPage = (book != null || catalogue != null) && !editing
+                    val transferBanner =
+                        syncJob?.active == true && !(tab == FolioNav.DEVICE && nav.stack.isEmpty())
+                    val banners = foregroundOp.busy || transferBanner
                     Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
                         CompositionLocalProvider(LocalContentBottomPadding provides bottom) {
                             Column(
                                 Modifier.fillMaxSize()
-                                    .padding(top = padding.calculateTopPadding())
+                                    .padding(top = if (bookPage) 0.dp else top)
                                     .then(
-                                        if (book != null || catalogue != null)
-                                            Modifier.padding(bottom = bottom)
-                                        else Modifier
+                                        if (editing) Modifier.padding(bottom = bottom) else Modifier
                                     )
                             ) {
-                                if (foregroundOp.busy) StatusSurface(foregroundOp)
-                                // The device tab shows the full transfer; everywhere else gets a
-                                // compact
-                                // banner.
-                                if (
-                                    syncJob?.active == true &&
-                                        !(tab == FolioNav.DEVICE && nav.stack.isEmpty())
-                                )
-                                    TransferBanner(
-                                        syncJob,
-                                        onOpen = { nav.root(FolioNav.DEVICE) },
-                                        onCancel = { devices.cancelSync(syncJob.id) },
-                                    )
+                                if (banners)
+                                    Column(Modifier.padding(top = if (bookPage) top else 0.dp)) {
+                                        if (foregroundOp.busy) StatusSurface(foregroundOp)
+                                        // The device tab shows the full transfer; everywhere else
+                                        // gets a compact banner.
+                                        if (transferBanner && syncJob != null)
+                                            TransferBanner(
+                                                syncJob,
+                                                onOpen = { nav.root(FolioNav.DEVICE) },
+                                                onCancel = { devices.cancelSync(syncJob.id) },
+                                            )
+                                    }
+                                val pagePadding =
+                                    PaddingValues(top = if (banners) 0.dp else top, bottom = bottom)
                                 if (book != null) {
                                     if (editing)
                                         MetadataEditor(
@@ -631,33 +665,63 @@ fun FolioApp(model: LibraryViewModel) {
                                         }
                                     else
                                         BookDetails(
-                                            book,
-                                            shelves.filter { it.ruleField == "Manual" },
-                                            memberships
-                                                .filter { it.bookId == book.id }
-                                                .map { it.shelfId }
-                                                .toSet(),
-                                            transfers.any {
-                                                it.bookId == book.id &&
-                                                    it.deviceId == device.id &&
-                                                    it.hash == book.currentHash
-                                            },
+                                            book = book,
+                                            hasEpub = true,
+                                            lists =
+                                                shelves
+                                                    .filter { shelf ->
+                                                        memberships.any {
+                                                            it.bookId == book.id &&
+                                                                it.shelfId == shelf.id
+                                                        }
+                                                    }
+                                                    .map { it.name },
+                                            signals = signals[book.id],
+                                            phoneReading =
+                                                phoneReading.firstOrNull {
+                                                    it.bookId == book.id &&
+                                                        it.revisionHash == book.currentHash
+                                                },
+                                            reading =
+                                                reading
+                                                    .filter {
+                                                        it.bookId == book.id &&
+                                                            it.deviceId == device.id
+                                                    }
+                                                    .maxByOrNull { it.fetchedAt },
+                                            hardcoverLinked =
+                                                wishes.any {
+                                                    it.linkedBookId == book.id &&
+                                                        it.hardcoverId != null
+                                                },
+                                            hardcoverPage =
+                                                wishes
+                                                    .firstOrNull {
+                                                        it.linkedBookId == book.id &&
+                                                            it.hardcoverId != null
+                                                    }
+                                                    ?.let { wish ->
+                                                        observations
+                                                            .firstOrNull {
+                                                                it.accountId == accountId &&
+                                                                    it.hardcoverId ==
+                                                                        wish.hardcoverId
+                                                            }
+                                                            ?.pages
+                                                    },
+                                            annotations =
+                                                annotations.filter { it.bookId == book.id },
+                                            nextInSeries = nextBook,
+                                            busy = op.busy,
+                                            deviceBusy = deviceBusy,
+                                            contentPadding = pagePadding,
                                             onRead = {
                                                 dev.sadking.folio.reader.ReaderActivity.open(
                                                     context,
                                                     book.id,
                                                 )
                                             },
-                                            phoneReading =
-                                                phoneReading.firstOrNull {
-                                                    it.bookId == book.id &&
-                                                        it.revisionHash == book.currentHash
-                                                },
-                                            onShelf = { id, checked ->
-                                                model.membership(book.id, id, checked)
-                                            },
-                                            onStatus = { model.status(book, it) },
-                                            onSync = {
+                                            onSend = {
                                                 if (devices.sendsThroughLink)
                                                     requestSync("book", book.id)
                                                 else if (device.host.isBlank()) {
@@ -669,25 +733,22 @@ fun FolioApp(model: LibraryViewModel) {
                                                     nav.root(FolioNav.DEVICE)
                                                 } else requestSync("book", book.id)
                                             },
-                                            signals = signals[book.id],
+                                            onEdit = {
+                                                editorDirty = false
+                                                nav.open(Route.Edit(book.id))
+                                            },
+                                            onHardcover = {
+                                                showHardcover = true
+                                                discovery.openReading(book)
+                                            },
+                                            onShare = { model.openEpub(book, true) },
                                             onRemove = { removalIds = setOf(book.id) },
-                                            onCollections = { listEntryId = book.id },
+                                            onLists = { listEntryId = book.id },
+                                            onStatus = { model.status(book, it) },
                                             onRefreshReading = {
                                                 if (device.host.isBlank()) showConnection = true
                                                 else devices.refreshBookReading(book.id)
                                             },
-                                            onReading = { nav.root(FolioNav.LIBRARY) },
-                                            busy = op.busy,
-                                            deviceBusy = deviceBusy,
-                                            reading =
-                                                reading
-                                                    .filter {
-                                                        it.bookId == book.id &&
-                                                            it.deviceId == device.id
-                                                    }
-                                                    .maxByOrNull { it.fetchedAt },
-                                            annotations =
-                                                annotations.filter { it.bookId == book.id },
                                             onLookup = {
                                                 model.clearLookup()
                                                 showLookup = true
@@ -696,37 +757,31 @@ fun FolioApp(model: LibraryViewModel) {
                                                 exportBookId = book.id
                                                 markdownPicker.launch("Folio-${book.id}.md")
                                             },
-                                            nextInSeries = nextBook,
-                                            nextOnDevice =
-                                                nextBook?.let { next ->
-                                                    transfers.any {
-                                                        it.bookId == next.id &&
-                                                            it.deviceId == device.id &&
-                                                            it.hash == next.currentHash
-                                                    }
-                                                } == true,
                                             onNext = { nav.open(Route.Book(it.id)) },
-                                            onHardcover = {
-                                                showHardcover = true
-                                                discovery.openReading(book)
-                                            },
                                         )
                                 } else if (catalogue != null) {
                                     CatalogueBookDetails(
                                         discovery,
                                         catalogue,
                                         books,
-                                        shelves,
-                                        onProgress = {
+                                        lists =
+                                            shelves
+                                                .filter { shelf ->
+                                                    wishMemberships.any {
+                                                        it.wishId == catalogue.id &&
+                                                            it.shelfId == shelf.id
+                                                    }
+                                                }
+                                                .map { it.name },
+                                        contentPadding = pagePadding,
+                                        onEdit = { catalogueEditorId = catalogue.id },
+                                        onHardcover = {
                                             catalogueProgress = true
                                             discovery.openReading(catalogue.displayBook())
                                         },
                                         onRemove = { removalIds = setOf(catalogue.id) },
-                                        onActions = {
-                                            actionsId = catalogue.id
-                                        },
-                                        onDismiss = { leaveBook() },
                                         onLists = { listEntryId = catalogue.id },
+                                        onStatus = { model.status(catalogue.displayBook(), it) },
                                     )
                                 } else
                                     AnimatedContent(
@@ -1142,25 +1197,16 @@ fun FolioApp(model: LibraryViewModel) {
             )
         val detachBook = books.firstOrNull { it.id == detachBookId }
         if (detachBook != null)
-            AlertDialog(
-                onDismissRequest = { detachBookId = null },
-                title = { Text(stringResource(R.string.shell_detach_title)) },
-                text = {
-                    Text(stringResource(R.string.shell_detach_body))
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = { model.detach(detachBook) { detachBookId = null } },
-                        enabled = !op.busy,
-                    ) {
-                        Text(stringResource(R.string.shell_detach))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { detachBookId = null }) {
-                        Text(stringResource(R.string.shell_keep_attached))
-                    }
-                },
+            ConfirmSheet(
+                covers = listOf(detachBook),
+                title = stringResource(R.string.shell_detach_title),
+                body = stringResource(R.string.shell_detach_body),
+                confirmLabel = stringResource(R.string.shell_detach),
+                dismissLabel = stringResource(R.string.shell_keep_attached),
+                onConfirm = { model.detach(detachBook) { detachBookId = null } },
+                onDismiss = { detachBookId = null },
+                destructive = true,
+                busy = op.busy,
             )
         val actionBook = catalogueBooks.firstOrNull { it.id == actionsId }
         val noBrowser = stringResource(R.string.shell_no_browser)
@@ -1168,9 +1214,7 @@ fun FolioApp(model: LibraryViewModel) {
             BookActionsSheet(
                 actionBook,
                 books.any { it.id == actionBook.id },
-                annotations.any { it.bookId == actionBook.id },
                 op.busy || discoveryState.busy,
-                attached = wishes.any { it.linkedBookId == actionBook.id },
                 onDismiss = { actionsId = null },
                 onAction = { action ->
                     actionsId = null
@@ -1339,50 +1383,34 @@ fun FolioApp(model: LibraryViewModel) {
         val attachmentWish = wishes.firstOrNull { it.id == attachWishId }
         val attachmentBook = books.firstOrNull { it.id == attachReviewId }
         if (attachmentWish != null && attachmentBook != null)
-            AlertDialog(
-                onDismissRequest = {
+            ConfirmSheet(
+                covers = listOf(attachmentBook, attachmentWish.displayBook()),
+                title = stringResource(R.string.rd_attach_confirm_title, attachmentWish.title),
+                body =
+                    stringResource(
+                        R.string.rd_attach_confirm_body,
+                        attachmentBook.title,
+                        attachmentBook.authorLabel.ifBlank {
+                            stringResource(R.string.shell_unknown_author)
+                        },
+                    ),
+                confirmLabel = stringResource(R.string.rd_attach),
+                dismissLabel = stringResource(R.string.rd_keep_separate),
+                onConfirm = {
+                    discovery.attach(attachmentWish, attachmentBook)
                     attachWishId = null
                     attachReviewId = null
                 },
-                title = { Text(stringResource(R.string.shell_attach_title)) },
-                text = {
-                    Text(
-                        stringResource(
-                            R.string.shell_attach_body,
-                            attachmentBook.title,
-                            attachmentBook.authorLabel,
-                            attachmentWish.title,
-                        )
-                    )
+                onDismiss = {
+                    attachWishId = null
+                    attachReviewId = null
                 },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            discovery.attach(attachmentWish, attachmentBook)
-                            attachWishId = null
-                            attachReviewId = null
-                        },
-                        enabled = !discoveryState.busy,
-                    ) {
-                        Text(stringResource(R.string.shell_attach_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            attachWishId = null
-                            attachReviewId = null
-                        }
-                    ) {
-                        Text(stringResource(R.string.shell_cancel))
-                    }
-                },
+                busy = discoveryState.busy,
             )
         if (removalIds.isNotEmpty()) {
             val targets = catalogueBooks.filter { it.id in removalIds }
-            RemoveBooksDialog(
+            RemoveBooksSheet(
                 targets,
-                annotations.count { it.bookId in removalIds },
                 op.busy || discoveryState.busy,
                 if (removalAttempted && foregroundOp.failed) foregroundOp.message else null,
                 onDismiss = { if (!op.busy) removalIds = emptySet() },

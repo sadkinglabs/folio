@@ -30,28 +30,30 @@ class UsabilityUiTest {
         )
 
     @Test
-    fun bookHasTwoImmediatePrimaryActions() {
+    fun bookHasOnePrimaryActionAndSixIconActions() {
+        var read = false
         var send = false
-        var progress = false
+        var hardcover = false
         compose.setContent {
             FolioTheme(dynamic = false) {
                 BookDetails(
                     book,
-                    emptyList(),
-                    emptySet(),
-                    false,
-                    { _, _ -> },
-                    {},
-                    { send = true },
-                    onHardcover = { progress = true },
+                    onRead = { read = true },
+                    onSend = { send = true },
+                    onHardcover = { hardcover = true },
                 )
             }
         }
-        compose.onNodeWithText("Send to device").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Update progress").assertIsDisplayed().performClick()
+        // The title shows twice: in the hero and on the generated cover.
+        compose.onAllNodesWithText("The Orchard").onFirst().assertIsDisplayed()
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Read").performClick()
+        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsDisplayed().performClick()
+        compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).assertIsDisplayed().performClick()
+        compose.onNodeWithTag(BOOK_ACTION_REMOVE_TAG).assertHasClickAction()
         compose.runOnIdle {
+            assertTrue(read)
             assertTrue(send)
-            assertTrue(progress)
+            assertTrue(hardcover)
         }
     }
 

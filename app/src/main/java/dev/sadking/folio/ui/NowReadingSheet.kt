@@ -18,8 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,16 +41,24 @@ internal enum class NowReadingAction {
     OPEN,
 }
 
-/** One of the six icon actions under a book: a 56 dp tonal icon button with a short label. */
+/**
+ * One of the six icon actions under a book: a 56 dp tonal icon button with a short label. While
+ * [busy], a ring replaces the icon and the button is disabled. [tag] is for tests.
+ */
 internal class IconAction(
     val icon: ImageVector,
     val label: String,
     val enabled: Boolean = true,
     val destructive: Boolean = false,
+    val busy: Boolean = false,
+    val tag: String? = null,
     val onClick: () -> Unit,
 )
 
-/** Six icon actions as a 2×3 grid: three per row, each with an 11 sp label under the icon. */
+/**
+ * Icon actions three to a row, each with an 11 sp label under the icon. A short last row keeps the
+ * grid's columns, so five actions line up with six.
+ */
 @Composable
 internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FolioSpace.item)) {
@@ -64,8 +75,10 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
                     ) {
                         FilledTonalIconButton(
                             onClick = action.onClick,
-                            enabled = action.enabled,
-                            modifier = Modifier.size(56.dp),
+                            enabled = action.enabled && !action.busy,
+                            modifier =
+                                Modifier.size(56.dp)
+                                    .then(action.tag?.let { Modifier.testTag(it) } ?: Modifier),
                             colors =
                                 if (action.destructive)
                                     IconButtonDefaults.filledTonalIconButtonColors(
@@ -74,7 +87,14 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
                                     )
                                 else IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
-                            Icon(action.icon, action.label)
+                            if (action.busy)
+                                CircularProgressIndicator(
+                                    Modifier.size(22.dp).semantics {
+                                        contentDescription = action.label
+                                    },
+                                    strokeWidth = 2.5.dp,
+                                )
+                            else Icon(action.icon, action.label)
                         }
                         Text(
                             action.label,
@@ -85,6 +105,7 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
                         )
                     }
                 }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

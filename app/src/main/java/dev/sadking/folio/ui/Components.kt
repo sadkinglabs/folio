@@ -5,6 +5,7 @@
 
 package dev.sadking.folio.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -544,23 +545,33 @@ internal fun ExpandableSection(
     var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
     val expansionState =
         stringResource(if (expanded) R.string.shell_expanded else R.string.shell_collapsed)
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        ListItem(
-            headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
-            supportingContent = { Text(summary) },
-            trailingContent = {
-                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-            },
-            modifier =
-                Modifier.clickable(role = Role.Button) { expanded = !expanded }
-                    .semantics { stateDescription = expansionState },
-        )
-        if (expanded)
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                content = content,
+    Surface(
+        Modifier.fillMaxWidth().animateContentSize(FolioMotion.standardSpec()),
+        shape = FolioSpace.panelShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column {
+            ListItem(
+                headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
+                supportingContent = { Text(summary) },
+                trailingContent = {
+                    Icon(
+                        if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        null,
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier =
+                    Modifier.clickable(role = Role.Button) { expanded = !expanded }
+                        .semantics { stateDescription = expansionState },
             )
+            if (expanded)
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    content = content,
+                )
+        }
     }
 }
 
