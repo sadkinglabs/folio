@@ -734,7 +734,8 @@ private fun BookCoverCell(
                 progress = if (reading) progress?.toFloat() else null,
                 badge = coverBadge(signals),
             )
-            AnimatedVisibility(
+            // The plain overload: inside this Column, the ColumnScope one would be picked.
+            androidx.compose.animation.AnimatedVisibility(
                 selected,
                 Modifier.align(Alignment.TopEnd).padding(6.dp),
                 enter = scaleIn(FolioMotion.standardSpec()) + fadeIn(FolioMotion.standardSpec()),
