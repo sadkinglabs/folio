@@ -83,7 +83,6 @@
     <!-- Shell: book summary -->
     <string name="shell_unknown_author">Unknown author</string>
     <string name="shell_lists">Lists</string>
-    <string name="shell_all_lists">All lists</string>
 
     <!-- Shell: book page overflow menu -->
     <string name="shell_action_export_notes">Export notes</string>

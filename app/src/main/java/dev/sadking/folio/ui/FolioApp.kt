@@ -51,6 +51,7 @@ fun FolioApp(model: LibraryViewModel) {
     val catalogueId = nav.recordId
     var catalogueProgress by rememberSaveable { mutableStateOf(false) }
     var catalogueEditorId by rememberSaveable { mutableStateOf<String?>(null) }
+    // The list editor: "new" for a list being created, else the shelf id being edited.
     var editingShelfId by rememberSaveable { mutableStateOf<String?>(null) }
     var showRemoved by rememberSaveable { mutableStateOf(false) }
     // "lists" or "status": which sheet the selection bar opened.
@@ -346,8 +347,14 @@ fun FolioApp(model: LibraryViewModel) {
                 mutableStateOf(setOf<String>())
             }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
-        // Counts taps on the Lists tab; each one returns Lists to its overview.
-        var listsRoot by rememberSaveable { mutableIntStateOf(0) }
+        var deletingShelfId by rememberSaveable { mutableStateOf<String?>(null) }
+        val cards = remember(shelves, library) { listCards(shelves, library) }
+        val listId = nav.listId
+        val openList = listId?.let { id -> cards.firstOrNull { it.id == id } }
+        // A list deleted or restored away from under its screen closes that screen.
+        LaunchedEffect(listId, openList == null) {
+            if (listId != null && openList == null) nav.forget(setOf(listId))
+        }
         var showConnection by rememberSaveable { mutableStateOf(false) }
         /** Sends from where you are; only pairing or a stuck transfer takes you elsewhere. */
         fun sendOrPair(send: () -> Unit) {
@@ -597,7 +604,6 @@ fun FolioApp(model: LibraryViewModel) {
                                         tab = tab,
                                         onTab = { i ->
                                             nav.root(i)
-                                            if (i == FolioNav.LISTS) listsRoot++
                                             selection = emptySet()
                                         },
                                         current = currentBook,
@@ -781,6 +787,33 @@ fun FolioApp(model: LibraryViewModel) {
                                         onLists = { listEntryId = catalogue.id },
                                         onStatus = { model.status(catalogue.displayBook(), it) },
                                     )
+                                } else if (openList != null) {
+                                    ListDetailScreen(
+                                        openList,
+                                        selection,
+                                        busy = op.busy,
+                                        onBack = { nav.back() },
+                                        onOpen = { openEntry(it.id) },
+                                        onSelect = { id ->
+                                            selection =
+                                                if (id in selection) selection - id
+                                                else selection + id
+                                        },
+                                        onClearSelection = { selection = emptySet() },
+                                        onAddFromLibrary = { nav.root(FolioNav.LIBRARY) },
+                                        onSend = { shelf ->
+                                            sendOrPair { requestSync("shelf", shelf.id) }
+                                        },
+                                        onEdit = {
+                                            model.managementError.value = null
+                                            editingShelfId = it.id
+                                        },
+                                        signals = library.signals,
+                                        fileIds = library.fileIds,
+                                        progress = progressById,
+                                        currentId = currentBook?.book?.id,
+                                        onContext = { actionsId = it.id },
+                                    )
                                 } else
                                     AnimatedContent(
                                         tab,
@@ -818,51 +851,66 @@ fun FolioApp(model: LibraryViewModel) {
                                                     )
                                             ) {
                                                 when (shownTab) {
-                                                    FolioNav.LIBRARY,
-                                                    FolioNav.LISTS ->
-                                                        LibraryArea(
-                                                            lists = shownTab == FolioNav.LISTS,
-                                                            rootRequest = listsRoot,
-                                                            library = library,
-                                                            shelves = shelves,
-                                                            selection = selection,
+                                                    FolioNav.LIBRARY ->
+                                                        LibraryScreen(
+                                                            library.entries,
+                                                            selection,
+                                                            onOpen = { openEntry(it.id) },
+                                                            onSelect = { id ->
+                                                                selection =
+                                                                    if (id in selection)
+                                                                        selection - id
+                                                                    else selection + id
+                                                            },
+                                                            onImport = { showAddBooks = true },
                                                             busy = op.busy,
-                                                            onSelection = { selection = it },
-                                                            onOpen = { entry ->
-                                                                openEntry(entry.id)
-                                                            },
+                                                            signals = library.signals,
+                                                            fileIds = library.fileIds,
+                                                            progress = progressById,
+                                                            currentId = currentBook?.book?.id,
                                                             onContext = { actionsId = it.id },
-                                                            onAdd = { showAddBooks = true },
-                                                            onCreate = { name, field, value ->
-                                                                model.createShelf(
-                                                                    name,
-                                                                    field,
-                                                                    value,
-                                                                )
+                                                            onClearSelection = {
+                                                                selection = emptySet()
                                                             },
-                                                            onManageShelf = {
-                                                                model.managementError.value = null
-                                                                editingShelfId = it.id
-                                                            },
-                                                            onPolicy = devices::shelfPolicy,
-                                                            onSendShelf = { shelf ->
-                                                                sendOrPair {
-                                                                    requestSync("shelf", shelf.id)
-                                                                }
-                                                            },
-                                                            onDiscover = { showDiscovery = true },
                                                             onFind = {
                                                                 addBook(AddBookAction.TITLE)
                                                             },
-                                                            progress = progressById,
-                                                            currentId = currentBook?.book?.id,
-                                                            requestedList =
-                                                                if (shownTab == FolioNav.LIBRARY)
-                                                                    requestedList
+                                                            onScan = { showDiscovery = true },
+                                                            requestedTab =
+                                                                if (
+                                                                    requestedList ==
+                                                                        ReadingList.WANT_TO_READ
+                                                                            .name
+                                                                )
+                                                                    LibraryTab.WANT_TO_READ
                                                                 else null,
                                                             onRequestHandled = {
                                                                 requestedList = null
                                                             },
+                                                        )
+                                                    FolioNav.LISTS ->
+                                                        ListsScreen(
+                                                            cards,
+                                                            busy = op.busy,
+                                                            onOpen = { nav.open(Route.List(it)) },
+                                                            onNew = {
+                                                                model.managementError.value = null
+                                                                editingShelfId = "new"
+                                                            },
+                                                            onEdit = {
+                                                                model.managementError.value = null
+                                                                editingShelfId = it.id
+                                                            },
+                                                            onSend = { shelf ->
+                                                                sendOrPair {
+                                                                    requestSync("shelf", shelf.id)
+                                                                }
+                                                            },
+                                                            onPolicy = devices::shelfPolicy,
+                                                            onDelete = {
+                                                                deletingShelfId = it.id
+                                                            },
+                                                            onScan = { showDiscovery = true },
                                                         )
                                                     FolioNav.DEVICE ->
                                                         DeviceTab(
@@ -1058,18 +1106,43 @@ fun FolioApp(model: LibraryViewModel) {
                 },
             )
         val editingShelf = shelves.firstOrNull { it.id == editingShelfId }
-        if (editingShelf != null)
-            ShelfEditorSheet(
+        if (editingShelf != null || editingShelfId == "new")
+            ListEditorSheet(
                 editingShelf,
-                op.busy,
-                managementError,
+                takenNames = shelves.map { it.name },
+                busy = op.busy,
+                error = managementError,
+                onCreate = { name, field, value, sync ->
+                    model.createShelf(name, field, value, sync)
+                    editingShelfId = null
+                },
                 onSave = { model.saveShelf(it) { editingShelfId = null } },
-                onDelete = {
-                    model.deleteShelf(editingShelf) {
-                        editingShelfId = null
+                onDelete =
+                    editingShelf?.let { shelf ->
+                        {
+                            editingShelfId = null
+                            deletingShelfId = shelf.id
+                        }
+                    },
+                onDismiss = { if (!op.busy) editingShelfId = null },
+            )
+        val deletingShelf = shelves.firstOrNull { it.id == deletingShelfId }
+        if (deletingShelf != null)
+            ConfirmSheet(
+                covers = library.shelfEntries[deletingShelf.id].orEmpty(),
+                title = stringResource(R.string.library_list_delete_title, deletingShelf.name),
+                body = stringResource(R.string.library_list_delete_body),
+                confirmLabel = stringResource(R.string.library_list_delete),
+                dismissLabel = stringResource(R.string.library_list_keep),
+                onConfirm = {
+                    model.deleteShelf(deletingShelf) {
+                        deletingShelfId = null
+                        nav.forget(setOf(deletingShelf.id))
                     }
                 },
-                onDismiss = { if (!op.busy) editingShelfId = null },
+                onDismiss = { deletingShelfId = null },
+                destructive = true,
+                busy = op.busy,
             )
         if (catalogueEditorId == "new" || wishes.any { it.id == catalogueEditorId }) {
             val value = wishes.firstOrNull { it.id == catalogueEditorId }
@@ -1123,6 +1196,8 @@ fun FolioApp(model: LibraryViewModel) {
                     batchSheet = null
                     selection = emptySet()
                     nav.root(FolioNav.LISTS)
+                    model.managementError.value = null
+                    editingShelfId = "new"
                 },
                 onDismiss = { batchSheet = null },
             )
@@ -1279,6 +1354,8 @@ fun FolioApp(model: LibraryViewModel) {
                             onClick = {
                                 listEntryId = null
                                 nav.root(FolioNav.LISTS)
+                                model.managementError.value = null
+                                editingShelfId = "new"
                             }
                         ) {
                             Text(stringResource(R.string.shell_create_list))

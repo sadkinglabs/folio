@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -95,99 +94,6 @@ fun CatalogueEditorDialog(
             dismissButton = {
                 TextButton(onClick = { discard = false }) {
                     Text(stringResource(R.string.library_keep_editing))
-                }
-            },
-        )
-}
-
-@Composable
-fun ShelfEditorSheet(
-    shelf: Shelf,
-    busy: Boolean,
-    error: String?,
-    onSave: (Shelf) -> Unit,
-    onDelete: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by rememberSaveable(shelf.id) { mutableStateOf(shelf.name) }
-    var field by rememberSaveable(shelf.id) { mutableStateOf(shelf.ruleField) }
-    var value by rememberSaveable(shelf.id) { mutableStateOf(shelf.ruleValue) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                stringResource(R.string.library_list_edit_title),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            EditorField(
-                stringResource(R.string.library_list_name),
-                name,
-                { name = it },
-                enabled = !busy,
-                error = name.isBlank(),
-            )
-            Text(
-                stringResource(R.string.library_list_rule),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            LibraryRules.fields.forEach { rule ->
-                Row {
-                    RadioButton(field == rule, { field = rule }, enabled = !busy)
-                    Text(libraryRuleLabel(rule), Modifier.padding(top = 12.dp))
-                }
-            }
-            if (field !in listOf("Manual", "Missing on Kindle"))
-                EditorField(
-                    stringResource(R.string.library_list_rule_value),
-                    value,
-                    { value = it },
-                    enabled = !busy,
-                )
-            if (shelf.ruleField != field)
-                Text(
-                    stringResource(R.string.library_list_rule_change_note),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
-            Button(
-                onClick = { onSave(shelf.copy(name = name, ruleField = field, ruleValue = value)) },
-                enabled =
-                    !busy &&
-                        name.isNotBlank() &&
-                        (field in listOf("Manual", "Missing on Kindle") || value.isNotBlank()),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.library_list_save))
-            }
-            TextButton(
-                onClick = { confirmDelete = true },
-                enabled = !busy,
-                colors =
-                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            ) {
-                Text(stringResource(R.string.library_list_delete))
-            }
-        }
-    }
-    if (confirmDelete)
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text(stringResource(R.string.library_list_delete_title, shelf.name)) },
-            text = { Text(stringResource(R.string.library_list_delete_body)) },
-            confirmButton = {
-                TextButton(onClick = onDelete, enabled = !busy) {
-                    Text(stringResource(R.string.library_list_delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) {
-                    Text(stringResource(R.string.library_list_keep))
                 }
             },
         )

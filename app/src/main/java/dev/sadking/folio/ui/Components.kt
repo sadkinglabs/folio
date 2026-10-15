@@ -172,12 +172,17 @@ internal fun generatedCoverColor(title: String): Color {
  * a typographic cover on a ground derived from the title.
  */
 @Composable
-fun Cover(book: Book, modifier: Modifier = Modifier) {
+fun Cover(book: Book, modifier: Modifier = Modifier, thumbnail: Boolean = false) {
     val image by
-        produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, book.coverPath) {
+        produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, book.coverPath, thumbnail) {
             value =
                 withContext(Dispatchers.IO) {
-                    runCatching { CoverImages.load(book.coverPath)?.asImageBitmap() }.getOrNull()
+                    runCatching {
+                            (if (thumbnail) CoverImages.thumbnail(book.coverPath)
+                                else CoverImages.load(book.coverPath))
+                                ?.asImageBitmap()
+                        }
+                        .getOrNull()
                 }
         }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -251,6 +256,34 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/**
+ * The cover's general tone: the average of a 16-pixel downsample of its thumbnail, pulled towards
+ * the page surface by [towardsSurface] so it never shouts. A generated cover uses its own ground.
+ */
+@Composable
+internal fun coverToneColor(book: Book, towardsSurface: Float = 0.35f): Color {
+    val surface = MaterialTheme.colorScheme.surface
+    val fallback = generatedCoverColor(book.title)
+    val average by
+        produceState<Color?>(null, book.coverPath) {
+            value =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                            CoverImages.thumbnail(book.coverPath)?.let { bitmap ->
+                                val small =
+                                    android.graphics.Bitmap.createScaledBitmap(bitmap, 4, 4, true)
+                                val pixels = IntArray(16)
+                                small.getPixels(pixels, 0, 4, 0, 0, 4, 4)
+                                if (small !== bitmap) small.recycle()
+                                Color(averageArgb(pixels))
+                            }
+                        }
+                        .getOrNull()
+                }
+        }
+    return androidx.compose.ui.graphics.lerp(average ?: fallback, surface, towardsSurface)
 }
 
 /** What a cover stands for. The badge and the dashed frame depend on it. */

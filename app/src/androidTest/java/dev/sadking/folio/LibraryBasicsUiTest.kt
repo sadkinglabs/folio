@@ -64,22 +64,33 @@ class LibraryBasicsUiTest {
         var deleted = false
         compose.setContent {
             FolioTheme(dynamic = false) {
-                ShelfEditorSheet(
+                ListEditorSheet(
                     Shelf("id", "Old name"),
-                    false,
-                    null,
-                    { saved = it },
-                    { deleted = true },
-                    {},
+                    takenNames = listOf("Old name", "Taken"),
+                    busy = false,
+                    error = null,
+                    onCreate = { _, _, _, _ -> },
+                    onSave = { saved = it },
+                    onDelete = { deleted = true },
+                    onDismiss = {},
                 )
             }
         }
         compose.onNodeWithText("List name").performTextClearance()
+        compose.onNodeWithText("List name").performTextInput("Taken")
+        compose.onNodeWithText("A list with this name already exists").assertIsDisplayed()
+        compose.onNodeWithText("List name").performTextClearance()
         compose.onNodeWithText("List name").performTextInput("New name")
+        compose.onNodeWithText("Include in sends").performScrollTo().performClick()
         compose.onNodeWithText("Save list").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals("New name", saved!!.name)
+            assertEquals("Manual", saved!!.ruleField)
+            assertTrue(saved!!.syncEnabled)
             assertFalse(deleted)
         }
+        // Delete is an icon in the title row; it only asks, the confirm lives outside the sheet.
+        compose.onNodeWithContentDescription("Delete list").performClick()
+        compose.runOnIdle { assertTrue(deleted) }
     }
 }

@@ -5,7 +5,6 @@
 
 package dev.sadking.folio.ui
 
-import android.graphics.Bitmap
 import android.text.format.DateUtils
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -43,7 +42,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -338,32 +336,8 @@ internal fun CoverHero(book: Book, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * The cover's general tone for the glow: the average of a 16-pixel downsample, pulled towards the
- * page surface so it never shouts. A generated cover uses its own ground colour.
- */
-@Composable
-private fun coverGlowColor(book: Book): Color {
-    val surface = MaterialTheme.colorScheme.surface
-    val fallback = generatedCoverColor(book.title)
-    val average by
-        produceState<Color?>(null, book.coverPath) {
-            value =
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                            CoverImages.load(book.coverPath)?.let { bitmap ->
-                                val small = Bitmap.createScaledBitmap(bitmap, 4, 4, true)
-                                val pixels = IntArray(16)
-                                small.getPixels(pixels, 0, 4, 0, 0, 4, 4)
-                                if (small !== bitmap) small.recycle()
-                                Color(averageArgb(pixels))
-                            }
-                        }
-                        .getOrNull()
-                }
-        }
-    return lerp(average ?: fallback, surface, 0.35f)
-}
+/** The cover's tone for the glow; see [coverToneColor]. */
+@Composable private fun coverGlowColor(book: Book): Color = coverToneColor(book)
 
 /** One tile of the status strip. */
 internal class StatusTile(

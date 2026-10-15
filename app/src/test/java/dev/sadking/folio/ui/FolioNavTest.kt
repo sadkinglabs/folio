@@ -39,6 +39,24 @@ class FolioNavTest {
     }
 
     @Test
+    fun listDetailIsARouteAboveTheListsTabAndABookAboveIt() {
+        val nav = FolioNav()
+        nav.root(FolioNav.LISTS)
+        nav.open(Route.List("reading:FINISHED"))
+        assertEquals("reading:FINISHED", nav.listId)
+        assertNull(nav.bookId)
+        nav.open(Route.Book("a"))
+        assertNull(nav.listId)
+        assertEquals("a", nav.bookId)
+        assertTrue(nav.back())
+        assertEquals("reading:FINISHED", nav.listId)
+        // A tab tap returns Lists to its overview; nothing else is remembered.
+        nav.root(FolioNav.LISTS)
+        assertNull(nav.listId)
+        assertTrue(nav.stack.isEmpty())
+    }
+
+    @Test
     fun fourTabsWithSettingsLast() {
         assertEquals(4, FolioNav.TABS)
         assertEquals(0, FolioNav.LIBRARY)

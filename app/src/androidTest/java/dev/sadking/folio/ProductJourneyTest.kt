@@ -322,7 +322,25 @@ class ProductJourneyTest {
         }
         compose.onNodeWithContentDescription("Back").performClick()
         tab("Lists")
+        waitTag(listCardTag("qa-sundays"))
         capture("lists-light")
+        // Slow Sundays holds the book added above; its detail is a route over the Lists tab.
+        compose.onNodeWithTag(listCardTag("qa-sundays")).assertIsDisplayed().performClick()
+        waitTag(LIST_DETAIL_TAG)
+        waitFor("the list's book") {
+            compose
+                .onAllNodes(
+                    hasContentDescription("Pride and Prejudice", substring = true) and
+                        hasClickAction() and
+                        !hasTestTag(NOW_READING_TILE_TAG)
+                )
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        cover("Pride and Prejudice").assertIsDisplayed()
+        capture("list-light")
+        compose.onNodeWithContentDescription("Back").performClick()
+        waitTag(LISTS_GRID_TAG)
         // Want to read is the Library's second tab; the record has no EPUB yet.
         tab("Library")
         compose.onNodeWithTag(LIBRARY_TAB_WANTED_TAG).performClick()

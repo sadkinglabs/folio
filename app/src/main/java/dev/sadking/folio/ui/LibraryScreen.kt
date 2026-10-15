@@ -81,6 +81,8 @@ fun LibraryScreen(
     onScan: (() -> Unit)? = null,
     requestedTab: LibraryTab? = null,
     onRequestHandled: () -> Unit = {},
+    /** Replaces the title row (a list detail draws its own banner above the grid). */
+    header: (@Composable () -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scoped = filterName != null
@@ -171,6 +173,7 @@ fun LibraryScreen(
 
     Column(modifier.fillMaxWidth()) {
         if (selection.isNotEmpty()) SelectionHeader(selection.size, onClearSelection)
+        else if (header != null) header()
         else
             LibraryHeader(
                 filterName ?: stringResource(R.string.library_title),

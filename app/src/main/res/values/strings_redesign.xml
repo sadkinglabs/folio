@@ -67,4 +67,13 @@
     <string name="rd_attach_confirm_body">%1$s by %2$s becomes this book’s file. Lists and the Hardcover match stay.</string>
     <string name="rd_attach">Attach</string>
     <string name="rd_keep_separate">Keep separate</string>
+
+    <!-- Redesign: Lists tab and list detail -->
+    <string name="rd_lists_empty_title">Make your first list</string>
+    <string name="rd_lists_empty_body">Group books by topic, series or plan.</string>
+    <!-- TalkBack: the mark on a card whose list fills itself by a rule. -->
+    <string name="rd_list_by_rule">Fills by rule</string>
+    <string name="rd_list_empty_title">No books yet</string>
+    <string name="rd_list_empty_body">Pick books in the Library, or add one from its page.</string>
+    <string name="rd_list_empty_action">Add from Library</string>
 </resources>

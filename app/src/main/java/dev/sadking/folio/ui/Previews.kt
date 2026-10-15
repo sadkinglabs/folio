@@ -117,23 +117,125 @@ internal fun EditorPreview() {
     FolioTheme(dynamic = false) { Surface { MetadataEditor(sampleBooks[0], false) { _, _ -> } } }
 }
 
-@Preview(name = "Collections · light", widthDp = 412, heightDp = 892)
+/** A fuller shelf for the Lists tab: enough books for a four-cover fan and a few statuses. */
+private val listSampleBooks =
+    sampleBooks +
+        listOf(
+            Book(
+                "sample4",
+                "Winter Light",
+                "[\"Ida Berg\"]",
+                originalPath = "",
+                currentPath = "",
+                originalHash = "",
+                currentHash = "",
+                status = "Finished",
+            ),
+            Book(
+                "sample5",
+                "Small Hours",
+                "[\"Theo Marsh\"]",
+                originalPath = "",
+                currentPath = "",
+                originalHash = "",
+                currentHash = "",
+                status = "Finished",
+            ),
+            Book(
+                "sample6",
+                "The Long Table",
+                "[\"June Okafor\"]",
+                originalPath = "",
+                currentPath = "",
+                originalHash = "",
+                currentHash = "",
+                status = "Finished",
+            ),
+        )
+
+private val listSampleShelves =
+    listOf(
+        Shelf("slow", "Slow Sundays", syncEnabled = true),
+        Shelf("spanish", "In Spanish", "Language", "es"),
+        Shelf("discover", "To discover"),
+    )
+
+private fun listSampleLibrary() =
+    LibraryPresentation(
+        listSampleBooks,
+        listSampleBooks.map { it.id }.toSet(),
+        emptyMap(),
+        mapOf(
+            "slow" to listOf(listSampleBooks[0], listSampleBooks[1], listSampleBooks[2]),
+            "spanish" to listOf(listSampleBooks[4]),
+        ),
+    )
+
+@Preview(name = "Lists · light", widthDp = 412, heightDp = 892)
 @Preview(
-    name = "Collections · dark",
+    name = "Lists · dark",
     widthDp = 412,
     heightDp = 892,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-internal fun CollectionsPreview() {
+internal fun ListsPreview() {
     FolioTheme(dynamic = false) {
-        Surface {
-            CollectionsScreen(
-                listOf(Shelf("1", "Slow Sundays"), Shelf("2", "To discover")),
-                listOf(Membership("sample1", "1")),
-                {},
-                {},
-                false,
+        Surface(Modifier.fillMaxSize()) {
+            ListsScreen(
+                listCards(listSampleShelves, listSampleLibrary()),
+                busy = false,
+                onOpen = {},
+                onNew = {},
+                onScan = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "List detail · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "List detail · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun ListDetailPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            ListDetailScreen(
+                listCard("slow", listSampleShelves, listSampleLibrary())!!,
+                emptySet(),
+                busy = false,
+                onBack = {},
+                onOpen = {},
+                onSelect = {},
+                onClearSelection = {},
+                onAddFromLibrary = {},
+                onSend = {},
+                onEdit = {},
+                progress = mapOf(sampleBooks.first().id to 0.37),
+                currentId = sampleBooks.first().id,
+            )
+        }
+    }
+}
+
+@Preview(name = "List editor · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ListEditorPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            ListEditorSheet(
+                listSampleShelves[1],
+                takenNames = listSampleShelves.map { it.name },
+                busy = false,
+                error = null,
+                onCreate = { _, _, _, _ -> },
+                onSave = {},
+                onDelete = {},
+                onDismiss = {},
             )
         }
     }

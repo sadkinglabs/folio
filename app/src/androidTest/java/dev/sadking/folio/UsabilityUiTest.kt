@@ -192,11 +192,32 @@ class UsabilityUiTest {
     fun collectionCreationIsASeparateFocusedFlow() {
         compose.setContent {
             FolioTheme(dynamic = false) {
-                CollectionsScreen(emptyList(), emptyList(), {}, {}, false)
+                var creating by remember { mutableStateOf(false) }
+                ListsScreen(
+                    listCards(
+                        emptyList(),
+                        LibraryPresentation(emptyList(), emptySet(), emptyMap(), emptyMap()),
+                    ),
+                    busy = false,
+                    onOpen = {},
+                    onNew = { creating = true },
+                )
+                if (creating)
+                    ListEditorSheet(
+                        null,
+                        emptyList(),
+                        busy = false,
+                        error = null,
+                        onCreate = { _, _, _, _ -> },
+                        onSave = {},
+                        onDelete = null,
+                        onDismiss = { creating = false },
+                    )
             }
         }
         compose.onNodeWithText("List name").assertDoesNotExist()
-        compose.onNodeWithText("Create list").performClick()
+        compose.onNodeWithTag(LISTS_NEW_TAG).performClick()
         compose.onNodeWithText("List name").assertIsDisplayed()
+        compose.onNodeWithText("Create list").assertIsNotEnabled()
     }
 }

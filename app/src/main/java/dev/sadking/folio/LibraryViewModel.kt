@@ -335,14 +335,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             msg(R.string.msg_library_status_updated)
         }
 
-    fun createShelf(name: String, field: String = "Manual", value: String = "") =
+    fun createShelf(
+        name: String,
+        field: String = "Manual",
+        value: String = "",
+        syncEnabled: Boolean = false,
+    ) =
         run(msg(R.string.msg_library_creating_list)) {
             require(name.isNotBlank()) { msg(R.string.msg_library_list_name) }
             require(name.length <= 120 && field in LibraryRules.fields)
             require(field in listOf("Manual", "Missing on Kindle") || value.isNotBlank()) {
                 msg(R.string.msg_library_list_rule)
             }
-            dao.insertShelf(Shelf(UUID.randomUUID().toString(), name.trim(), field, value.trim()))
+            dao.insertShelf(
+                Shelf(UUID.randomUUID().toString(), name.trim(), field, value.trim(), syncEnabled)
+            )
             msg(R.string.msg_library_list_created)
         }
 

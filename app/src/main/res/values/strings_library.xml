@@ -82,12 +82,13 @@
     <string name="library_rule_tag">Tag</string>
     <string name="library_rule_not_on_device">Not on your e-reader</string>
     <string name="library_list_rule_value">Value to match</string>
-    <string name="library_list_rule_change_note">Books you added by hand are kept when you change the rule. Switching an automatic list to Manual shows the books you added by hand, not the books the rule matched.</string>
+    <!-- Shown only when a rule list is switched to Manual. -->
+    <string name="library_list_rule_change_note">Switching to Manual shows only the books you added by hand.</string>
     <string name="library_list_save">Save list</string>
     <string name="library_list_delete">Delete list</string>
     <string name="library_list_delete_title">Delete %1$s?</string>
-    <string name="library_list_delete_body">Removes the list only. Your books, files, reading data, e-reader collections and Hardcover entries stay as they are.</string>
-    <string name="library_list_keep">Keep list</string>
+    <string name="library_list_delete_body">Only the list goes. Books, files, notes and e-reader collections stay.</string>
+    <string name="library_list_keep">Keep</string>
 
     <!-- Library: recently removed -->
     <string name="library_removed_title">Recently removed</string>

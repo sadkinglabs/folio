@@ -69,27 +69,20 @@
     <string name="device_state_cancelling">Cancelling</string>
     <string name="device_state_interrupted">Interrupted</string>
 
-    <!-- Lists (CollectionsScreen.kt) -->
+    <!-- Lists (ListsScreen.kt) -->
     <string name="lists_title">Lists</string>
-    <string name="lists_subtitle">Reading plans and collections</string>
     <string name="lists_create">Create list</string>
-    <string name="lists_pinned">Pinned</string>
     <plurals name="lists_book_count">
         <item quantity="one">%1$d book</item>
         <item quantity="other">%1$d books</item>
     </plurals>
-    <string name="lists_yours">Your lists</string>
-    <string name="lists_discover">Discover</string>
-    <string name="lists_empty">Create a list for a topic, series or reading plan. Add books from their details or by selecting them in your library.</string>
     <string name="lists_rule">%1$s: %2$s</string>
-    <string name="lists_transfer_options">Transfer options</string>
-    <string name="lists_in_sync">Included in sync</string>
-    <string name="lists_manage">Edit or delete %1$s</string>
-    <string name="lists_sync_toggle">Include in one-tap sync</string>
-    <string name="lists_sync_toggle_hint">Sync sends this list\'s books that have an EPUB</string>
+    <string name="lists_in_sync">Included in sends</string>
+    <!-- TalkBack: the long-press menu of a list card. -->
+    <string name="lists_manage">Options for %1$s</string>
+    <string name="lists_sync_toggle">Include in sends</string>
+    <string name="lists_sync_toggle_hint">Its books with an EPUB go along when you send to your e-reader.</string>
     <string name="lists_new_title">New list</string>
-    <string name="lists_new_subtitle">Pick books yourself, or let a rule fill the list.</string>
-    <string name="lists_name">List name</string>
     <string name="lists_name_taken">A list with this name already exists</string>
     <string name="lists_rule_value_status">Unread, Reading, Finished or Abandoned</string>
     <string name="lists_rule_value_language">A language code, such as en or es</string>

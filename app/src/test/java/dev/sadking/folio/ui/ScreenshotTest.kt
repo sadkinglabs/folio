@@ -48,7 +48,11 @@ class ScreenshotTest {
 
     @Test fun editor() = shoot("editor") { EditorPreview() }
 
-    @Test fun collections() = shoot("collections") { CollectionsPreview() }
+    @Test fun lists() = shoot("lists") { ListsPreview() }
+
+    @Test fun listDetail() = shoot("list-detail") { ListDetailPreview() }
+
+    @Test fun listEditor() = shoot("list-editor") { ListEditorPreview() }
 
     @Test fun device() = shoot("device") { KindlePreview() }
 

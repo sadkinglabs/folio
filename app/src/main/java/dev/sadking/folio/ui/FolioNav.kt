@@ -75,6 +75,10 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
     val recordId: String?
         get() = (top as? Route.Record)?.id
 
+    /** The list whose detail is on screen. */
+    val listId: String?
+        get() = (top as? Route.List)?.id
+
     val editing: Boolean
         get() = top is Route.Edit
 
