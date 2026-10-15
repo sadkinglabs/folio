@@ -127,4 +127,5 @@
         <item quantity="other">%d are different on the e-reader, review them on the Device tab</item>
     </plurals>
     <string name="send_list">Send to e-reader</string>
+    <string name="action_undo">Undo</string>
 </resources>

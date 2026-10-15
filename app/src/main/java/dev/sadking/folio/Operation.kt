@@ -10,6 +10,8 @@ data class Operation(
     val message: String = "",
     val progress: Float? = null,
     val failed: Boolean = false,
+    /** Reverses the work just done, offered as Undo on the message. */
+    val undo: (() -> Unit)? = null,
 )
 
 /**
@@ -46,17 +48,26 @@ class OperationRunner(
     val notices = MutableSharedFlow<Operation>(extraBufferCapacity = 8)
     private val lock = Mutex()
 
-    fun launch(scope: CoroutineScope, label: String, device: Boolean, work: suspend () -> String) {
+    fun launch(scope: CoroutineScope, label: String, device: Boolean, work: suspend () -> String) =
+        launchUndoable(scope, label, device) { work() to null }
+
+    /** As [launch], for work that can be reversed: it returns its message and how to undo it. */
+    fun launchUndoable(
+        scope: CoroutineScope,
+        label: String,
+        device: Boolean,
+        work: suspend () -> Pair<String, (() -> Unit)?>,
+    ) {
         scope.launch {
             lock.withLock {
                 state.value = Operation(true, label)
                 try {
-                    val result =
+                    val (result, undo) =
                         withContext(Dispatchers.IO) {
                             if (device) check(!transferActive()) { text().transferBusy }
                             work()
                         }
-                    state.value = Operation(message = result)
+                    state.value = Operation(message = result, undo = undo)
                     notices.emit(state.value)
                 } catch (e: CancellationException) {
                     // The screen that started it has gone; do not leave the status line busy.

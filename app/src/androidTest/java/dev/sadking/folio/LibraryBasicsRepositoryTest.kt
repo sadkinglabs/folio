@@ -79,12 +79,15 @@ class LibraryBasicsRepositoryTest {
                     "highlight",
                 )
             repo.dao.annotation(note)
-            assertEquals(1, repo.removeLocal(setOf(book.id)).first)
+            val (count, _, groups) = repo.removeLocal(setOf(book.id))
+            assertEquals(1, count)
+            // The book and its wish share one group: Undo restores exactly what was removed.
+            assertEquals(listOf(book.id), groups)
             assertTrue(repo.dao.allBooks().isEmpty())
             assertTrue(repo.dao.allWishes().isEmpty())
             assertTrue(repo.dao.allAnnotations().isEmpty())
             assertTrue(File(book.originalPath).isFile)
-            repo.restoreRemoved(book.id)
+            groups.forEach { repo.restoreRemoved(it) }
             assertEquals(book, repo.dao.allBooks().single())
             assertEquals(wish, repo.dao.allWishes().single())
             assertEquals(note, repo.dao.allAnnotations().single())

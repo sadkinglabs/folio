@@ -36,6 +36,22 @@ class OperationRunnerTest {
     }
 
     @Test
+    fun undoableWorkOffersItsUndoAndPlainWorkDoesNot() = runBlocking {
+        val runner = runner()
+        var undone = false
+        runner.launchUndoable(this, "Removing", device = false) {
+            "Removed 1 book" to { undone = true }
+        }
+        val notice = runner.notices.first()
+        assertEquals("Removed 1 book", notice.message)
+        notice.undo!!.invoke()
+        assertTrue(undone)
+
+        runner.launch(this, "Saving", device = false) { "saved" }
+        assertNull(runner.notices.first().undo)
+    }
+
+    @Test
     fun failuresAreExplainedWithoutRawDetails() = runBlocking {
         val runner = runner()
         runner.launch(this, "Exporting", device = false) {

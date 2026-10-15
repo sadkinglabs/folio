@@ -90,14 +90,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun withLeftovers(message: String, cleaned: Boolean) =
         if (cleaned) message else message + " " + msg(R.string.msg_library_leftover_files)
 
+    /** Removes books to Recently removed; the message offers Undo, which brings them back. */
     fun removeLocal(ids: Set<String>, onRemoved: () -> Unit = {}) =
-        run(msg(R.string.msg_library_removing)) {
-            val (count, cleaned) = repo.removeLocal(ids)
+        runner.launchUndoable(viewModelScope, msg(R.string.msg_library_removing), device = false) {
+            val (count, cleaned, groups) = repo.removeLocal(ids)
             withContext(Dispatchers.Main) { onRemoved() }
             withLeftovers(
                 app.resources.getQuantityString(R.plurals.msg_library_removed, count, count),
                 cleaned,
-            )
+            ) to { undoRemoval(groups) }
+        }
+
+    private fun undoRemoval(groups: List<String>) =
+        run(msg(R.string.msg_library_restoring)) {
+            groups.forEach { repo.restoreRemoved(it) }
+            msg(R.string.msg_library_restored)
         }
 
     fun restoreRemoved(group: String) =

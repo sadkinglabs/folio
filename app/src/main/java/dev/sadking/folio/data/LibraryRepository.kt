@@ -69,7 +69,11 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
             }
         }
 
-    suspend fun removeLocal(ids: Set<String>): Pair<Int, Boolean> =
+    /**
+     * Moves books and wishes to Recently removed. Returns how many were removed, whether their
+     * private files were cleaned, and the removed groups, so the removal can be undone.
+     */
+    suspend fun removeLocal(ids: Set<String>): Triple<Int, Boolean, List<String>> =
         withContext(Dispatchers.IO) {
             lock.withLock {
                 database.withTransaction {
@@ -86,25 +90,22 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
                         }
                     }
                     val now = System.currentTimeMillis()
+                    val groups = mutableSetOf<String>()
                     books
                         .filter { it.id in plan.bookIds }
                         .forEach {
                             dao.markRemoved(RemovedEntry(it.id, it.id, it.title, "EPUB", now))
+                            groups += it.id
                         }
                     wishes
                         .filter { it.id in plan.wishIds }
                         .forEach {
-                            dao.markRemoved(
-                                RemovedEntry(
-                                    it.id,
-                                    it.linkedBookId?.takeIf { id -> id in plan.bookIds } ?: it.id,
-                                    it.title,
-                                    "Catalogue",
-                                    now,
-                                )
-                            )
+                            val group =
+                                it.linkedBookId?.takeIf { id -> id in plan.bookIds } ?: it.id
+                            dao.markRemoved(RemovedEntry(it.id, group, it.title, "Catalogue", now))
+                            groups += group
                         }
-                    plan.visibleCount to true
+                    Triple(plan.visibleCount, true, groups.toList())
                 }
             }
         }

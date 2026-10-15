@@ -811,15 +811,23 @@ internal fun rememberOperationSnackbar(
 ): SnackbarHostState {
     val host = remember { SnackbarHostState() }
     val haptics = rememberHaptics()
+    val undoLabel = stringResource(R.string.action_undo)
     LaunchedEffect(notices) {
         notices.collectLatest { notice ->
             if (notice.failed) haptics.reject()
             host.currentSnackbarData?.dismiss()
-            host.showSnackbar(
-                notice.message,
-                withDismissAction = true,
-                duration = if (notice.failed) SnackbarDuration.Long else SnackbarDuration.Short,
-            )
+            val undo = notice.undo
+            val result =
+                host.showSnackbar(
+                    notice.message,
+                    actionLabel = if (undo != null) undoLabel else null,
+                    withDismissAction = true,
+                    // Long enough to reach Undo; failures stay as long, to be read.
+                    duration =
+                        if (notice.failed || undo != null) SnackbarDuration.Long
+                        else SnackbarDuration.Short,
+                )
+            if (result == SnackbarResult.ActionPerformed) undo?.invoke()
         }
     }
     return host
