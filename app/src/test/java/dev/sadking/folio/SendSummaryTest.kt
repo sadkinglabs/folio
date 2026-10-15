@@ -7,7 +7,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(org.robolectric.RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [36])
 class SendSummaryTest {
     private val resources
         get() = RuntimeEnvironment.getApplication().resources

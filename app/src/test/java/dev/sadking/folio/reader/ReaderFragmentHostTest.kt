@@ -18,7 +18,7 @@ import org.robolectric.annotation.Config
 
 /** Runs AndroidX's real FragmentManager with Android framework shadows, without an emulator. */
 @RunWith(org.robolectric.RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [36])
 class ReaderFragmentHostTest {
     class HostActivity : FragmentActivity() {
         override fun onCreate(savedInstanceState: Bundle?) {
