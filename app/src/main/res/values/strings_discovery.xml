@@ -79,7 +79,7 @@
     <string name="hardcover_import_title">Import from Hardcover</string>
     <string name="hardcover_import_refresh">Refresh</string>
     <string name="hardcover_import_search">Search</string>
-    <string name="hardcover_import_duplicate">Saved twice in Folio · remove one first</string>
+    <string name="hardcover_import_duplicate">Saved twice in Librillo · remove one first</string>
     <string name="hardcover_import_epub">EPUB: %1$s</string>
     <string name="hardcover_import_update_existing">Already in your library</string>
     <string name="hardcover_import_match_epub">Match an EPUB</string>

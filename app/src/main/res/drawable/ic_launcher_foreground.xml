@@ -68,11 +68,11 @@
     <path
         android:fillColor="#1A000000"
         android:pathData="M41,30 L43,30 L43,75 L41,75 Z"/>
-    <!-- Serif F, letterpressed: light edge below, olive letter on top. -->
+    <!-- Serif L, letterpressed: light edge below, olive letter on top. -->
     <path
         android:fillColor="#99FFFFFF"
-        android:pathData="M46,42.8 L62,42.8 L62,48.8 L59,48.8 L59,46.3 L52.5,46.3 L52.5,53.8 L58.5,53.8 L58.5,57.8 L52.5,57.8 L52.5,64.3 L56.5,64.3 L56.5,67.3 L46,67.3 L46,64.3 L49,64.3 L49,46.3 L46,46.3 Z"/>
-    <path android:pathData="M46,42 L62,42 L62,48 L59,48 L59,45.5 L52.5,45.5 L52.5,53 L58.5,53 L58.5,57 L52.5,57 L52.5,63.5 L56.5,63.5 L56.5,66.5 L46,66.5 L46,63.5 L49,63.5 L49,45.5 L46,45.5 Z">
+        android:pathData="M46,42.8 L56.5,42.8 L56.5,45.8 L52.5,45.8 L52.5,63.8 L59,63.8 L59,60.8 L62,60.8 L62,67.3 L46,67.3 L46,64.3 L49,64.3 L49,45.8 L46,45.8 Z"/>
+    <path android:pathData="M46,42 L56.5,42 L56.5,45 L52.5,45 L52.5,63 L59,63 L59,60 L62,60 L62,66.5 L46,66.5 L46,63.5 L49,63.5 L49,45 L46,45 Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"

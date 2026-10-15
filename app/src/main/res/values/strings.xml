@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">Librillo</string>
     <!-- Book page -->
     <string name="book_read">Read</string>
     <string name="book_continue">Continue · %1$d%%</string>

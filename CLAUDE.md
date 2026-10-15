@@ -1,6 +1,6 @@
 # Folio — working rules
 
-Folio is a personal Android EPUB library and reading companion. It covers the phone, KOReader on a Kindle, and Hardcover.
+Librillo is a personal Android EPUB library and reading companion. Its code name is Folio: the package, module and class names, the plugin folder (`folio.koplugin`) and its settings keep that name so updates install over existing data. It covers the phone, KOReader on a Kindle, and Hardcover.
 Modules:
 - `core`: pure JVM code for EPUB, sync planning, backup and KOReader data.
 - `transport`: SFTP using JSch.

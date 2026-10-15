@@ -10,7 +10,7 @@
     <string name="msg_error_host_key">Your e-reader\'s security fingerprint changed or was turned down. Check the address KOReader shows, then review the fingerprint in setup before you accept a new one.</string>
     <string name="msg_error_password_free_rejected">KOReader turned down password-free access. In KOReader, stop SSH, turn off key-only login, turn on Login without password and start SSH again. The username must be root.</string>
     <string name="msg_error_sign_in_rejected">Your e-reader turned down the sign-in. Check the username, and the key and its passphrase or the password.</string>
-    <string name="msg_error_unsupported_algorithms">Your e-reader\'s SSH server only offers security settings Folio does not support. Update its settings; Folio never turns on outdated ones.</string>
+    <string name="msg_error_unsupported_algorithms">Your e-reader\'s SSH server only offers security settings Librillo does not support. Update its settings; Librillo never turns on outdated ones.</string>
     <string name="msg_error_connection">Could not reach your e-reader. Check Wi-Fi, its address and port, and that its SSH server is running.</string>
     <string name="msg_error_file_transfer">A file transfer with your e-reader failed. Check its folder permissions, free space and connection, then compare again before you retry.</string>
     <string name="msg_error_incomplete">Something went wrong. Try again.</string>
@@ -49,7 +49,7 @@
     <string name="msg_library_imported">%1$d in your library · %2$d failed. Review the import results.</string>
     <string name="msg_library_exporting_epub">Exporting the EPUB…</string>
     <string name="msg_library_restore_first">Restore this book from Recently removed first</string>
-    <string name="msg_library_file_misplaced">This book\'s file could not be found in Folio\'s storage</string>
+    <string name="msg_library_file_misplaced">This book\'s file could not be found in Librillo\'s storage</string>
     <string name="msg_library_epub_exported">EPUB exported with your latest changes</string>
     <string name="msg_library_preparing_share">Preparing to share…</string>
     <string name="msg_library_preparing_open">Preparing to open…</string>
@@ -162,10 +162,10 @@
     <string name="msg_device_collections_none">Turn on Include in one-tap sync for at least one collection</string>
     <string name="msg_device_collections_send_books">Send every book in the collection to your e-reader first</string>
     <string name="msg_device_collections_changed">A book in this collection is missing or different on your e-reader. Compare and send it first.</string>
-    <string name="msg_device_collections_sent">Collections sent. In KOReader, open the Folio bridge menu to review and add them. Books already in a collection stay there.</string>
+    <string name="msg_device_collections_sent">Collections sent. In KOReader, open the Librillo bridge menu to review and add them. Books already in a collection stay there.</string>
     <string name="msg_device_getting_statistics">Getting reading statistics from KOReader…</string>
-    <string name="msg_device_statistics_export_first">In KOReader, export reading statistics from the Folio bridge menu first</string>
-    <string name="msg_device_statistics_changed">The statistics changed while Folio was reading them. Try again.</string>
+    <string name="msg_device_statistics_export_first">In KOReader, export reading statistics from the Librillo bridge menu first</string>
+    <string name="msg_device_statistics_changed">The statistics changed while Librillo was reading them. Try again.</string>
     <string name="msg_device_statistics_saved">Reading statistics saved on this phone</string>
 
     <!-- DiscoveryViewModel -->
@@ -254,15 +254,15 @@
     <string name="msg_reader_restore_first">Restore this book from Recently removed to read it</string>
     <string name="msg_reader_no_epub">This book has no EPUB attached yet</string>
     <string name="msg_reader_epub_missing">The EPUB file is missing. Attach it again from the book details.</string>
-    <string name="msg_reader_epub_changed">This EPUB was changed outside Folio. Import it again to read it.</string>
+    <string name="msg_reader_epub_changed">This EPUB was changed outside Librillo. Import it again to read it.</string>
     <string name="msg_reader_epub_unopenable">Could not open this EPUB</string>
-    <string name="msg_reader_epub_protected">This EPUB is protected or not supported. Folio reads DRM-free EPUBs.</string>
+    <string name="msg_reader_epub_protected">This EPUB is protected or not supported. Librillo reads DRM-free EPUBs.</string>
     <string name="msg_reader_no_chapters">This EPUB has no readable chapters. Attach a valid EPUB or try another reader.</string>
     <string name="msg_reader_open_failed">Could not open this book</string>
     <string name="msg_reader_bookmark_saved">Bookmark saved</string>
     <string name="msg_reader_device_position">E-reader place found. Choose “%1$s” to move there.</string>
     <string name="msg_reader_device_position_failed">Could not get the position from your e-reader</string>
     <string name="msg_reader_turn_page_first">Turn a page first to save a position</string>
-    <string name="msg_reader_position_sent">Position sent. On your e-reader, open this book in KOReader, then choose Folio bridge → Review phone reading position.</string>
+    <string name="msg_reader_position_sent">Position sent. On your e-reader, open this book in KOReader, then choose Librillo bridge → Review phone reading position.</string>
     <string name="msg_reader_position_send_failed">Could not send your reading position</string>
 </resources>

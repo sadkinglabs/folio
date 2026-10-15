@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Folio Link: settings -->
-    <string name="link_title">Folio Link</string>
+    <!-- Librillo Link: settings -->
+    <string name="link_title">Librillo Link</string>
     <string name="link_starting">Starting…</string>
     <string name="link_username">Username: %1$s</string>
     <string name="link_password">Password: %1$s</string>
@@ -23,21 +23,21 @@
     <string name="link_log_sent">%1$s sent its position</string>
     <string name="link_log_asked">%1$s asked for the latest position</string>
     <string name="link_log_refused">%1$s was refused: wrong username or password</string>
-    <string name="link_log_other">%1$s made a request Folio doesn\'t handle</string>
+    <string name="link_log_other">%1$s made a request Librillo doesn\'t handle</string>
 
-    <!-- Folio Link: reader -->
+    <!-- Librillo Link: reader -->
     <string name="reader_link_offer">Continue from %1$s at %2$d%%?</string>
     <string name="reader_link_continue">Continue</string>
     <string name="reader_link_stay">Stay</string>
     <string name="reader_link_failed">Couldn\'t find that passage in this copy of the book. You\'re still on your page.</string>
 
-    <!-- Folio Link: book page -->
+    <!-- Librillo Link: book page -->
     <string name="hardcover_use_link_position">Use %1$s · %2$d%%</string>
 
     <!-- Hardcover: automatic updates -->
     <string name="hardcover_automatic">Update Hardcover automatically</string>
 
-    <!-- Folio Link: installing the KOReader plugin over USB -->
+    <!-- Librillo Link: installing the KOReader plugin over USB -->
     <string name="link_plugin_title">KOReader plugin</string>
     <string name="link_plugin_hint">Save it, then unzip it into KOReader\'s plugins folder over USB.</string>
     <string name="link_plugin_save">Save the plugin</string>
@@ -45,19 +45,19 @@
     <string name="link_plugin_failed">Couldn\'t save the plugin. Try another folder.</string>
     <string name="link_plugin_folders">Kindle: koreader/plugins\nKobo: .adds/koreader/plugins\nPocketBook: applications/koreader/plugins\nAndroid e-reader: koreader/plugins</string>
 
-    <!-- Folio Link: sending books -->
+    <!-- Librillo Link: sending books -->
     <string name="link_queueing">Adding to the e-reader queue…</string>
     <plurals name="link_queued">
-        <item quantity="one">%d book will download to your e-reader the next time it connects to Folio Link</item>
-        <item quantity="other">%d books will download to your e-reader the next time it connects to Folio Link</item>
+        <item quantity="one">%d book will download to your e-reader the next time it connects to Librillo Link</item>
+        <item quantity="other">%d books will download to your e-reader the next time it connects to Librillo Link</item>
     </plurals>
-    <string name="link_catalogue">Folio</string>
+    <string name="link_catalogue">Librillo</string>
     <string name="link_catalogue_recent">Recently added</string>
     <string name="link_catalogue_lists">Lists</string>
 
-    <!-- Folio Link: notification -->
-    <string name="link_channel">Folio Link</string>
-    <string name="link_notification_title">Folio Link is on</string>
+    <!-- Librillo Link: notification -->
+    <string name="link_channel">Librillo Link</string>
+    <string name="link_notification_title">Librillo Link is on</string>
     <string name="link_notification_text">Your e-reader can sync at %1$s</string>
     <string name="link_notification_no_network">Waiting for Wi-Fi or your hotspot</string>
     <string name="link_stop">Turn off</string>

@@ -19,7 +19,7 @@ local function bounded_read(path)
     local file = assert(io.open(path, "rb"))
     local bytes = file:read(4 * 1024 * 1024 + 1)
     file:close()
-    assert(bytes and #bytes <= 4 * 1024 * 1024, "Folio file too large")
+    assert(bytes and #bytes <= 4 * 1024 * 1024, "Librillo file too large")
     return bytes
 end
 function Folio:init()
@@ -29,7 +29,7 @@ function Folio:init()
     self.ui.menu:registerToMainMenu(self)
 end
 -- The folder Folio's books go to: the one set here, else the Kindle default if it exists,
--- else "Folio" in KOReader's home folder (any device).
+-- else "Librillo" in KOReader's home folder (any device).
 function Folio:defaultFolder()
     local saved = G_reader_settings:readSetting("folio_folder")
     if saved then return saved end
@@ -40,7 +40,7 @@ end
 function Folio:root()
     local path = self:defaultFolder()
     local root = ffiUtil.realpath(path)
-    assert(root and lfs.attributes(root, "mode") == "directory", "Configure an existing Folio book folder first")
+    assert(root and lfs.attributes(root, "mode") == "directory", "Configure an existing Librillo book folder first")
     return root:gsub("/$", "")
 end
 function Folio:collections()
@@ -60,10 +60,10 @@ function Folio:collections()
                 end
             end
         end
-        assert(latest, "No Folio collection request found. Send one from the phone first.")
+        assert(latest, "No Librillo collection request found. Send one from the phone first.")
         return Bridge.validate(latest, root, ffiUtil.realpath, lfs.attributes)
     end)
-    if not ok then message("Cannot load Folio collection request. Check the configured folder and request format."); return end
+    if not ok then message("Cannot load Librillo collection request. Check the configured folder and request format."); return end
     local names = {}
     for _, shelf in ipairs(plan) do names[#names + 1] = shelf.name end
     UIManager:show(ConfirmBox:new {
@@ -71,7 +71,7 @@ function Folio:collections()
         ok_text = "Apply additions",
         ok_callback = function()
             local success = pcall(function() Bridge.apply(plan, ReadCollection) end)
-            message(success and "Folio collection additions applied." or "Collection update failed. Retry after checking files; additions are idempotent.")
+            message(success and "Librillo collection additions applied." or "Collection update failed. Retry after checking files; additions are idempotent.")
         end,
     })
 end
@@ -99,7 +99,7 @@ function Folio:statistics()
         assert(os.rename(temporary, destination))
     end)
     if connection then pcall(function() connection:exec("ROLLBACK;"); connection:close() end) end
-    message(ok and "Statistics snapshot exported. Retrieve it from Folio on your phone." or "Statistics export failed. Ensure the book is closed, statistics are enabled and the Folio folder exists.")
+    message(ok and "Statistics snapshot exported. Retrieve it from Librillo on your phone." or "Statistics export failed. Ensure the book is closed, statistics are enabled and the Librillo folder exists.")
 end
 function Folio:reading(automatic)
     local document = self.ui.document
@@ -248,9 +248,9 @@ function Folio:findPhone()
         local ok, found = pcall(Link.discover, self:linkConfig(), deps)
         if ok and found then
             deps.save_server(found)
-            message("Found Folio at " .. found .. ". Progress sync now uses it.")
+            message("Found Librillo at " .. found .. ". Progress sync now uses it.")
         else
-            message("Folio was not found. Turn on Folio Link on the phone and join the same Wi-Fi or its hotspot.")
+            message("Librillo was not found. Turn on Librillo Link on the phone and join the same Wi-Fi or its hotspot.")
         end
     end)
 end
@@ -263,7 +263,7 @@ function Folio:fetchBooks(automatic)
             return
         end
         if automatic and result.fetched == 0 and result.failed == 0 then return end
-        local text = string.format("Folio: %d new %s.", result.fetched, result.fetched == 1 and "book" or "books")
+        local text = string.format("Librillo: %d new %s.", result.fetched, result.fetched == 1 and "book" or "books")
         if result.already > 0 then text = text .. string.format(" %d already here.", result.already) end
         if result.failed > 0 then text = text .. string.format(" %d could not be fetched; they will be tried again.", result.failed) end
         message(text)
@@ -282,7 +282,7 @@ end
 function Folio:configure()
     local dialog
     dialog = InputDialog:new {
-        title = "Folio book folder", input = self:defaultFolder(),
+        title = "Librillo book folder", input = self:defaultFolder(),
         buttons = {{ { text = "Cancel", callback = function() UIManager:close(dialog) end },
             { text = "Save", callback = function()
                 local path = ffiUtil.realpath(dialog:getInputText())
@@ -295,13 +295,13 @@ function Folio:configure()
     dialog:onShowKeyboard()
 end
 function Folio:addToMainMenu(items)
-    items.folio_bridge = { text = "Folio", sub_item_table = {
-        { text = "Get books from Folio", callback = function() self:fetchBooks(false) end },
-        { text = "Find Folio on this network", callback = function() self:findPhone() end },
+    items.folio_bridge = { text = "Librillo", sub_item_table = {
+        { text = "Get books from Librillo", callback = function() self:fetchBooks(false) end },
+        { text = "Find Librillo on this network", callback = function() self:findPhone() end },
         { text = "Get books when Wi-Fi connects", checked_func = function() return G_reader_settings:readSetting("folio_auto_fetch", false) end,
             callback = function() G_reader_settings:saveSetting("folio_auto_fetch", not G_reader_settings:readSetting("folio_auto_fetch", false)) end },
-        { text = "Folio book folder", callback = function() self:configure() end },
-        { text = "Continue from Folio automatically", checked_func = function() return G_reader_settings:readSetting("folio_auto_positions", false) end,
+        { text = "Librillo book folder", callback = function() self:configure() end },
+        { text = "Continue from Librillo automatically", checked_func = function() return G_reader_settings:readSetting("folio_auto_positions", false) end,
             callback = function() G_reader_settings:saveSetting("folio_auto_positions", not G_reader_settings:readSetting("folio_auto_positions", false)) end },
         { text = "Review phone reading position", callback = function() self:reading() end },
         { text = "Review collection additions", callback = function() self:collections() end },

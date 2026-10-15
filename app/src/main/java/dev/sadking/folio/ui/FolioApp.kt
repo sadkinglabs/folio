@@ -562,7 +562,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                         ) {
                                                             exportBookId = book.id
                                                             markdownPicker.launch(
-                                                                "Folio-${book.id}.md"
+                                                                "Librillo-${book.id}.md"
                                                             )
                                                         }
                                                 }
@@ -795,7 +795,7 @@ fun FolioApp(model: LibraryViewModel) {
                                             },
                                             onExport = {
                                                 exportBookId = book.id
-                                                markdownPicker.launch("Folio-${book.id}.md")
+                                                markdownPicker.launch("Librillo-${book.id}.md")
                                             },
                                             onNext = { nav.open(Route.Book(it.id)) },
                                         )
@@ -1049,7 +1049,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                             onRemoved = { showRemoved = true },
                                                             onBackup = {
                                                                 backupPicker.launch(
-                                                                    "Folio-backup-${java.time.LocalDate.now()}.zip"
+                                                                    "Librillo-backup-${java.time.LocalDate.now()}.zip"
                                                                 )
                                                             },
                                                             onRestore = {
@@ -1348,7 +1348,7 @@ fun FolioApp(model: LibraryViewModel) {
                         BookAction.STATUS -> statusEntryId = actionBook.id
                         BookAction.EXPORT_NOTES -> {
                             exportBookId = actionBook.id
-                            markdownPicker.launch("Folio-${actionBook.id}.md")
+                            markdownPicker.launch("Librillo-${actionBook.id}.md")
                         }
                         BookAction.ATTACH -> {
                             attachWishId = actionBook.id

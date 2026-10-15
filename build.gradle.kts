@@ -14,7 +14,8 @@ dependencies {
 fun kotlinFiles() =
     fileTree(rootDir) {
             include("**/*.kt", "**/*.kts")
-            exclude("**/build/**", "**/.gradle/**")
+            // Agent worktrees under .claude are other checkouts, not this one.
+            exclude("**/build/**", "**/.gradle/**", ".claude/**")
         }
         .files
         .sortedBy { it.path }
