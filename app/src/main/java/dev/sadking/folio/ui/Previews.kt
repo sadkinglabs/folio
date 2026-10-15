@@ -195,6 +195,22 @@ internal fun ListsPreview() {
     }
 }
 
+/** The Lists tab before any lists of your own: the three reading lists and the New list tile. */
+@Composable
+internal fun ListsFirstRunPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            ListsScreen(
+                listCards(emptyList(), listSampleLibrary()),
+                busy = false,
+                onOpen = {},
+                onNew = {},
+                onScan = {},
+            )
+        }
+    }
+}
+
 @Preview(name = "List detail · light", widthDp = 412, heightDp = 892)
 @Preview(
     name = "List detail · dark",

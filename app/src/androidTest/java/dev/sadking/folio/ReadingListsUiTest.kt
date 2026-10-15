@@ -97,7 +97,7 @@ class ReadingListsUiTest {
             longClick()
         }
         compose.onNodeWithText("Delete list").assertDoesNotExist()
-        compose.onNodeWithText("Make your first list").assertIsDisplayed()
+        compose.onNodeWithTag(LISTS_NEW_CARD_TAG).assertIsDisplayed()
     }
 
     @Test

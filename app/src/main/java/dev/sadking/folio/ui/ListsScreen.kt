@@ -6,6 +6,7 @@
 package dev.sadking.folio.ui
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -18,7 +19,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
@@ -26,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -43,6 +49,8 @@ internal const val LIST_EDITOR_SAVE_TAG = "list-editor-save"
 
 /** The test tag of one list card. */
 internal fun listCardTag(id: String) = "list-card-$id"
+
+internal const val LISTS_NEW_CARD_TAG = "lists-new-card"
 
 /**
  * The Lists tab: a serif title, "+", and a two-column grid of [ListCardView]s, the three system
@@ -117,18 +125,70 @@ internal fun ListsScreen(
                     onDelete = onDelete,
                 )
             }
-            if (!userLists)
-                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        stringResource(R.string.rd_lists_empty_title),
-                        stringResource(R.string.rd_lists_empty_body),
-                        Icons.Outlined.CollectionsBookmark,
-                        onNew,
-                        actionLabel = stringResource(R.string.lists_new_title),
-                        actionEnabled = !busy,
-                        illustration = FolioIllustration.Books,
+            // Until there are lists of your own, the next tile offers one, the same size as the
+            // rest so the grid stays even.
+            if (!userLists) item(key = "new") { NewListCard(enabled = !busy, onClick = onNew) }
+        }
+    }
+}
+
+/** Lines kept for a card's name: two in the two-column grid, one when text is large. */
+@Composable private fun listTitleLines() = if (LocalDensity.current.fontScale > 1.3f) 1 else 2
+
+/** The "New list" tile: a dashed outline shaped like a list card, with the same three rows. */
+@Composable
+internal fun NewListCard(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    Surface(
+        modifier
+            .fillMaxWidth()
+            .clip(FolioSpace.panelShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .drawBehind {
+                drawRoundRect(
+                    outline,
+                    cornerRadius = CornerRadius(20.dp.toPx()),
+                    style =
+                        Stroke(
+                            width = 1.5.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f)),
+                        ),
+                )
+            }
+            .testTag(LISTS_NEW_CARD_TAG),
+        shape = FolioSpace.panelShape,
+        color = Color.Transparent,
+    ) {
+        Column(Modifier.padding(FolioSpace.item)) {
+            Box(Modifier.fillMaxWidth().height(104.dp), contentAlignment = Alignment.Center) {
+                Surface(
+                    Modifier.size(56.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        null,
+                        Modifier.padding(14.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
+            }
+            Spacer(Modifier.height(FolioSpace.gap))
+            Text(
+                stringResource(R.string.lists_new_title),
+                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
+                minLines = listTitleLines(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                stringResource(R.string.rd_lists_new_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -196,9 +256,12 @@ internal fun ListCardView(
                     coverWidth = 52.dp,
                 )
                 Spacer(Modifier.height(FolioSpace.gap))
+                // Two lines' room while cards sit side by side, so a row is even whether a name
+                // wraps or not; one card per row needs no room it will not use.
                 Text(
                     card.name,
                     style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
+                    minLines = listTitleLines(),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

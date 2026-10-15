@@ -68,6 +68,7 @@
     <!-- Redesign: Lists tab and list detail -->
     <string name="rd_lists_empty_title">Make your first list</string>
     <string name="rd_lists_empty_body">Group books by topic, series or plan.</string>
+    <string name="rd_lists_new_hint">Topic, series or plan</string>
     <!-- TalkBack: the mark on a card whose list fills itself by a rule. -->
     <string name="rd_list_by_rule">Fills by rule</string>
     <string name="rd_list_empty_title">No books yet</string>

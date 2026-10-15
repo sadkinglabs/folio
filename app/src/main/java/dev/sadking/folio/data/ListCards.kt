@@ -44,9 +44,12 @@ fun systemListOf(id: String): ReadingList? =
 fun mosaicCovers(books: List<Book>, limit: Int = MOSAIC_COVERS): List<Book> =
     (books.filter { it.coverPath != null } + books.filter { it.coverPath == null }).take(limit)
 
+/** The order of the system lists on the Lists tab: what is being read first. */
+val LIST_TAB_ORDER = listOf(ReadingList.READING, ReadingList.FINISHED, ReadingList.WANT_TO_READ)
+
 /** The cards of the Lists tab: the three system lists first, then the user's lists in order. */
 fun listCards(shelves: List<Shelf>, library: LibraryPresentation): List<ListCard> =
-    ReadingList.entries.map { list ->
+    LIST_TAB_ORDER.map { list ->
         ListCard(
             systemListId(list),
             list.title,

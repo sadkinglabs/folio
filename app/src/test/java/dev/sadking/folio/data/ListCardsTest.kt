@@ -28,13 +28,13 @@ class ListCardsTest {
         val cards =
             listCards(shelves, library(listOf(wanted, done), mapOf("s1" to listOf(wanted, done))))
         assertEquals(
-            listOf("reading:WANT_TO_READ", "reading:READING", "reading:FINISHED", "s1", "s2"),
+            listOf("reading:READING", "reading:FINISHED", "reading:WANT_TO_READ", "s1", "s2"),
             cards.map { it.id },
         )
-        assertEquals(listOf(1, 0, 1, 2, 0), cards.map { it.count })
-        assertEquals("Finished", cards[2].name)
+        assertEquals(listOf(0, 1, 1, 2, 0), cards.map { it.count })
+        assertEquals("Finished", cards[1].name)
         assertNull(cards[0].shelf)
-        assertEquals(ReadingList.WANT_TO_READ, cards[0].system)
+        assertEquals(ReadingList.READING, cards[0].system)
         assertNull(cards[3].rule)
         assertEquals("Tag" to "Essays", cards[4].rule)
     }

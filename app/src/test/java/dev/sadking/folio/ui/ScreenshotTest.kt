@@ -53,6 +53,8 @@ class ScreenshotTest {
 
     @Test fun lists() = shoot("lists") { ListsPreview() }
 
+    @Test fun listsFirstRun() = shoot("lists-first-run") { ListsFirstRunPreview() }
+
     @Test fun listDetail() = shoot("list-detail") { ListDetailPreview() }
 
     @Test fun listEditor() = shoot("list-editor") { ListEditorPreview() }
