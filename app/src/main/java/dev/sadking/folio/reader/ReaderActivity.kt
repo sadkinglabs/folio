@@ -212,8 +212,13 @@ class ReaderActivity : FragmentActivity() {
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
         // on the main thread.
         lifecycleScope.launch {
+            // Nothing touches the page until read-aloud starts: an empty highlight at open would
+            // queue a script on the page while it is still loading.
+            var highlighted = false
             snapshotFlow { model.listen.utterance }
                 .collectLatest { spoken ->
+                    if (spoken == null && !highlighted) return@collectLatest
+                    highlighted = spoken != null
                     fragment.applyDecorations(
                         listOfNotNull(
                             spoken?.let {
