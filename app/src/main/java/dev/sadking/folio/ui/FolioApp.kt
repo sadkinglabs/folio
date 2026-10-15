@@ -348,6 +348,8 @@ fun FolioApp(model: LibraryViewModel) {
                 mutableStateOf(setOf<String>())
             }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
+        // Counts taps on the Lists tab; each one returns Lists to its overview.
+        var listsRoot by rememberSaveable { mutableIntStateOf(0) }
         var showConnection by rememberSaveable { mutableStateOf(false) }
         /** Sends from where you are; only pairing or a stuck transfer takes you elsewhere. */
         fun sendOrPair(send: () -> Unit) {
@@ -568,6 +570,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         tab = tab,
                                         onTab = { i ->
                                             nav.root(i)
+                                            if (i == FolioNav.LISTS) listsRoot++
                                             selection = emptySet()
                                         },
                                         current = currentBook,
@@ -766,6 +769,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                     FolioNav.LISTS ->
                                                         LibraryArea(
                                                             lists = shownTab == FolioNav.LISTS,
+                                                            rootRequest = listsRoot,
                                                             library = library,
                                                             shelves = shelves,
                                                             selection = selection,

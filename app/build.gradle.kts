@@ -43,6 +43,11 @@ kotlin { jvmToolchain(17) }
 // Robolectric runs Android 16 (SDK 36) only on Java 21; the app still compiles for Java 17.
 tasks.withType<Test>().configureEach {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    // Robolectric reaches into JDK internals that Java 21 closes by default.
+    jvmArgs(
+        "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+    )
 }
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }

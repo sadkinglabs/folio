@@ -20,6 +20,7 @@ import dev.sadking.folio.data.*
 @Composable
 internal fun LibraryArea(
     lists: Boolean,
+    rootRequest: Int = 0,
     library: LibraryPresentation,
     shelves: List<Shelf>,
     selection: Set<String>,
@@ -40,6 +41,14 @@ internal fun LibraryArea(
     onRequestHandled: () -> Unit = {},
 ) {
     var scope by rememberSaveable { mutableStateOf<String?>(null) }
+    // A tab tap shows the lists overview; coming back from a book page keeps the open list.
+    var handledRoot by rememberSaveable { mutableIntStateOf(rootRequest) }
+    LaunchedEffect(rootRequest) {
+        if (handledRoot != rootRequest) {
+            handledRoot = rootRequest
+            if (requestedList == null) scope = null
+        }
+    }
     val holder = rememberSaveableStateHolder()
     val pinned = ReadingList.entries.firstOrNull { scope == "reading:${it.name}" }
     val shelf = shelves.firstOrNull { it.id == scope }
