@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -32,6 +33,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlin.math.roundToInt
 
 internal const val HARDCOVER_SHEET_TAG = "hardcover-sheet"
@@ -72,6 +78,9 @@ fun HardcoverReadingSheet(
     var send by remember { mutableStateOf<Triple<HardcoverEdition, Int, Boolean>?>(null) }
     var allowNew by remember { mutableStateOf(false) }
     var allowDecrease by remember { mutableStateOf(false) }
+    var startedOn by remember { mutableStateOf(LocalDate.now()) }
+    var finishing by remember { mutableStateOf(false) }
+    var finishedOn by remember { mutableStateOf(LocalDate.now()) }
     val reports = linkReports(book)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -106,9 +115,14 @@ fun HardcoverReadingSheet(
                 onSearch = model::searchHardcoverText,
                 onLink = model::link,
                 onMarkReading = { confirmStatus = true },
+                onMarkFinished = {
+                    finishedOn = LocalDate.now()
+                    finishing = true
+                },
                 onSend = { edition, page, estimated ->
                     allowNew = false
                     allowDecrease = false
+                    startedOn = LocalDate.now()
                     send = Triple(edition, page, estimated)
                 },
             )
@@ -139,6 +153,19 @@ fun HardcoverReadingSheet(
                 }
             },
         )
+    if (finishing)
+        FinishDialog(
+            book,
+            reading,
+            finishedOn,
+            busy = state.busy,
+            onDate = { finishedOn = it },
+            onFinish = {
+                finishing = false
+                model.finishReading(book, finishedOn, it)
+            },
+            onDismiss = { finishing = false },
+        )
     val expected = reading
     val pending = send
     if (pending != null && expected != null) {
@@ -159,10 +186,18 @@ fun HardcoverReadingSheet(
                             )
                             .joinToString(" · ")
                     )
-                    if (expected.readId == null)
+                    if (expected.readId == null) {
                         ConfirmOption(stringResource(R.string.hardcover_start_new_read), allowNew) {
                             allowNew = it
                         }
+                        DateField(
+                            stringResource(R.string.hardcover_started_on),
+                            startedOn,
+                            enabled = allowNew,
+                        ) {
+                            startedOn = it
+                        }
+                    }
                     if (expected.pages != null && page < expected.pages)
                         ConfirmOption(
                             stringResource(R.string.hardcover_allow_decrease),
@@ -176,7 +211,15 @@ fun HardcoverReadingSheet(
                 TextButton(
                     onClick = {
                         send = null
-                        model.updateReading(book, edition, page, expected, allowNew, allowDecrease)
+                        model.updateReading(
+                            book,
+                            edition,
+                            page,
+                            expected,
+                            allowNew,
+                            allowDecrease,
+                            startedOn = startedOn.takeIf { expected.readId == null },
+                        )
                     },
                     enabled =
                         !state.busy &&
@@ -194,6 +237,122 @@ fun HardcoverReadingSheet(
         )
     }
 }
+
+@Composable
+internal fun FinishDialog(
+    book: Book,
+    reading: HardcoverReading?,
+    finishedOn: LocalDate,
+    busy: Boolean,
+    onDate: (LocalDate) -> Unit,
+    onFinish: (HardcoverReading) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val started = reading?.startedOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.hardcover_mark_finished_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.item)) {
+                Text(stringResource(R.string.hardcover_mark_finished_body, book.title))
+                DateField(
+                    stringResource(R.string.hardcover_finished_on),
+                    finishedOn,
+                    earliest = started,
+                    onDate = onDate,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { reading?.let(onFinish) },
+                enabled = !busy && reading?.readId != null,
+            ) {
+                Text(stringResource(R.string.hardcover_mark))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.shell_cancel)) }
+        },
+    )
+}
+
+/**
+ * A date shown as a tappable field that opens Material's date picker. Days after today, or before
+ * [earliest], cannot be picked.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DateField(
+    label: String,
+    date: LocalDate,
+    enabled: Boolean = true,
+    earliest: LocalDate? = null,
+    onDate: (LocalDate) -> Unit,
+) {
+    var picking by remember { mutableStateOf(false) }
+    val locale = LocalConfiguration.current.locales[0]
+    val shown =
+        remember(date, locale) {
+            date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+        }
+    OutlinedButton(
+        onClick = { picking = true },
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().testTag(HARDCOVER_DATE_TAG),
+    ) {
+        Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(FolioSpace.small))
+        Text("$label · $shown", Modifier.weight(1f))
+    }
+    if (picking) {
+        val today = LocalDate.now()
+        val state =
+            rememberDatePickerState(
+                initialSelectedDateMillis = date.utcMillis(),
+                selectableDates =
+                    object : SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                            val day = utcDate(utcTimeMillis)
+                            return !day.isAfter(today) &&
+                                (earliest == null || !day.isBefore(earliest))
+                        }
+
+                        override fun isSelectableYear(year: Int) = year <= today.year
+                    },
+            )
+        DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        state.selectedDateMillis?.let { onDate(utcDate(it)) }
+                        picking = false
+                    },
+                    enabled = state.selectedDateMillis != null,
+                ) {
+                    Text(stringResource(R.string.shell_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { picking = false }) {
+                    Text(stringResource(R.string.shell_cancel))
+                }
+            },
+        ) {
+            DatePicker(state)
+        }
+    }
+}
+
+/** Material's date picker counts days in UTC milliseconds. */
+private fun LocalDate.utcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun utcDate(millis: Long): LocalDate =
+    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+
+internal const val HARDCOVER_DATE_TAG = "hardcover-date"
+internal const val HARDCOVER_FINISH_TAG = "hardcover-finish"
 
 @Composable
 private fun ConfirmOption(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
@@ -233,6 +392,7 @@ internal fun HardcoverReadingContent(
     onLink: (HardcoverMatch) -> Unit,
     onMarkReading: () -> Unit,
     onSend: (HardcoverEdition, Int, Boolean) -> Unit,
+    onMarkFinished: () -> Unit = {},
 ) {
     val connected = username.isNotBlank()
     Column(
@@ -295,6 +455,7 @@ internal fun HardcoverReadingContent(
                     deviceError,
                     onFetchDevice,
                     onMarkReading,
+                    onMarkFinished,
                     onSend,
                 )
         }
@@ -351,6 +512,7 @@ private fun PositionStep(
     deviceError: String?,
     onFetchDevice: () -> Unit,
     onMarkReading: () -> Unit,
+    onMarkFinished: () -> Unit,
     onSend: (HardcoverEdition, Int, Boolean) -> Unit,
 ) {
     var editionId by rememberSaveable(book.id) { mutableStateOf<Int?>(null) }
@@ -384,6 +546,14 @@ private fun PositionStep(
             enabled = !busy,
             label = { Text(stringResource(R.string.hardcover_mark_reading)) },
             leadingIcon = { Icon(Icons.Outlined.AutoStories, null, Modifier.size(18.dp)) },
+        )
+    else if (reading.readId != null)
+        AssistChip(
+            onClick = onMarkFinished,
+            enabled = !busy,
+            label = { Text(stringResource(R.string.hardcover_mark_finished)) },
+            leadingIcon = { Icon(Icons.Outlined.DoneAll, null, Modifier.size(18.dp)) },
+            modifier = Modifier.testTag(HARDCOVER_FINISH_TAG),
         )
     EditionRow(paged, edition, enabled = !busy) { editionId = it.id }
     if (edition != null) {

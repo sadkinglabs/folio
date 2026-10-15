@@ -4,6 +4,7 @@ import dev.sadking.folio.core.Epub
 import dev.sadking.folio.core.Metadata
 import java.net.HttpURLConnection
 import java.net.URI
+import java.time.LocalDate
 import org.json.*
 
 data class HardcoverMatch(
@@ -358,6 +359,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
             number(read, "progress_pages"),
             number(read, "edition_id") ?: number(row, "edition_id"),
             number(row, "edition_id"),
+            read?.takeUnless { it.isNull("started_at") }?.optString("started_at")?.take(10),
         )
     }
 
@@ -368,6 +370,69 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
         return value.optInt("id").takeIf { it > 0 }
             ?: error("Hardcover did not acknowledge the update; reload before retrying")
+    }
+
+    /**
+     * Ends the read in progress on [finishedOn]: the read moves to its edition's last page and gets
+     * the finished date, and the book is marked Read. Earlier reads, rating and review are kept.
+     * Fails before writing when Hardcover no longer matches [expected].
+     */
+    fun finish(
+        token: String,
+        bookId: Int,
+        finishedOn: LocalDate,
+        expected: HardcoverReading,
+    ): String {
+        require(!finishedOn.isAfter(LocalDate.now())) {
+            "Choose a finish date that is not in the future"
+        }
+        val current = reading(token, bookId)
+        require(
+            current.userBookId == expected.userBookId &&
+                current.readId == expected.readId &&
+                current.pages == expected.pages &&
+                current.editionId == expected.editionId
+        ) {
+            "Hardcover progress changed; reload and review before updating"
+        }
+        val readId = current.readId ?: error("There is no read in progress on Hardcover to finish")
+        val editionId = current.editionId ?: error("Choose an edition first")
+        val started = current.startedOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        require(started == null || !finishedOn.isBefore(started)) {
+            "Choose a finish date on or after the start date"
+        }
+        val pages = editionPages(token, editionId) ?: error("This edition has no page count")
+        checkedWrite(
+            query(
+                token,
+                "mutation(\$id:Int!,\$value:DatesReadInput!) { update_user_book_read(id:\$id,object:\$value) { id error } }",
+                JSONObject()
+                    .put("id", readId)
+                    .put(
+                        "value",
+                        JSONObject()
+                            .put("edition_id", editionId)
+                            .put("progress_pages", pages)
+                            .put("finished_at", finishedOn.toString()),
+                    ),
+            ),
+            "update_user_book_read",
+        )
+        checkedWrite(
+            query(
+                token,
+                "mutation(\$id:Int!,\$object:UserBookUpdateInput!) { update_user_book(id:\$id,object:\$object) { id error } }",
+                JSONObject()
+                    .put("id", current.userBookId)
+                    .put("object", JSONObject().put("status_id", 3)),
+            ),
+            "update_user_book",
+        )
+        val latest = reading(token, bookId)
+        require(latest.readId == null && latest.status == 3) {
+            "Hardcover changed during the update; reload before retrying"
+        }
+        return "Marked Read on Hardcover, finished $finishedOn"
     }
 
     fun currentlyReading(token: String, bookId: Int): String {
@@ -413,7 +478,12 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         allowNewRead: Boolean,
         allowDecrease: Boolean,
         userId: Int? = null,
+        /** The start date of a new read; today when not given. */
+        startedOn: LocalDate? = null,
     ): String {
+        require(startedOn == null || !startedOn.isAfter(LocalDate.now())) {
+            "Choose a start date that is not in the future"
+        }
         val edition =
             query(
                     token,
@@ -474,7 +544,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
         val objectValue = JSONObject().put("edition_id", editionId).put("progress_pages", pages)
         if (ready.readId == null) {
-            objectValue.put("started_at", java.time.LocalDate.now().toString())
+            objectValue.put("started_at", (startedOn ?: LocalDate.now()).toString())
             checkedWrite(
                 query(
                     token,
@@ -522,6 +592,8 @@ data class HardcoverReading(
     val pages: Int?,
     val editionId: Int?,
     val bookEditionId: Int? = null,
+    /** When the read in progress started, as Hardcover's yyyy-mm-dd. */
+    val startedOn: String? = null,
 )
 
 fun estimatedHardcoverPage(percent: Double, total: Int): Int {

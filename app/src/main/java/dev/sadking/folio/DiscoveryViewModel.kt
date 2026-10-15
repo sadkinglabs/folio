@@ -232,6 +232,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         expected: HardcoverReading,
         allowNew: Boolean,
         allowDecrease: Boolean,
+        startedOn: java.time.LocalDate? = null,
     ) =
         run(msg(R.string.msg_discovery_updating_progress)) {
             val link =
@@ -247,7 +248,21 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                     expected,
                     allowNew,
                     allowDecrease,
+                    startedOn = startedOn,
                 )
+            loadReading(link.hardcoverId)
+            result
+        }
+
+    /** Ends the read in progress on Hardcover on [finishedOn] and marks the book Read. */
+    fun finishReading(book: Book, finishedOn: java.time.LocalDate, expected: HardcoverReading) =
+        run(msg(R.string.msg_discovery_updating_progress)) {
+            val link =
+                dao.allWishes().firstOrNull {
+                    (it.linkedBookId == book.id || it.id == book.id) && it.hardcoverId != null
+                } ?: error(msg(R.string.msg_discovery_link_first))
+            val result =
+                hardcover.finish(settings.token(), link.hardcoverId!!, finishedOn, expected)
             loadReading(link.hardcoverId)
             result
         }

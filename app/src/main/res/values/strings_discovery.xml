@@ -60,6 +60,11 @@
     <string name="hardcover_mark_reading_title">Mark Currently Reading?</string>
     <string name="hardcover_mark_reading_body">%1$s is marked Currently Reading on Hardcover. Earlier reads, ratings and reviews are kept.</string>
     <string name="hardcover_mark">Mark</string>
+    <string name="hardcover_mark_finished">Mark finished</string>
+    <string name="hardcover_mark_finished_title">Mark finished?</string>
+    <string name="hardcover_mark_finished_body">%1$s is marked Read on Hardcover. This read moves to the last page and ends on the date below. Earlier reads, ratings and reviews are kept.</string>
+    <string name="hardcover_finished_on">Finished</string>
+    <string name="hardcover_started_on">Started</string>
     <string name="hardcover_send_title">Send page %1$d of %2$d?</string>
     <string name="hardcover_send_estimated">Estimated from the percentage</string>
     <string name="hardcover_send_marks_reading">Marks the book Currently Reading.</string>

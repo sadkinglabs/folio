@@ -13,6 +13,8 @@ class HardcoverReadingTest {
         var parentEdition: Int? = 8
         var exists = true
         var reads = 1
+        var started: String? = "2026-09-01"
+        var finished: String? = null
         val writes = mutableListOf<JSONObject>()
         val client = HardcoverClient { _, body ->
             val q = body.getString("query")
@@ -28,13 +30,14 @@ class HardcoverReadingTest {
                     q.contains("user_books(") -> {
                         assertEquals(7, v.getInt("user"))
                         val sessions = JSONArray()
-                        if (readId != null)
+                        if (readId != null && finished == null)
                             repeat(reads) {
                                 sessions.put(
                                     JSONObject()
                                         .put("id", readId)
                                         .put("progress_pages", pages ?: JSONObject.NULL)
                                         .put("edition_id", edition ?: JSONObject.NULL)
+                                        .put("started_at", started ?: JSONObject.NULL)
                                 )
                             }
                         JSONObject()
@@ -64,6 +67,12 @@ class HardcoverReadingTest {
                                 }
                                 q.contains("update_user_book_read") -> {
                                     assertEquals(readId, v.getInt("id"))
+                                    finished =
+                                        v.getJSONObject("value")
+                                            .optString("finished_at", "")
+                                            .ifEmpty {
+                                                null
+                                            }
                                     pages = v.getJSONObject("value").getInt("progress_pages")
                                     edition = v.getJSONObject("value").getInt("edition_id")
                                     "update_user_book_read"
@@ -153,6 +162,80 @@ class HardcoverReadingTest {
         assertTrue(write.has("started_at"))
         assertFalse(write.has("finished_at"))
         assertEquals(22, f.readId)
+    }
+
+    @Test
+    fun newReadStartsOnTheChosenDate() {
+        val f = AccountFixture()
+        f.readId = null
+        f.pages = null
+        val expected = f.client.reading("token", 44)
+        f.client.progress(
+            "token",
+            44,
+            8,
+            30,
+            expected,
+            true,
+            false,
+            startedOn = java.time.LocalDate.of(2026, 9, 3),
+        )
+        val write =
+            f.writes
+                .first { it.getString("query").contains("insert_user_book_read") }
+                .getJSONObject("variables")
+                .getJSONObject("value")
+        assertEquals("2026-09-03", write.getString("started_at"))
+        assertTrue(
+            runCatching {
+                    f.client.progress(
+                        "token",
+                        44,
+                        8,
+                        30,
+                        expected,
+                        true,
+                        false,
+                        startedOn = java.time.LocalDate.now().plusDays(1),
+                    )
+                }
+                .isFailure
+        )
+    }
+
+    @Test
+    fun finishingEndsTheReadAtTheLastPageAndMarksRead() {
+        val f = AccountFixture()
+        f.status = 2
+        val expected = f.client.reading("token", 44)
+        assertEquals("2026-09-01", expected.startedOn)
+        val day = java.time.LocalDate.of(2026, 10, 2)
+        f.client.finish("token", 44, day, expected)
+        val read =
+            f.writes
+                .first { it.getString("query").contains("update_user_book_read") }
+                .getJSONObject("variables")
+                .getJSONObject("value")
+        assertEquals("2026-10-02", read.getString("finished_at"))
+        assertEquals(300, read.getInt("progress_pages"))
+        assertEquals(3, f.status)
+        // A retry finds no read in progress and writes nothing.
+        val count = f.writes.size
+        assertTrue(runCatching { f.client.finish("token", 44, day, expected) }.isFailure)
+        assertEquals(count, f.writes.size)
+    }
+
+    @Test
+    fun finishDateCannotBeBeforeTheStartOrInTheFuture() {
+        val f = AccountFixture()
+        f.status = 2
+        val expected = f.client.reading("token", 44)
+        for (day in
+            listOf(
+                java.time.LocalDate.of(2026, 8, 31),
+                java.time.LocalDate.now().plusDays(1),
+            )) assertTrue(runCatching { f.client.finish("token", 44, day, expected) }.isFailure)
+        assertTrue(f.writes.isEmpty())
     }
 
     @Test
