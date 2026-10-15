@@ -46,6 +46,7 @@
     <string name="hardcover_link_match">Link</string>
     <string name="hardcover_mark_reading">Mark Currently Reading</string>
     <string name="hardcover_edition">Edition</string>
+    <string name="hardcover_choose_edition">Choose the edition you are reading</string>
     <string name="hardcover_no_page_edition">No edition has a page count, so progress can’t be sent.</string>
     <string name="hardcover_mode_pages">Pages</string>
     <string name="hardcover_of_pages">of %1$d</string>

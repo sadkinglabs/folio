@@ -360,8 +360,9 @@ private fun PositionStep(
     val paged = editions.filter { it.pages > 0 }
     val edition =
         paged.firstOrNull { it.id == editionId }
+            // Without a linked edition the owner picks one: progress sent against the wrong
+            // edition would land on the wrong page count on Hardcover.
             ?: paged.firstOrNull { it.id == reading.editionId }
-            ?: paged.firstOrNull()
     val page =
         if (percentage)
             input
@@ -576,7 +577,11 @@ private fun EditionRow(
                             it.pages,
                             it.label.ifBlank { it.title },
                         )
-                    } ?: stringResource(R.string.hardcover_no_page_edition),
+                    }
+                        ?: stringResource(
+                            if (editions.isEmpty()) R.string.hardcover_no_page_edition
+                            else R.string.hardcover_choose_edition
+                        ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -585,7 +590,7 @@ private fun EditionRow(
                 Icon(Icons.Outlined.MenuBook, null, tint = MaterialTheme.colorScheme.primary)
             },
             trailingContent = {
-                if (editions.size > 1)
+                if (editions.size > 1 || (edition == null && editions.isNotEmpty()))
                     Icon(
                         Icons.Outlined.ExpandMore,
                         null,
@@ -596,7 +601,7 @@ private fun EditionRow(
             modifier =
                 Modifier.fillMaxWidth()
                     .then(
-                        if (editions.size > 1)
+                        if (editions.size > 1 || (edition == null && editions.isNotEmpty()))
                             Modifier.clickable(enabled = enabled, role = Role.DropdownList) {
                                 open = true
                             }
