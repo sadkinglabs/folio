@@ -112,10 +112,10 @@ class ReaderActivity : FragmentActivity() {
         val publication = model.publication ?: return
         controls = false
         lifecycleScope.launch {
-            val from = nav.firstVisibleElementLocator() ?: nav.currentLocator.value
             val failed = getString(R.string.listen_failed)
             val bookId = model.book?.id ?: return@launch
-            if (!model.listen.start(bookId, publication, from) { navigationError = failed })
+            val page = suspend { nav.firstVisibleElementLocator() ?: nav.currentLocator.value }
+            if (!model.listen.start(bookId, publication, page, { navigationError = failed }))
                 navigationError = getString(R.string.listen_no_voice)
         }
     }

@@ -126,8 +126,13 @@ internal class ReadAloud(
     private class Reading(
         val bookId: String,
         val publication: Publication,
+        /** Where the reader's page is now; read-aloud starts there when it has no sentence. */
+        val page: suspend () -> Locator?,
         val onFailure: () -> Unit,
     )
+
+    /** A voice change that came while starting, applied once started. */
+    private var restartWhenStarted = false
 
     var state by mutableStateOf(ListenState.OFF)
         private set
@@ -171,12 +176,14 @@ internal class ReadAloud(
     suspend fun start(
         bookId: String,
         publication: Publication,
-        from: Locator?,
+        page: suspend () -> Locator?,
         onFailure: () -> Unit,
+        from: Locator? = null,
     ): Boolean {
         if (state != ListenState.OFF) return true
         state = ListenState.STARTING
-        reading = Reading(bookId, publication, onFailure)
+        reading = Reading(bookId, publication, page, onFailure)
+        val from = from ?: page()
         naturalFits = englishBook(publication.metadata.languages)
         val wantsNatural =
             naturalFits &&
@@ -187,6 +194,7 @@ internal class ReadAloud(
         if (!started) {
             state = ListenState.OFF
             reading = null
+            restartWhenStarted = false
             return false
         }
         ListenService.current =
@@ -198,6 +206,10 @@ internal class ReadAloud(
                 )
                 .buildAsync()
         navigator?.play()
+        if (restartWhenStarted) {
+            restartWhenStarted = false
+            restartHere()
+        }
         return true
     }
 
@@ -340,12 +352,18 @@ internal class ReadAloud(
     /** Stops and starts again at the sentence being read, with the voice now chosen. */
     private fun restartHere() {
         val current = reading ?: return
+        if (state == ListenState.STARTING) {
+            restartWhenStarted = true
+            return
+        }
         val at = utterance
-        val playing = state == ListenState.PLAYING
+        val paused = state == ListenState.PAUSED
         stop()
         scope.launch {
-            if (start(current.bookId, current.publication, at, current.onFailure) && !playing)
-                navigator?.pause()
+            // No sentence yet: start from the page on screen, never from the top of the book.
+            val started =
+                start(current.bookId, current.publication, current.page, current.onFailure, at)
+            if (started && paused) navigator?.pause()
         }
     }
 
