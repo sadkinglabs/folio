@@ -3,11 +3,13 @@ package dev.sadking.folio.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import dev.sadking.folio.Operation
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceConfig
 import dev.sadking.folio.link.LinkLog
@@ -370,16 +372,177 @@ internal fun DeviceFirstRunPreview() {
     }
 }
 
-@Preview(name = "Pairing · light", widthDp = 412, heightDp = 892)
+@Preview(name = "Pairing · light", widthDp = 412, heightDp = 1100)
 @Preview(
     name = "Pairing · dark",
     widthDp = 412,
-    heightDp = 892,
+    heightDp = 1100,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
 internal fun PairingPreview() {
-    FolioTheme(dynamic = false) { Surface { ConnectionForm(DeviceConfig(), false) { _, _, _ -> } } }
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            ConnectionForm(
+                DeviceConfig(
+                    host = "192.168.1.23",
+                    fingerprint = "SHA256:kE4z1b3Q9mXc7Vp2Rt8Hn5Wq0Yd6Lf1Gs3Jh9Ua2Bo",
+                    authentication = "KOReader password-free",
+                ),
+                busy = false,
+                probeStatus =
+                    Operation(message = "Fingerprint read; no login or file access was attempted"),
+                onProbe = { _, _ -> },
+                onBrowse = { _, _, _, _, _ -> },
+                onForget = {},
+            ) { _, _, _ ->
+            }
+        }
+    }
+}
+
+@Preview(name = "Pairing first run · light", widthDp = 412, heightDp = 1100)
+@Composable
+internal fun PairingFirstRunPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            ConnectionForm(DeviceConfig(), busy = false, onProbe = { _, _ -> }) { _, _, _ -> }
+        }
+    }
+}
+
+private val sampleStatistics =
+    DeviceStatistics(
+        "device",
+        totalSeconds = 12 * 3600 + 4 * 60,
+        exportedAt = 1791750000L,
+        fetchedAt = 1791750100L,
+        days =
+            """[{"date":"2026-10-14","seconds":2700},{"date":"2026-10-13","seconds":1500},{"date":"2026-10-12","seconds":4200}]""",
+    )
+
+@Preview(name = "Settings · light", widthDp = 412, heightDp = 1500)
+@Preview(
+    name = "Settings · dark",
+    widthDp = 412,
+    heightDp = 1500,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun SettingsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            SettingsScreen(
+                appearance = "System",
+                dynamic = true,
+                onTheme = {},
+                onDynamic = {},
+                reading = ReadingDefaults(),
+                statistics = sampleStatistics,
+                linkStatus = LinkStatus.ON,
+                linkAddress = "192.168.1.42:8765",
+                keepAwake = true,
+                hardcoverAutomatic = false,
+                hardcoverUsername = "alex",
+                count = 9,
+                recordCount = 12,
+                removedCount = 3,
+                sshHost = "192.168.1.23",
+                phoneFolder = "Internal storage/Books",
+            )
+        }
+    }
+}
+
+@Preview(name = "Settings first run · light", widthDp = 412, heightDp = 1500)
+@Composable
+internal fun SettingsFirstRunPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            SettingsScreen(appearance = "Light", dynamic = false, onTheme = {}, onDynamic = {})
+        }
+    }
+}
+
+@Preview(name = "Text defaults · light", widthDp = 412, heightDp = 700)
+@Preview(
+    name = "Text defaults · dark",
+    widthDp = 412,
+    heightDp = 700,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun ReadingDefaultsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReadingDefaultsContent(ReadingDefaults(), onReading = {})
+        }
+    }
+}
+
+@Preview(name = "Reading time · light", widthDp = 412, heightDp = 500)
+@Composable
+internal fun ReadingTimePreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReadingTimeContent(sampleStatistics, onStatistics = {}, enabled = true)
+        }
+    }
+}
+
+@Preview(name = "Backup · light", widthDp = 412, heightDp = 320)
+@Preview(
+    name = "Backup · dark",
+    widthDp = 412,
+    heightDp = 320,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun BackupPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            BackupContent(onExport = {}, onRestore = {}, busy = false)
+        }
+    }
+}
+
+@Preview(name = "Phone folder · light", widthDp = 412, heightDp = 360)
+@Composable
+internal fun PhoneFolderPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            PhoneFolderContent(
+                "Internal storage/Books",
+                onChoose = {},
+                onRefresh = {},
+                onForget = {},
+                busy = false,
+            )
+        }
+    }
+}
+
+@Preview(name = "Hardcover account · light", widthDp = 412, heightDp = 420)
+@Preview(
+    name = "Hardcover account · dark",
+    widthDp = 412,
+    heightDp = 420,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun HardcoverAccountPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverAccountContent(
+                username = "",
+                busy = false,
+                error = null,
+                onGetToken = {},
+                onConnect = {},
+                onDisconnect = {},
+            )
+        }
+    }
 }
 
 @Preview(name = "Bottom bar · light", widthDp = 412, heightDp = 240)

@@ -28,9 +28,6 @@
     <string name="rd_tile_book">%1$s, %2$s</string>
     <string name="rd_tile_book_progress">%1$s, %2$s, %3$d%%</string>
 
-    <!-- Redesign: Settings, reading section (moved from the Reading tab) -->
-    <string name="rd_settings_reading">Reading</string>
-
     <!-- Redesign: Book page -->
     <string name="rd_find_epub">Find EPUB</string>
     <string name="rd_action_attach">Attach</string>

@@ -10,7 +10,7 @@
     <string name="link_new_password">New password</string>
     <string name="link_steps">In KOReader: Tools → Progress sync → Custom sync server. Enter the address, then Register or Login with these details.</string>
     <string name="link_keep_awake">Keep the phone awake</string>
-    <string name="link_keep_awake_hint">Try this if your e-reader can\'t reach the phone while its screen is off. It uses more battery.</string>
+    <string name="link_keep_awake_hint">Helps if the e-reader can\'t reach a sleeping phone. Uses more battery.</string>
     <string name="link_log_empty">Nothing yet</string>
     <string name="link_log_clear">Clear log</string>
     <string name="link_log_line">%1$s · %2$s</string>

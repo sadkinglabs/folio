@@ -363,7 +363,7 @@ fun HardcoverReadingSheet(
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
     }
-    if (account) HardcoverAccountDialog(model) { account = false }
+    if (account) HardcoverAccountSheet(model) { account = false }
     if (chooseEdition)
         AlertDialog(
             onDismissRequest = { chooseEdition = false },

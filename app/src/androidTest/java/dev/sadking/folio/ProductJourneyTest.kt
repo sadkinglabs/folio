@@ -260,12 +260,15 @@ class ProductJourneyTest {
         }
         tab("Settings")
         compose.onNodeWithText("Light").performClick()
-        val wallpaper = compose.onNodeWithContentDescription("Use wallpaper colours")
+        // Settings is grouped rows; the wallpaper switch is one of them, off for a stable capture.
+        val wallpaper = compose.onNodeWithTag(SETTINGS_WALLPAPER_TAG)
         if (
             wallpaper.fetchSemanticsNode().config[SemanticsProperties.ToggleableState] ==
                 ToggleableState.On
         )
             wallpaper.performClick()
+        wallpaper.assertIsOff()
+        compose.onNodeWithTag(SETTINGS_SSH_TAG).assertIsDisplayed()
         capture("settings-light")
         tab("Library")
         capture("library-light")

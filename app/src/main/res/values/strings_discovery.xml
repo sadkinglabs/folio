@@ -34,13 +34,12 @@
     <string name="hardcover_account">Hardcover account</string>
     <string name="hardcover_username">\@%1$s</string>
     <string name="hardcover_connected_as">Connected as @%1$s</string>
-    <string name="hardcover_account_intro">Connect your account to send books and reading progress to Hardcover. Nothing is sent until you confirm. Copy your API token from Hardcover and paste it below.</string>
-    <string name="hardcover_account_connected">Connected as @%1$s. Nothing is sent until you confirm. To switch accounts, paste a different API token.</string>
+    <string name="hardcover_account_body">Paste an API token from Hardcover. Nothing is sent until you confirm.</string>
     <string name="hardcover_no_browser">Install a browser to open Hardcover.</string>
-    <string name="hardcover_get_token">Get your token on Hardcover ↗</string>
+    <string name="hardcover_get_token">Get a token ↗</string>
     <string name="hardcover_token_label">Hardcover API token</string>
-    <string name="hardcover_token_privacy">Your token is stored encrypted on this phone and isn’t included in backups. New books use your Hardcover privacy setting; books already there keep theirs.</string>
-    <string name="hardcover_disconnect">Disconnect Hardcover</string>
+    <string name="hardcover_token_privacy">Stored encrypted on this phone, never in backups.</string>
+    <string name="hardcover_disconnect">Disconnect</string>
     <string name="hardcover_connect_button">Connect</string>
     <string name="hardcover_replace_token">Use new token</string>
 

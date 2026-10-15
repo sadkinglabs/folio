@@ -29,7 +29,9 @@ class ScreenshotTest {
         assumeTrue(System.getProperty("roborazzi.test.record") == "true")
     }
 
-    private fun shoot(name: String, content: @Composable () -> Unit) {
+    /** [tall] renders a longer screen in one image, so a scrolling tab shows every group. */
+    private fun shoot(name: String, tall: Boolean = false, content: @Composable () -> Unit) {
+        if (tall) RuntimeEnvironment.setQualifiers("w412dp-h2000dp-xxhdpi")
         captureRoboImage("build/screenshots/$name-light.png") { content() }
         RuntimeEnvironment.setQualifiers("+night")
         captureRoboImage("build/screenshots/$name-dark.png") { content() }
@@ -60,7 +62,25 @@ class ScreenshotTest {
 
     @Test fun deviceFirstRun() = shoot("device-first-run") { DeviceFirstRunPreview() }
 
-    @Test fun pairing() = shoot("pairing") { PairingPreview() }
+    @Test fun pairing() = shoot("pairing", tall = true) { PairingPreview() }
+
+    @Test
+    fun pairingFirstRun() = shoot("pairing-first-run", tall = true) { PairingFirstRunPreview() }
+
+    @Test fun settings() = shoot("settings", tall = true) { SettingsPreview() }
+
+    @Test
+    fun settingsFirstRun() = shoot("settings-first-run", tall = true) { SettingsFirstRunPreview() }
+
+    @Test fun readingDefaults() = shoot("settings-text") { ReadingDefaultsPreview() }
+
+    @Test fun readingTime() = shoot("settings-reading-time") { ReadingTimePreview() }
+
+    @Test fun backup() = shoot("settings-backup") { BackupPreview() }
+
+    @Test fun phoneFolder() = shoot("settings-folder") { PhoneFolderPreview() }
+
+    @Test fun hardcoverAccount() = shoot("hardcover-account") { HardcoverAccountPreview() }
 
     @Test fun bar() = shoot("bar") { BarPreview() }
 

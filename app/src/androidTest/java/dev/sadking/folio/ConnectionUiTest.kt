@@ -38,8 +38,8 @@ class ConnectionUiTest {
                 }
             }
         }
-        compose.onNode(hasText("Trust this Kindle") and hasClickAction()).performClick()
-        compose.onNodeWithText("Save pairing").performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithTag(PAIRING_TRUST_TAG).performClick()
+        compose.onNodeWithTag(PAIRING_SAVE_TAG).performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals(pin, saved!!.fingerprint)
             assertEquals("KOReader password-free", saved!!.authentication)
@@ -60,9 +60,7 @@ class ConnectionUiTest {
                 }
             }
         }
-        compose.onNode(hasText("Trust this Kindle") and hasClickAction()).assertIsNotEnabled()
-        compose
-            .onNodeWithText("The address changed. Cancel and read its fingerprint again.")
-            .assertIsDisplayed()
+        compose.onNodeWithTag(PAIRING_TRUST_TAG).assertIsNotEnabled()
+        compose.onNodeWithTag(PAIRING_ADDRESS_CHANGED_TAG).assertIsDisplayed()
     }
 }

@@ -124,6 +124,12 @@ class LargeFontUiTest {
             compose.onNodeWithTag(DEVICE_LINK_CARD_TAG).assertIsDisplayed()
             compose.onNodeWithTag(DEVICE_LINK_SWITCH_TAG).assertIsDisplayed()
             QaScreenshots.capture("device-font200")
+            compose.onNode(hasText("Settings") and hasClickAction()).performClick()
+            compose.waitForIdle()
+            // Theme segments drop under their row at 200%; the wallpaper switch stays reachable.
+            compose.onNodeWithTag(SETTINGS_THEME_TAG).assertIsDisplayed()
+            compose.onNodeWithTag(SETTINGS_WALLPAPER_TAG).performScrollTo().assertIsDisplayed()
+            QaScreenshots.capture("settings-font200")
         }
     }
 }

@@ -91,58 +91,74 @@
 
     <!-- Settings (SettingsScreen.kt) -->
     <string name="settings_title">Settings</string>
-    <string name="settings_subtitle">Appearance, connections and your library</string>
     <string name="settings_appearance">Appearance</string>
-    <string name="settings_wallpaper_colours">Use wallpaper colours</string>
-    <string name="settings_folder_title">Phone folder</string>
-    <string name="settings_folder_none">Choose a folder on your phone. Folio imports its EPUBs and swaps new books with your e-reader\'s folder.</string>
-    <string name="settings_folder_current">Folder: %1$s</string>
-    <string name="settings_folder_hint">Subfolders are kept, and files are compared both ways. If two copies of a book differ, you review them. Deleting a book on one side never deletes it on the other, and KOReader\'s reading data files are not copied. Tap Check for new books to pick up new files on the phone.</string>
-    <string name="settings_folder_choose">Choose phone folder</string>
-    <string name="settings_folder_change">Change phone folder</string>
-    <string name="settings_folder_refresh">Check for new books</string>
-    <string name="settings_folder_disconnect">Disconnect folder</string>
-    <string name="settings_plugin_install">Install the KOReader plugin</string>
-    <string name="settings_plugin_hint">The Folio plugin lets KOReader pick up your phone\'s reading position, and asks you first. Restart KOReader after installing. Plugin files already on your e-reader are kept.</string>
-    <string name="settings_storage_title">Library storage</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_wallpaper_colours">Wallpaper colours</string>
+    <string name="settings_reading">Reading</string>
+    <string name="settings_text">Text</string>
+    <!-- Text size, then the font: "110% · Serif". -->
+    <string name="settings_text_summary">%1$d%% · %2$s</string>
+    <string name="settings_text_body">Defaults for every book. A book with its own settings keeps them.</string>
+    <string name="settings_refresh_value">From your e-reader over SSH</string>
+    <string name="settings_link">Folio Link</string>
+    <string name="settings_hardcover">Hardcover</string>
+    <string name="settings_hardcover_account">Account</string>
+    <string name="settings_hardcover_connected">Connected as @%1$s</string>
+    <string name="settings_hardcover_not_connected">Not connected</string>
+    <string name="settings_hardcover_import">Import library</string>
+    <string name="settings_hardcover_import_value">Books and statuses from your account</string>
+    <string name="settings_library">Library</string>
+    <string name="settings_storage">Storage</string>
     <plurals name="settings_storage_entries">
-        <item quantity="one">%1$d book in your library</item>
-        <item quantity="other">%1$d books in your library</item>
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
     </plurals>
     <plurals name="settings_storage_files">
         <item quantity="one">%1$d EPUB on this phone</item>
         <item quantity="other">%1$d EPUBs on this phone</item>
     </plurals>
-    <string name="settings_storage_summary">%1$s · %2$s. Your original files are kept when you edit book details.</string>
-    <string name="settings_recently_removed">Recently removed · %1$d</string>
-    <string name="settings_last_import">Last import results</string>
-    <string name="settings_backup_hint">Back up your books, covers, lists and saved reading data. Keep the backup private; it contains your books and notes.</string>
-    <string name="settings_backup_export">Export library backup</string>
-    <string name="settings_backup_restore">Restore from backup</string>
-    <string name="settings_restore_hint">Restoring adds books you don\'t have and merges list contents. Books, files and details already here are kept. Lists added by a restore start with sync turned off.</string>
-    <string name="settings_connections_title">Connections</string>
-    <string name="settings_connections_subtitle">Your library works offline. Connect only the services you use.</string>
-    <string name="settings_hardcover">Hardcover</string>
-    <string name="settings_hardcover_connect">Connect to use Want to Read and send progress updates you\'ve reviewed</string>
-    <string name="settings_hardcover_connected">Connected as @%1$s</string>
-    <string name="settings_device_title">Your e-reader</string>
-    <string name="settings_connection_settings">Connection settings</string>
-    <string name="settings_device_hint">Folio checks each book arrived intact before marking it sent. Books already on your e-reader stay as they are; if a book has changed, you review it first.</string>
+    <string name="settings_recently_removed">Recently removed</string>
+    <string name="settings_removed_none">Empty</string>
+    <plurals name="settings_removed_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
+    <string name="settings_backup">Back up</string>
+    <string name="settings_backup_value">Export or restore</string>
+    <string name="settings_backup_body">Books, covers, lists and reading data. Keep the file private.</string>
+    <string name="settings_backup_export">Export backup</string>
+    <string name="settings_backup_restore">Restore a backup</string>
+    <string name="settings_restore_body">Adds what is missing. Nothing here is replaced.</string>
+    <string name="settings_last_import">Last import</string>
+    <string name="settings_last_import_value">What happened to the files you added</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_ssh">E-reader over SSH</string>
+    <string name="settings_ssh_legacy">Legacy</string>
+    <string name="settings_ssh_not_set_up">Not set up</string>
+    <string name="settings_folder">Phone folder</string>
+    <string name="settings_folder_none">Not set</string>
+    <string name="settings_folder_body">Folio imports EPUBs from this folder and swaps new books with your e-reader. Nothing is deleted on either side.</string>
+    <string name="settings_folder_choose">Choose folder</string>
+    <string name="settings_folder_change">Change folder</string>
+    <string name="settings_folder_refresh">Check for new books</string>
+    <string name="settings_folder_disconnect">Disconnect folder</string>
+    <string name="settings_plugin_install">Install the KOReader plugin</string>
+    <string name="settings_plugin_value">Over SSH, onto your e-reader</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_version">Folio %1$s</string>
+    <string name="settings_about_line">No account and no analytics.</string>
     <string name="settings_forget_device">Forget e-reader</string>
-    <string name="settings_about_version">Folio · %1$s</string>
-    <string name="settings_about">An independent ebook library. No account needed and no analytics. Looking up books online and Hardcover are optional.</string>
     <string name="settings_forget_title">Forget this e-reader?</string>
-    <string name="settings_forget_body">Folio will remove the saved address and sign-in details for your e-reader. Books on your phone and e-reader are not touched.</string>
+    <string name="settings_forget_body">Its address and sign-in details are removed. Books stay where they are.</string>
     <string name="settings_forget_confirm">Forget</string>
-    <string name="settings_cancel">Cancel</string>
 
-    <!-- Reading: refresh and reading time (Settings, moved from the old Reading tab) -->
+    <!-- Reading: refresh and reading time (Settings) -->
     <string name="reading_refresh">Refresh progress and notes</string>
     <string name="reading_time_title">Reading time</string>
-    <string name="reading_time_total">%1$d h %2$d min · from your last export</string>
-    <string name="reading_time_none">Optional · reading statistics from KOReader</string>
-    <string name="reading_time_hint">Export your reading statistics from the Folio plugin in KOReader, then get them here.</string>
-    <string name="reading_time_get">Get reading statistics</string>
+    <string name="reading_time_total">%1$d h %2$d min</string>
+    <string name="reading_time_none">Not fetched yet</string>
+    <string name="reading_time_hint">Export statistics from the Folio plugin in KOReader first.</string>
+    <string name="reading_time_get">Get from e-reader</string>
     <string name="reading_time_exported">Exported %1$s</string>
     <string name="reading_time_minutes">%1$d min</string>
 </resources>

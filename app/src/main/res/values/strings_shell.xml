@@ -19,7 +19,7 @@
 
     <!-- Shell: KOReader plugin install (the folder must be on a Kindle) -->
     <string name="shell_companion_title">Install the KOReader plugin</string>
-    <string name="shell_companion_body">Enter the folder where KOReader keeps its plugins on your Kindle. Folio adds its plugin there and keeps any previous version. Restart KOReader afterwards.</string>
+    <string name="shell_companion_body">The KOReader plugins folder on your e-reader. Older versions are kept. Restart KOReader afterwards.</string>
     <string name="shell_companion_folder">KOReader plugins folder</string>
     <string name="shell_companion_install">Install</string>
 
@@ -53,7 +53,7 @@
 
     <!-- Shell: restore a backup -->
     <string name="shell_restore_title">Restore this backup?</string>
-    <string name="shell_restore_body">Folio checks the whole backup before restoring. Missing books are added, books you already have are kept, and list memberships are combined. E-reader connection details are not included.</string>
+    <string name="shell_restore_body">Missing books are added and what is here is kept. E-reader details are not included.</string>
     <string name="shell_restore">Restore</string>
 
     <!-- Shell: book tiles and covers -->

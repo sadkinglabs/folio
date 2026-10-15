@@ -232,5 +232,5 @@ fun DiscoveryScreen(
             },
         )
     }
-    if (connect) HardcoverAccountDialog(model) { connect = false }
+    if (connect) HardcoverAccountSheet(model) { connect = false }
 }

@@ -936,10 +936,9 @@ fun FolioApp(model: LibraryViewModel) {
                                                             busy = deviceBusy,
                                                         )
                                                     FolioNav.SETTINGS ->
-                                                        SettingsScreen(
-                                                            appearance,
-                                                            dynamic,
-                                                            books.size,
+                                                        SettingsTab(
+                                                            appearance = appearance,
+                                                            dynamic = dynamic,
                                                             onTheme = {
                                                                 appearance = it
                                                                 prefs
@@ -954,35 +953,33 @@ fun FolioApp(model: LibraryViewModel) {
                                                                     .putBoolean("dynamic", it)
                                                                     .apply()
                                                             },
-                                                            onConnection = {
-                                                                showConnection = true
+                                                            statistics =
+                                                                statistics.firstOrNull {
+                                                                    it.deviceId == device.id
+                                                                },
+                                                            onStatistics =
+                                                                devices::refreshStatistics,
+                                                            onRefreshReading =
+                                                                devices::refreshReading,
+                                                            hardcoverUsername = hardcoverUsername,
+                                                            onHardcover = { showAccount = true },
+                                                            onImportHardcover = {
+                                                                if (hardcoverUsername.isBlank()) {
+                                                                    resumeHardcoverImport = true
+                                                                    showAccount = true
+                                                                } else {
+                                                                    showProfileImport = true
+                                                                    discovery.loadProfile()
+                                                                }
                                                             },
-                                                            onForget = devices::forgetDevice,
-                                                            paired = device.host.isNotBlank(),
-                                                            onRemoved = { showRemoved = true },
+                                                            count = books.size,
+                                                            recordCount = library.entries.size,
                                                             removedCount =
                                                                 removed
                                                                     .map { it.groupId }
                                                                     .distinct()
                                                                     .size,
-                                                            recordCount = library.entries.size,
-                                                            phoneFolder = phoneFolder,
-                                                            onPhoneFolder = {
-                                                                phoneFolderPicker.launch(null)
-                                                            },
-                                                            onRefreshFolder =
-                                                                devices::refreshPhoneFolder,
-                                                            onForgetFolder =
-                                                                devices::forgetPhoneFolder,
-                                                            onInstallCompanion = {
-                                                                installCompanion = true
-                                                            },
-                                                            onImports = {
-                                                                model.showImportResults.value = true
-                                                            },
-                                                            hardcoverUsername = hardcoverUsername,
-                                                            onHardcover = { showAccount = true },
-                                                            busy = deviceBusy,
+                                                            onRemoved = { showRemoved = true },
                                                             onBackup = {
                                                                 backupPicker.launch(
                                                                     "Folio-backup-${java.time.LocalDate.now()}.zip"
@@ -996,14 +993,25 @@ fun FolioApp(model: LibraryViewModel) {
                                                                     )
                                                                 )
                                                             },
-                                                            statistics =
-                                                                statistics.firstOrNull {
-                                                                    it.deviceId == device.id
-                                                                },
-                                                            onStatistics =
-                                                                devices::refreshStatistics,
-                                                            onRefreshReading =
-                                                                devices::refreshReading,
+                                                            onImports = {
+                                                                model.showImportResults.value = true
+                                                            },
+                                                            sshHost = device.host,
+                                                            onConnection = {
+                                                                showConnection = true
+                                                            },
+                                                            phoneFolder = phoneFolder,
+                                                            onPhoneFolder = {
+                                                                phoneFolderPicker.launch(null)
+                                                            },
+                                                            onRefreshFolder =
+                                                                devices::refreshPhoneFolder,
+                                                            onForgetFolder =
+                                                                devices::forgetPhoneFolder,
+                                                            onInstallCompanion = {
+                                                                installCompanion = true
+                                                            },
+                                                            busy = deviceBusy,
                                                         )
                                                 }
                                             }
@@ -1468,7 +1476,7 @@ fun FolioApp(model: LibraryViewModel) {
                 discovery.clearReading()
             }
         if (showAccount)
-            HardcoverAccountDialog(
+            HardcoverAccountSheet(
                 discovery,
                 onConnected = {
                     if (resumeHardcoverSearch) {
@@ -1590,6 +1598,13 @@ fun FolioApp(model: LibraryViewModel) {
                         folderStatus = folderStatus,
                         onBrowse = devices::browseFolders,
                         onClearFolders = devices::clearFolders,
+                        onForget = {
+                            showConnection = false
+                            devices.clearHostProbe()
+                            devices.clearFolders()
+                            pairingSendId = null
+                            devices.forgetDevice()
+                        },
                     )
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
                 }

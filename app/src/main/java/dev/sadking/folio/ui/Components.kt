@@ -9,6 +9,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -124,31 +125,132 @@ internal fun TransferBanner(job: SyncJob, onOpen: () -> Unit, onCancel: () -> Un
     }
 }
 
-internal val LocalRouteHeading = staticCompositionLocalOf { false }
-
+/**
+ * A settings group: an eyebrow in small caps over one panel that holds its rows. Rows separate by
+ * tone and spacing only; no dividers, no outlines.
+ */
 @Composable
-internal fun PageHeading(
+internal fun SettingsGroup(
     title: String,
-    subtitle: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier.padding(horizontal = FolioSpace.page)) {
+        Text(
+            title.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = FolioSpace.item, bottom = FolioSpace.small),
+        )
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = FolioSpace.panelShape,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(Modifier.padding(vertical = 4.dp), content = content)
+        }
+    }
+}
+
+/**
+ * One settings row: a leading icon, a title, the current value on one line, and either a chevron
+ * (when it opens something) or a [trailing] control. A [badge] marks a row such as "Legacy".
+ */
+@Composable
+internal fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    value: String? = null,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    badge: String? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            if (!LocalRouteHeading.current) {
-                Text(title, style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(4.dp))
+    ListItem(
+        headlineContent = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                if (badge != null)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                    ) {
+                        Text(
+                            badge.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
             }
-            Text(
-                subtitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        trailing?.invoke()
-    }
+        },
+        supportingContent =
+            value?.let {
+                {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+        leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+        trailingContent =
+            trailing
+                ?: onClick?.let {
+                    {
+                        Icon(
+                            Icons.Outlined.ChevronRight,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .then(
+                    if (onClick != null)
+                        Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                    else Modifier
+                )
+                .alpha(if (enabled) 1f else 0.5f),
+    )
+}
+
+/**
+ * A settings row with a switch. The whole row toggles; the switch is its state, read by [title].
+ */
+@Composable
+internal fun SettingsSwitchRow(
+    icon: ImageVector,
+    title: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    value: String? = null,
+    enabled: Boolean = true,
+) {
+    SettingsRow(
+        icon,
+        title,
+        value,
+        modifier.toggleable(
+            checked,
+            enabled = enabled,
+            role = Role.Switch,
+            onValueChange = onChecked,
+        ),
+        enabled = enabled,
+        trailing = { Switch(checked, null, enabled = enabled) },
+    )
 }
 
 /**

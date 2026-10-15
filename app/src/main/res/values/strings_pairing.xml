@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings → Advanced → E-reader over SSH (ConnectionForm.kt). The legacy path. -->
+    <string name="pairing_title">E-reader over SSH</string>
+    <string name="pairing_legacy_line">The older way to send books. Folio Link needs no setup here.</string>
+
+    <!-- The four steps, in order -->
+    <string name="pairing_step_network">Network</string>
+    <string name="pairing_step_address">Address</string>
+    <string name="pairing_step_login">Login</string>
+    <string name="pairing_step_folder">Folder</string>
+    <!-- TalkBack: "Step 2, Address, current" -->
+    <string name="pairing_step_current">Step %1$d, %2$s, current</string>
+    <string name="pairing_step_done">Step %1$d, %2$s, done</string>
+    <string name="pairing_step_todo">Step %1$d, %2$s</string>
+
+    <!-- 1 Network -->
+    <string name="pairing_network_hint">Same Wi-Fi or your hotspot, with KOReader\'s SSH server on (Tools → Network).</string>
+    <string name="pairing_open_network">Open network settings</string>
+
+    <!-- 2 Address -->
+    <string name="pairing_address_hint">As KOReader shows them. The port is usually 2222.</string>
+    <string name="pairing_host">Address</string>
+    <string name="pairing_port">Port</string>
+    <string name="pairing_username">Username</string>
+    <string name="pairing_fingerprint_none">Read the fingerprint, then check it against KOReader.</string>
+    <string name="pairing_fingerprint_saved">Trusted. A changed key stops transfers until you accept it.</string>
+    <string name="pairing_fingerprint_manual">Enter the fingerprint by hand</string>
+    <string name="pairing_fingerprint_manual_hint">If you checked it another way</string>
+    <string name="pairing_fingerprint_field">SHA256 fingerprint</string>
+    <string name="pairing_read_fingerprint">Read fingerprint</string>
+    <string name="pairing_check_fingerprint">Check fingerprint</string>
+    <string name="pairing_copy_fingerprint">Copy fingerprint</string>
+
+    <!-- 3 Login -->
+    <string name="pairing_login_hint">The mode KOReader has on.</string>
+    <string name="pairing_auth_key">Key</string>
+    <string name="pairing_auth_password">Password</string>
+    <string name="pairing_auth_free">No password</string>
+    <string name="pairing_pick_key">Choose private key</string>
+    <string name="pairing_key_chosen">Private key chosen</string>
+    <string name="pairing_key_hint">Its public key goes in KOReader\'s authorized_keys. The private key is kept encrypted.</string>
+    <string name="pairing_free_hint">In KOReader, turn on “Login without password” and restart SSH. Anyone on the network can reach it, so turn SSH off afterwards.</string>
+    <string name="pairing_passphrase">Key passphrase, if any</string>
+    <string name="pairing_password">SSH password</string>
+    <string name="pairing_password_keep">Password · blank keeps the saved one</string>
+
+    <!-- 4 Folder -->
+    <string name="pairing_folder_hint">The documents folder works as it is.</string>
+    <string name="pairing_directory">Book folder</string>
+    <string name="pairing_browse">Browse folders</string>
+    <string name="pairing_use_documents">Use the documents folder</string>
+    <string name="pairing_incomplete">Fill in the pairing details</string>
+    <string name="pairing_save">Save pairing</string>
+
+    <!-- Trust dialog -->
+    <string name="pairing_trust_title">Trust this e-reader?</string>
+    <string name="pairing_trust_changed_title">Host key changed</string>
+    <string name="pairing_trust_body">Check the address matches what KOReader shows. This trusts a key read over your network.</string>
+    <string name="pairing_trust_changed_body">This key differs from the saved one. Trust it only if you re-paired or regenerated the key.</string>
+    <string name="pairing_address_changed">The address changed. Cancel and read the fingerprint again.</string>
+    <string name="pairing_trust">Trust</string>
+    <string name="pairing_trust_replacement">Trust new key</string>
+
+    <!-- Folder browser sheet -->
+    <string name="pairing_folders_title">E-reader folders</string>
+    <string name="pairing_folders_changed">Connection details changed. Close and browse again.</string>
+    <string name="pairing_use_folder">Use this folder</string>
+    <string name="pairing_parent_folder">Up one level</string>
+    <string name="pairing_new_folder">New folder name</string>
+    <string name="pairing_create_folder">Create folder</string>
+</resources>
