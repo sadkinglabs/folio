@@ -59,7 +59,7 @@ private val sampleBooks =
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun LibraryPreview() {
+internal fun LibraryPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
             val wish =
@@ -90,7 +90,7 @@ private fun LibraryPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun DetailsPreview() {
+internal fun DetailsPreview() {
     FolioTheme(dynamic = false) {
         Surface {
             BookDetails(
@@ -114,7 +114,7 @@ private fun DetailsPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun EditorPreview() {
+internal fun EditorPreview() {
     FolioTheme(dynamic = false) { Surface { MetadataEditor(sampleBooks[0], false) { _, _ -> } } }
 }
 
@@ -126,7 +126,7 @@ private fun EditorPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun CollectionsPreview() {
+internal fun CollectionsPreview() {
     FolioTheme(dynamic = false) {
         Surface {
             CollectionsScreen(
@@ -148,7 +148,7 @@ private fun CollectionsPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun KindlePreview() {
+internal fun KindlePreview() {
     FolioTheme(dynamic = false) {
         Surface {
             KindleScreen(
@@ -174,7 +174,7 @@ private fun KindlePreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun PairingPreview() {
+internal fun PairingPreview() {
     FolioTheme(dynamic = false) { Surface { ConnectionForm(DeviceConfig(), false) { _, _, _ -> } } }
 }
 
@@ -186,7 +186,7 @@ private fun PairingPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun BarPreview() {
+internal fun BarPreview() {
     FolioTheme(dynamic = false) {
         Surface {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -221,7 +221,7 @@ private fun BarPreview() {
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun LookupPreview() {
+internal fun LookupPreview() {
     FolioTheme(dynamic = false) {
         Surface {
             MetadataLookupSheet(

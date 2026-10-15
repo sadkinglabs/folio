@@ -83,6 +83,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.json.test)
+    // Renders Compose screens to PNG on the JVM: `./gradlew :app:testDebugUnitTest -Pscreenshots`.
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.test)
+    testImplementation(libs.roborazzi.compose)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.test)
     androidTestImplementation(libs.android.test)
@@ -91,6 +95,7 @@ dependencies {
 
 // Framework regression tests need Android's SDK jar; keep downloads on Maven Central.
 tasks.withType<Test>().configureEach {
+    if (project.hasProperty("screenshots")) systemProperty("roborazzi.test.record", "true")
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     if (System.getenv("FOLIO_USE_ENV_PROXY") != null) {
         val proxy = URI(System.getenv("HTTPS_PROXY"))
