@@ -24,8 +24,11 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Sync
@@ -58,6 +61,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.ReaderStart
 import dev.sadking.folio.reader.koreaderDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -66,6 +70,7 @@ import kotlinx.coroutines.withContext
 
 internal const val BOOK_PAGE_TAG = "book-page"
 internal const val BOOK_PRIMARY_TAG = "book-primary"
+internal const val BOOK_READ_MENU_TAG = "book-read-menu"
 internal const val BOOK_ACTION_SEND_TAG = "book-action-send"
 internal const val BOOK_ACTION_ATTACH_TAG = "book-action-attach"
 internal const val BOOK_ACTION_EDIT_TAG = "book-action-edit"
@@ -102,6 +107,8 @@ fun BookDetails(
     deviceBusy: Boolean = busy,
     contentPadding: PaddingValues = PaddingValues(),
     onRead: () -> Unit = {},
+    /** The Read menu's other starts: from the beginning, read aloud, or an e-reader's place. */
+    onReadFrom: (ReaderStart) -> Unit = {},
     onSend: () -> Unit = {},
     onAttach: () -> Unit = {},
     onEdit: () -> Unit = {},
@@ -143,22 +150,31 @@ fun BookDetails(
             Modifier.fillMaxWidth().padding(horizontal = FolioSpace.page),
             verticalArrangement = Arrangement.spacedBy(FolioSpace.section),
         ) {
-            Button(
-                onClick = onRead,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(BOOK_PRIMARY_TAG),
-            ) {
-                Text(
-                    when (bookPrimary(hasEpub, phoneReading)) {
-                        BookPrimary.CONTINUE ->
-                            stringResource(
-                                R.string.book_continue,
-                                ((phoneReading?.percent ?: 0.0) * 100).toInt(),
-                            )
-                        BookPrimary.READ -> stringResource(R.string.book_read)
-                        BookPrimary.FIND_EPUB -> stringResource(R.string.rd_find_epub)
-                    }
+            val readLabel =
+                when (bookPrimary(hasEpub, phoneReading)) {
+                    BookPrimary.CONTINUE ->
+                        stringResource(
+                            R.string.book_continue,
+                            ((phoneReading?.percent ?: 0.0) * 100).toInt(),
+                        )
+                    BookPrimary.READ -> stringResource(R.string.book_read)
+                    BookPrimary.FIND_EPUB -> stringResource(R.string.rd_find_epub)
+                }
+            if (hasEpub)
+                ReadSplitButton(
+                    readLabel,
+                    readStarts(bookPrimary(hasEpub, phoneReading) == BookPrimary.CONTINUE, reports),
+                    onRead = onRead,
+                    onReadFrom = onReadFrom,
                 )
-            }
+            else
+                Button(
+                    onClick = onRead,
+                    modifier =
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(BOOK_PRIMARY_TAG),
+                ) {
+                    Text(readLabel)
+                }
             ActionRow(
                 bookPageActions(hasEpub).map { action ->
                     when (action) {
@@ -936,4 +952,97 @@ internal fun linkReports(book: Book): List<KosyncReport> {
             .collectAsStateWithLifecycle(emptyList())
     val phone = remember { app.link.settings.phoneDeviceId }
     return reports.filter { it.deviceId != phone }
+}
+
+/** One entry in the Read menu. */
+internal sealed interface ReadStart {
+    /** Opens at the place an e-reader reported through Folio Link. */
+    data class Device(val report: KosyncReport) : ReadStart
+
+    data object Beginning : ReadStart
+
+    data object Listen : ReadStart
+}
+
+/**
+ * The Read menu, most useful first: each e-reader's place (newest first, as reported), then
+ * starting over when the phone has a place of its own, then reading aloud.
+ */
+internal fun readStarts(phoneHasPlace: Boolean, reports: List<KosyncReport>): List<ReadStart> =
+    reports.map { ReadStart.Device(it) } +
+        listOfNotNull(ReadStart.Beginning.takeIf { phoneHasPlace }) +
+        ReadStart.Listen
+
+/** Read or Continue, with an arrow that opens the other ways to start. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ReadSplitButton(
+    label: String,
+    starts: List<ReadStart>,
+    onRead: () -> Unit,
+    onReadFrom: (ReaderStart) -> Unit,
+) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val more = stringResource(R.string.book_read_more)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SplitButtonDefaults.Spacing),
+    ) {
+        SplitButtonDefaults.LeadingButton(
+            onClick = onRead,
+            modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag(BOOK_PRIMARY_TAG),
+        ) {
+            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Box {
+            Tooltipped(more) {
+                SplitButtonDefaults.TrailingButton(
+                    checked = open,
+                    onCheckedChange = { open = it },
+                    modifier = Modifier.heightIn(min = 56.dp).testTag(BOOK_READ_MENU_TAG),
+                ) {
+                    val turn by animateFloatAsState(if (open) 180f else 0f, label = "read-menu")
+                    Icon(
+                        Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = more,
+                        modifier = Modifier.graphicsLayer { rotationZ = turn },
+                    )
+                }
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                starts.forEach { start ->
+                    val (icon, text) =
+                        when (start) {
+                            is ReadStart.Device ->
+                                Icons.Outlined.TabletAndroid to
+                                    stringResource(
+                                        R.string.book_read_from_device,
+                                        start.report.device,
+                                        (start.report.percentage * 100).toInt(),
+                                    )
+                            ReadStart.Beginning ->
+                                Icons.Outlined.Replay to
+                                    stringResource(R.string.book_read_beginning)
+                            ReadStart.Listen ->
+                                Icons.Outlined.Headphones to
+                                    stringResource(R.string.book_read_listen)
+                        }
+                    DropdownMenuItem(
+                        text = { Text(text) },
+                        leadingIcon = { Icon(icon, contentDescription = null) },
+                        onClick = {
+                            open = false
+                            onReadFrom(
+                                when (start) {
+                                    is ReadStart.Device -> ReaderStart.Device(start.report.progress)
+                                    ReadStart.Beginning -> ReaderStart.Beginning
+                                    ReadStart.Listen -> ReaderStart.Listen
+                                }
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
 }

@@ -753,6 +753,13 @@ fun FolioApp(model: LibraryViewModel) {
                                                     book.id,
                                                 )
                                             },
+                                            onReadFrom = { start ->
+                                                dev.sadking.folio.reader.ReaderActivity.open(
+                                                    context,
+                                                    book.id,
+                                                    start,
+                                                )
+                                            },
                                             onSend = {
                                                 if (devices.sendsThroughLink)
                                                     requestSync("book", book.id)

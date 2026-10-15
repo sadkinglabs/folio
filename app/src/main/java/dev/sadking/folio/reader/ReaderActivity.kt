@@ -87,7 +87,16 @@ class ReaderActivity : FragmentActivity() {
         // process death, rather than letting FragmentManager restore an uninitialised navigator.
         super.onCreate(null)
         enableEdgeToEdge()
-        model.open(intent.getStringExtra(BOOK_ID).orEmpty())
+        model.open(
+            intent.getStringExtra(BOOK_ID).orEmpty(),
+            when (intent.getStringExtra(START)) {
+                START_BEGINNING -> ReaderStart.Beginning
+                START_LISTEN -> ReaderStart.Listen
+                START_DEVICE ->
+                    intent.getStringExtra(POINTER)?.let(ReaderStart::Device) ?: ReaderStart.Resume
+                else -> ReaderStart.Resume
+            },
+        )
         setContent {
             val appearance = remember { getSharedPreferences("appearance", MODE_PRIVATE) }
             val dark =
@@ -263,6 +272,18 @@ class ReaderActivity : FragmentActivity() {
                 } catch (_: Exception) {
                     navigationError = getString(R.string.reader_kindle_resolve_failed)
                 }
+            }
+            when (val start = model.takeStart()) {
+                ReaderStart.Listen -> {
+                    // Read-aloud asks the page for its first sentence; wait until it answers.
+                    withTimeoutOrNull(CHAPTER_WAIT_MS) { fragment.evaluateJavascript("true") }
+                    startListening()
+                }
+                is ReaderStart.Device ->
+                    if (!resumeAt(start.pointer))
+                        navigationError = getString(R.string.reader_link_failed)
+                ReaderStart.Beginning,
+                ReaderStart.Resume -> Unit
             }
             fragment.currentLocator.collectLatest { locator ->
                 if (positionNavigation) return@collectLatest
@@ -804,10 +825,22 @@ class ReaderActivity : FragmentActivity() {
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
         private const val LEGACY_ROW = "legacy-ssh"
 
-        fun open(context: Context, bookId: String) {
-            context.startActivity(
-                Intent(context, ReaderActivity::class.java).putExtra(BOOK_ID, bookId)
-            )
+        private const val START = "start"
+        private const val POINTER = "pointer"
+        private const val START_BEGINNING = "beginning"
+        private const val START_LISTEN = "listen"
+        private const val START_DEVICE = "device"
+
+        fun open(context: Context, bookId: String, start: ReaderStart = ReaderStart.Resume) {
+            val intent = Intent(context, ReaderActivity::class.java).putExtra(BOOK_ID, bookId)
+            when (start) {
+                ReaderStart.Resume -> Unit
+                ReaderStart.Beginning -> intent.putExtra(START, START_BEGINNING)
+                ReaderStart.Listen -> intent.putExtra(START, START_LISTEN)
+                is ReaderStart.Device ->
+                    intent.putExtra(START, START_DEVICE).putExtra(POINTER, start.pointer)
+            }
+            context.startActivity(intent)
         }
     }
 }

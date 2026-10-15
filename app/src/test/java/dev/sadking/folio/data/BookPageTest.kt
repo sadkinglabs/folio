@@ -1,5 +1,7 @@
 package dev.sadking.folio.data
 
+import dev.sadking.folio.ui.ReadStart
+import dev.sadking.folio.ui.readStarts
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -20,6 +22,17 @@ class BookPageTest {
         assertEquals(BookPrimary.READ, bookPrimary(true, phone(0.0)))
         assertEquals(BookPrimary.READ, bookPrimary(true, phone(null)))
         assertEquals(BookPrimary.CONTINUE, bookPrimary(true, phone(0.37)))
+    }
+
+    @Test
+    fun readMenuOffersEreaderPlacesThenStartingOverThenListening() {
+        val kindle = report("Kindle", 0.6, 20)
+        assertEquals(
+            listOf(ReadStart.Device(kindle), ReadStart.Beginning, ReadStart.Listen),
+            readStarts(phoneHasPlace = true, listOf(kindle)),
+        )
+        // Without a place of its own, Read already starts at the beginning.
+        assertEquals(listOf(ReadStart.Listen), readStarts(phoneHasPlace = false, emptyList()))
     }
 
     @Test

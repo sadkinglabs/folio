@@ -4,6 +4,12 @@
     <!-- Book page -->
     <string name="book_read">Read</string>
     <string name="book_continue">Continue · %1$d%%</string>
+    <!-- The arrow next to Read that opens other ways to start the book. -->
+    <string name="book_read_more">More ways to read</string>
+    <!-- %1$s is the e-reader's name, %2$d how far it is. -->
+    <string name="book_read_from_device">Continue from %1$s · %2$d%%</string>
+    <string name="book_read_beginning">Start from the beginning</string>
+    <string name="book_read_listen">Listen</string>
     <string name="progress_title">Progress</string>
     <string name="progress_phone">This phone</string>
     <string name="progress_device">E-reader</string>

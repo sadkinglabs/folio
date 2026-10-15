@@ -149,9 +149,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private var opening = false
 
-    fun open(id: String) {
+    /**
+     * How the book page asked to open the book, applied once after the first page shows. Kept here
+     * so a rotation does not apply it again.
+     */
+    private var start: ReaderStart = ReaderStart.Resume
+
+    fun takeStart(): ReaderStart = start.also { start = ReaderStart.Resume }
+
+    fun open(id: String, from: ReaderStart = ReaderStart.Resume) {
         if (opening) return
         opening = true
+        start = from
         viewModelScope.launch {
             try {
                 val loaded =
@@ -214,9 +223,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 initialLocator = saved?.let {
                     runCatching { Locator.fromJSON(JSONObject(it.locator)) }.getOrNull()
                 }
+                // Starting over opens at the first page; the saved place moves once a page settles.
+                if (from == ReaderStart.Beginning) initialLocator = null
                 lastLocation = initialLocator
                 lastPhone = saved
-                linkOffer = withContext(Dispatchers.IO) { newerLinkReport(saved) }
+                // A chosen start replaces the offer of an e-reader's place.
+                linkOffer =
+                    if (from == ReaderStart.Resume)
+                        withContext(Dispatchers.IO) { newerLinkReport(saved) }
+                    else null
                 kindle =
                     dao.allReading().firstOrNull {
                         it.bookId == id && it.deviceId == app.deviceSettings.load().id
@@ -226,7 +241,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         .getString("incoming:$id", null)
                         ?.let { runCatching { JSONObject(it) }.getOrNull() }
                 automaticKindleResume =
-                    queued != null &&
+                    from == ReaderStart.Resume &&
+                        queued != null &&
                         queued.optString("revision") == loaded.first.currentHash &&
                         queued.optString("expectedPhone") == saved?.locator.orEmpty() &&
                         kindle?.position == queued.optString("position")
@@ -569,4 +585,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         listen.stop()
         publication?.close()
     }
+}
+
+/**
+ * Where the reader starts when the book page's Read menu asks for something other than resuming.
+ */
+sealed interface ReaderStart {
+    data object Resume : ReaderStart
+
+    data object Beginning : ReaderStart
+
+    data object Listen : ReaderStart
+
+    /** A KOReader pointer an e-reader reported. */
+    data class Device(val pointer: String) : ReaderStart
 }
