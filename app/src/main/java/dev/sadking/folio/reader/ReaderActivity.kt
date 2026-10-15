@@ -64,7 +64,8 @@ import org.readium.r2.shared.util.AbsoluteUrl
 class ReaderActivity : FragmentActivity() {
     private val model: ReaderViewModel by viewModels()
     private var navigator: EpubNavigatorFragment? = null
-    private var controls by mutableStateOf(true)
+    // Immersive on open: a tap in the centre brings the bars in.
+    private var controls by mutableStateOf(false)
     private var panelOpen = false
     private var positionNavigation = false
     private var closing by mutableStateOf(false)

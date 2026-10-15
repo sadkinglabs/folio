@@ -892,7 +892,12 @@ internal fun ResultRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
     ) {
-        CoverTile(coverStub(title, coverPath = coverPath), Modifier.width(40.dp), lifted = false)
+        // Decoration: the row already says the title, so TalkBack should not read it twice.
+        CoverTile(
+            coverStub(title, coverPath = coverPath),
+            Modifier.width(40.dp).clearAndSetSemantics {},
+            lifted = false,
+        )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 title,
