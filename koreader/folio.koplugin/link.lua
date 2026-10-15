@@ -29,6 +29,22 @@ function Link.unique(folder, filename, exists)
     error("Too many books with this name")
 end
 
+-- Finds Folio on the local network. The phone proves it knows the login key by answering
+-- MD5(key .. nonce); answers without that proof are ignored, so the key is never sent to an
+-- impostor. Returns "http://ip:port" or nil.
+function Link.discover(cfg, d)
+    assert(cfg.key, "Log in to Progress sync first")
+    local nonce = d.nonce()
+    local expected = d.md5(cfg.key .. nonce)
+    for _, reply in ipairs(d.broadcast("FOLIO-DISCOVER " .. nonce) or {}) do
+        local port, api, proof = (reply.text or ""):match("^FOLIO (%d+) (%d+) (%x+)$")
+        if port and tonumber(api) == Link.API and expected and proof == expected
+            and type(reply.ip) == "string" and reply.ip:match("^%d+%.%d+%.%d+%.%d+$") then
+            return "http://" .. reply.ip .. ":" .. port
+        end
+    end
+end
+
 local function valid(book)
     return type(book) == "table"
         and type(book.id) == "string" and book.id:match("^[%w%-]+$") and #book.id <= 64
@@ -40,11 +56,25 @@ end
 -- Returns { fetched, already, failed } counts. Raises only when Folio cannot be reached or
 -- speaks another version; a failed book is skipped and fetched again next time.
 function Link.fetch(cfg, d)
-    assert(cfg.server and cfg.server ~= "", "Set up Progress sync with Folio Link first")
     assert(cfg.username and cfg.key and cfg.device, "Log in to Progress sync first")
     local headers = Link.headers(cfg)
-    local status, text = d.request("GET", Link.url(cfg.server, "/folio/v1/hello"), headers)
-    assert(status == 200, "Folio did not answer. Is Folio Link on and the phone nearby?")
+    local function hello(server)
+        if not server or server == "" then return nil end
+        local ok, status, text = pcall(d.request, "GET", Link.url(server, "/folio/v1/hello"), headers)
+        return ok and status == 200 and text or nil
+    end
+    local text = hello(cfg.server)
+    if not text and d.broadcast then
+        -- The phone's address may have changed: look for it, then remember where it is.
+        local found = Link.discover(cfg, d)
+        text = found and found ~= strip(cfg.server) and hello(found)
+        if text then
+            cfg.server = found
+            if d.save_server then d.save_server(found) end
+        end
+    end
+    assert(text, "Folio did not answer. Is Folio Link on and the phone on the same network?")
+    local status
     local hello = d.decode(text)
     assert(hello and hello.api == Link.API, "Update Folio or the Folio plugin so they match")
 

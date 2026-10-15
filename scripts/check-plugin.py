@@ -105,6 +105,45 @@ assert(not pcall(Link.fetch, cfg, deps))
 -- Without Progress sync set up there is nothing to call.
 assert(not pcall(Link.fetch, { folder = "/books" }, deps))
 """)
+# Discovery: only a phone that proves it knows the key is trusted.
+lua.execute(r"""
+local function md5(text) return text == "kn1" and "abc123" or "ffff00" end
+local base = { nonce = function() return "n1" end, md5 = md5 }
+local function with(replies)
+  local d = { nonce = base.nonce, md5 = base.md5, broadcast = function(text)
+    assert(text == "FOLIO-DISCOVER n1") return replies end }
+  return d
+end
+local cfg = { key = "k" }
+assert(Link.discover(cfg, with({ { ip = "192.168.1.20", text = "FOLIO 8765 1 beef" } })) == nil, "wrong proof")
+-- An impostor answering first does not win; the genuine phone does.
+local found = Link.discover(cfg, with({
+  { ip = "10.0.0.66", text = "FOLIO 8765 1 ffff00" },
+  { ip = "192.168.1.20", text = "FOLIO 8765 1 abc123" },
+}))
+assert(found == "http://192.168.1.20:8765", tostring(found))
+assert(Link.discover(cfg, with({ { ip = "bad host", text = "FOLIO 8765 1 abc123" } })) == nil, "bad ip")
+assert(Link.discover(cfg, with({ { ip = "192.168.1.20", text = "FOLIO 8765 2 abc123" } })) == nil, "other api")
+
+-- A fetch whose saved address is dead finds the phone, uses it and remembers it.
+local saved
+local d = with({ { ip = "192.168.1.21", text = "FOLIO 8765 1 abc123" } })
+d.request = function(method, url)
+  if url:find("old%-address") then error("timeout") end
+  if url:match("/hello$") then return 200, { api = 1 } end
+  if url:match("/queue$") then return 200, { books = {} } end
+end
+d.decode = function(v) return v end
+d.save_server = function(url) saved = url end
+local result = Link.fetch({ server = "http://old-address:8765", username = "folio", key = "k", device = "kobo", folder = "/b" }, d)
+assert(result.fetched == 0 and saved == "http://192.168.1.21:8765", tostring(saved))
+-- With no phone answering, the fetch fails with a plain message and saves nothing.
+saved = nil
+d.broadcast = function() return {} end
+assert(not pcall(Link.fetch, { server = "http://old-address:8765", username = "folio", key = "k", device = "kobo", folder = "/b" }, d))
+assert(saved == nil)
+""")
+print('Folio Link discovery: 6 scenarios passed (wrong proof, impostor first, bad address, other version, fallback saves the new address, nothing found).')
 print('Folio Link fetch: 9 scenarios passed (new, already there, name clash, bad name, corrupt download, refused ack, URL, version mismatch, not set up).')
 
 # Exercise the plugin's actual statistics SQL against a real WAL-enabled SQLite fixture.

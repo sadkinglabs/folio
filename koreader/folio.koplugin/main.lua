@@ -23,6 +23,7 @@ local function bounded_read(path)
     return bytes
 end
 function Folio:init()
+    math.randomseed(os.time() + math.floor((os.clock() % 1) * 1e6))
     Bridge = dofile(self.path .. "/bridge.lua")
     Link = dofile(self.path .. "/link.lua")
     self.ui.menu:registerToMainMenu(self)
@@ -208,7 +209,50 @@ local function link_deps()
         remove = function(path) os.remove(path) end,
         decode = function(text) return JSON.decode(text) end,
         encode = function(value) return JSON.encode(value) end,
+        broadcast = function(text)
+            local udp = socket.udp()
+            udp:setoption("broadcast", true)
+            udp:settimeout(0.5)
+            udp:sendto(text, "255.255.255.255", 8766)
+            local replies, deadline = {}, socket.gettime() + 2
+            while socket.gettime() < deadline do
+                local data, ip = udp:receivefrom()
+                if data then replies[#replies + 1] = { ip = ip, text = data } end
+            end
+            udp:close()
+            return replies
+        end,
+        md5 = function(text)
+            local loaded, sha2 = pcall(require, "ffi/sha2")
+            if loaded and type(sha2.md5) == "function" then return sha2.md5(text):lower() end
+            local found, md5 = pcall(require, "ffi/MD5")
+            return found and md5.sum(text):lower() or nil
+        end,
+        nonce = function()
+            local digits = {}
+            for i = 1, 32 do digits[i] = string.format("%x", math.random(0, 15)) end
+            return table.concat(digits)
+        end,
+        -- Points KOReader's Progress sync at the phone's new address.
+        save_server = function(url)
+            local kosync = G_reader_settings:readSetting("kosync") or {}
+            kosync.custom_server = url
+            G_reader_settings:saveSetting("kosync", kosync)
+        end,
     }
+end
+function Folio:findPhone()
+    local NetworkMgr = require("ui/network/manager")
+    NetworkMgr:runWhenOnline(function()
+        local deps = link_deps()
+        local ok, found = pcall(Link.discover, self:linkConfig(), deps)
+        if ok and found then
+            deps.save_server(found)
+            message("Found Folio at " .. found .. ". Progress sync now uses it.")
+        else
+            message("Folio was not found. Turn on Folio Link on the phone and join the same Wi-Fi or its hotspot.")
+        end
+    end)
 end
 function Folio:fetchBooks(automatic)
     local NetworkMgr = require("ui/network/manager")
@@ -253,6 +297,7 @@ end
 function Folio:addToMainMenu(items)
     items.folio_bridge = { text = "Folio", sub_item_table = {
         { text = "Get books from Folio", callback = function() self:fetchBooks(false) end },
+        { text = "Find Folio on this network", callback = function() self:findPhone() end },
         { text = "Get books when Wi-Fi connects", checked_func = function() return G_reader_settings:readSetting("folio_auto_fetch", false) end,
             callback = function() G_reader_settings:saveSetting("folio_auto_fetch", not G_reader_settings:readSetting("folio_auto_fetch", false)) end },
         { text = "Folio book folder", callback = function() self:configure() end },

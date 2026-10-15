@@ -38,6 +38,8 @@ class FolioLinkService : Service() {
     private var server: FolioLinkServer? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var discovery: LinkDiscoveryResponder? = null
 
     private val screen =
         object : BroadcastReceiver() {
@@ -96,6 +98,10 @@ class FolioLinkService : Service() {
                 try {
                     val bound = created.start(port)
                     link._port.value = bound
+                    // Lets the Folio plugin find this phone; Link works without it.
+                    discovery =
+                        LinkDiscoveryResponder({ link._port.value }, { link.settings.account() })
+                            .also { runCatching { it.start() } }
                     link.log.add(
                         LinkLog.Entry(
                             System.currentTimeMillis(),
@@ -121,8 +127,15 @@ class FolioLinkService : Service() {
     }
 
     private fun holdLocks() {
+        val wifi = applicationContext.getSystemService(WifiManager::class.java)
+        // Some phones drop broadcast packets unless a multicast lock is held.
+        if (multicastLock == null)
+            multicastLock =
+                wifi.createMulticastLock("folio:link").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
         if (wifiLock == null) {
-            val wifi = applicationContext.getSystemService(WifiManager::class.java)
             @Suppress("DEPRECATION")
             val mode =
                 if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
@@ -168,12 +181,15 @@ class FolioLinkService : Service() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screen) }
+        discovery?.stop()
+        discovery = null
         server?.stop()
         server = null
         if (link._port.value != null)
             link.log.add(LinkLog.Entry(System.currentTimeMillis(), LinkLog.Kind.STOPPED))
         link._port.value = null
         wifiLock?.takeIf { it.isHeld }?.release()
+        multicastLock?.takeIf { it.isHeld }?.release()
         wakeLock?.takeIf { it.isHeld }?.release()
         scope.cancel()
         super.onDestroy()
