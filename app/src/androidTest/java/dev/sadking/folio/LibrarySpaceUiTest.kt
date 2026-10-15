@@ -14,7 +14,7 @@ class LibrarySpaceUiTest {
         Book(
             "book",
             "Library star",
-            "[]",
+            "[\"Ada Quill\"]",
             tags = "[\"History\"]",
             originalPath = "file.epub",
             currentPath = "file.epub",
@@ -23,49 +23,61 @@ class LibrarySpaceUiTest {
         )
 
     @Test
-    fun defaultBrowseAnchorsSearchAndKeepsFiltersOffTheBookSurface() {
+    fun defaultBrowseKeepsSearchAndFiltersOffTheBookSurface() {
         compose.setContent {
             FolioTheme(dynamic = false) {
                 LibraryScreen(listOf(book), emptySet(), onOpen = {}, onSelect = {})
             }
         }
-        compose.onNodeWithContentDescription("Search library").assertIsDisplayed()
+        // Search is an icon until asked for; the field, chips and Add routes stay out of the way.
+        compose.onNodeWithContentDescription("Search library").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search").assertIsDisplayed()
         compose.onNodeWithText("Needs EPUB").assertDoesNotExist()
-        compose.onNodeWithText("Add book manually").assertDoesNotExist()
-        compose.onNodeWithText("Import Hardcover library").assertDoesNotExist()
-        compose.onNodeWithText("Refine").assertIsDisplayed()
-        compose.onNode(hasText(book.title) and hasClickAction()).assertIsDisplayed()
+        compose.onNodeWithText("Type it in").assertDoesNotExist()
+        compose.onNodeWithText("Import your Hardcover library").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Filter").assertIsDisplayed()
+        compose.onNodeWithTag(LIBRARY_TAB_WANTED_TAG).assertIsDisplayed()
+        compose
+            .onNode(hasContentDescription("Library star, Ada Quill") and hasClickAction())
+            .assertIsDisplayed()
     }
 
     @Test
-    fun refineContainsTagAndSortingAndResetRestoresBooks() {
+    fun filterHasTagChipsAndResetRestoresBooks() {
         compose.setContent {
             FolioTheme(dynamic = false) {
                 LibraryScreen(listOf(book), emptySet(), onOpen = {}, onSelect = {})
             }
         }
-        compose.onNodeWithText("Refine").performClick()
-        compose.onNodeWithText("Search library").assertIsDisplayed()
-        compose.onNodeWithText("Exact tag").performScrollTo().performTextInput("Missing")
+        compose.onNodeWithContentDescription("Filter").performClick()
+        compose.onNodeWithText("Status").assertIsDisplayed()
+        compose.onNodeWithText("Sort").assertDoesNotExist()
+        compose.onNodeWithText("History").performClick()
+        compose.onNodeWithText("Show 1 book").assertIsDisplayed()
+        compose.onNodeWithText("Reading").performClick()
+        compose.onNodeWithText("Show 0 books").assertIsDisplayed()
         compose.onNodeWithText("Reset").performClick()
         compose.onNodeWithText("Show 1 book").performClick()
-        compose.onNodeWithContentDescription("Search library").assertIsDisplayed()
-        compose.onNode(hasText(book.title) and hasClickAction()).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Filter").assertIsDisplayed()
+        compose
+            .onNode(hasContentDescription("Library star, Ada Quill") and hasClickAction())
+            .assertIsDisplayed()
     }
 
     @Test
-    fun addMenuRetainsAllEntryRoutes() {
+    fun addSheetOffersEveryEntryRouteAsATile() {
         var selected: AddBookAction? = null
         compose.setContent {
             FolioTheme(dynamic = false) {
                 AddBooksSheet("account", onAction = { selected = it }, onDismiss = {})
             }
         }
-        compose.onNodeWithText("Import EPUBs").assertIsDisplayed()
-        compose.onNodeWithText("Add book manually").assertIsDisplayed()
-        compose.onNodeWithText("Scan or find a book").assertIsDisplayed()
-        compose.onNodeWithText("Look up on Hardcover").assertIsDisplayed()
-        compose.onNodeWithText("Import Hardcover library").performClick()
+        compose.onNodeWithText("Import EPUB").assertIsDisplayed()
+        compose.onNodeWithText("Find online").assertIsDisplayed()
+        compose.onNodeWithText("Scan cover").assertIsDisplayed()
+        compose.onNodeWithText("Type it in").assertIsDisplayed()
+        compose.onNodeWithText("@account").assertIsDisplayed()
+        compose.onNodeWithText("Import your Hardcover library").performClick()
         compose.runOnIdle { assertEquals(AddBookAction.HARDCOVER, selected) }
     }
 }

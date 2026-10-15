@@ -97,12 +97,15 @@ class LargeFontUiTest {
     @Test
     fun mainScreensWorkAtDoubleFontSize() {
         ActivityScenario.launch(MainActivity::class.java).use {
+            // Covers carry no caption; TalkBack and the tests read "Title, Author" instead.
+            val middlemarch =
+                hasContentDescription("Middlemarch, George Eliot") and hasClickAction()
             waitFor("the library") {
-                compose.onAllNodesWithText("Middlemarch").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodes(middlemarch).fetchSemanticsNodes().isNotEmpty()
             }
             QaScreenshots.capture("library-font200")
 
-            compose.onNode(hasText("Middlemarch") and hasClickAction()).performClick()
+            compose.onNode(middlemarch).performClick()
             val send = hasText(app.getString(R.string.book_send)) and hasClickAction()
             waitFor("the book page") { compose.onAllNodes(send).fetchSemanticsNodes().isNotEmpty() }
             // The primary actions must be reachable, scrolling if the large text pushes them down.

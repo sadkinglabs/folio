@@ -70,18 +70,14 @@
     <string name="shell_open_book_details">Open book details</string>
     <string name="shell_select_book">Select book</string>
     <string name="shell_deselect_book">Deselect book</string>
-    <string name="shell_selected">Selected</string>
     <string name="shell_import_epub">Import an EPUB</string>
     <string name="shell_expanded">Expanded</string>
     <string name="shell_collapsed">Collapsed</string>
-    <string name="shell_reading_with_progress">%1$s · %2$d%%</string>
 
     <!-- Shell: selection bar -->
     <string name="shell_clear_selection">Clear selection</string>
     <string name="shell_selected_count">%1$d selected</string>
     <string name="shell_add_to_list">Add to list</string>
-    <string name="shell_manage_selected">Manage selected books</string>
-    <string name="shell_remove_selected">Remove selected books</string>
 
     <!-- Shell: where a book is, relative to the e-reader -->
     <string name="shell_device_on_ereader">On your e-reader</string>

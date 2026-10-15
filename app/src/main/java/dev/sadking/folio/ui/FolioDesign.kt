@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,13 @@ internal object FolioMotion {
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 internal val LocalSharedTransitionScope =
     staticCompositionLocalOf<androidx.compose.animation.SharedTransitionScope?> { null }
+
+/**
+ * How much of the screen's bottom the glass bar covers. Scrolling screens extend under the bar and
+ * pad their content by this much instead, so the blur shows real content; fixed screens apply it as
+ * ordinary padding.
+ */
+internal val LocalContentBottomPadding = compositionLocalOf { 0.dp }
 
 /** Glass: the backdrop blurred, then a tint of `surface`, then a hairline on the content edge. */
 internal object FolioGlass {

@@ -106,5 +106,4 @@
     </plurals>
     <string name="send_list">Send to e-reader</string>
     <string name="send_list_explainer">Only books with an EPUB are sent. Books already on your e-reader are skipped, and a different copy there is never replaced.</string>
-    <string name="send_selected">Send selected books to your e-reader</string>
 </resources>

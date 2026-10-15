@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -280,44 +281,109 @@ fun RemovedBooksSheet(
     }
 }
 
+/**
+ * "Add to list" for the selected books: one checkbox per manual list, checked when every selected
+ * book is already on it. Toggling applies at once; the sheet stays open for the next list.
+ */
 @Composable
-fun BatchManageSheet(
+fun BatchListsSheet(
     count: Int,
     shelves: List<Shelf>,
+    checked: Set<String>,
     busy: Boolean,
     onList: (String, Boolean) -> Unit,
-    onStatus: (String) -> Unit,
+    onCreate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = FolioSpace.section, end = FolioSpace.section, bottom = 32.dp)
+        ) {
             Text(
-                pluralStringResource(R.plurals.library_batch_title, count, count),
-                style = MaterialTheme.typography.headlineSmall,
+                stringResource(R.string.library_batch_add_to_list),
+                style = MaterialTheme.typography.titleLarge,
             )
-            Text(stringResource(R.string.library_batch_body))
-            shelves
-                .filter { it.ruleField == "Manual" }
-                .forEach { shelf ->
-                    Text(shelf.name, style = MaterialTheme.typography.titleMedium)
-                    Row {
-                        TextButton(onClick = { onList(shelf.id, true) }, enabled = !busy) {
-                            Text(stringResource(R.string.library_batch_add_to_list))
-                        }
-                        TextButton(onClick = { onList(shelf.id, false) }, enabled = !busy) {
-                            Text(stringResource(R.string.library_batch_remove_from_list))
-                        }
-                    }
+            Text(
+                pluralStringResource(R.plurals.library_batch_count, count, count),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(FolioSpace.small))
+            val manual = shelves.filter { it.ruleField == "Manual" }
+            if (manual.isEmpty())
+                TextButton(onClick = onCreate) {
+                    Text(stringResource(R.string.shell_create_list))
                 }
-            Text(
-                stringResource(R.string.library_batch_status),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            phoneStatuses.forEach { status ->
-                TextButton(onClick = { onStatus(status) }, enabled = !busy) {
-                    Text(libraryStatusLabel(status))
+            manual.forEach { shelf ->
+                val on = shelf.id in checked
+                Row(
+                    Modifier.fillMaxWidth()
+                        .toggleableCompat(on, !busy) { onList(shelf.id, it) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Checkbox(on, null, enabled = !busy)
+                    Spacer(Modifier.width(FolioSpace.small))
+                    Text(shelf.name, style = MaterialTheme.typography.bodyLarge)
                 }
             }
+        }
+    }
+}
+
+/** "Status" for the selected books: one radio row per status, applied on tap. */
+@Composable
+fun BatchStatusSheet(count: Int, busy: Boolean, onStatus: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = FolioSpace.section, end = FolioSpace.section, bottom = 32.dp)
+        ) {
+            Text(
+                stringResource(R.string.library_batch_status),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                pluralStringResource(R.plurals.library_batch_count, count, count),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(FolioSpace.small))
+            phoneStatuses.forEach { status ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .selectable(
+                            selected = false,
+                            enabled = !busy,
+                            role = androidx.compose.ui.semantics.Role.RadioButton,
+                        ) {
+                            onStatus(status)
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    RadioButton(false, null, enabled = !busy)
+                    Spacer(Modifier.width(FolioSpace.small))
+                    Text(libraryStatusLabel(status), style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            Spacer(Modifier.height(FolioSpace.small))
+            Text(
+                stringResource(R.string.library_batch_body),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

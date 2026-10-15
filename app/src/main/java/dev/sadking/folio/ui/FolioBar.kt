@@ -5,18 +5,23 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -74,6 +79,8 @@ private val tabs =
 private val tileLift = 10.dp
 internal val nowReadingTileSize = 56.dp
 internal const val NOW_READING_TILE_TAG = "now-reading-tile"
+internal const val FOLIO_BAR_TAG = "folio-bar"
+internal const val SELECTION_BAR_TAG = "selection-bar"
 
 /**
  * The bottom bar: four tabs on glass with the Now Reading tile breaking its top edge. The tile is
@@ -92,7 +99,7 @@ internal fun FolioBar(
     hazeState: HazeState?,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxWidth()) {
+    Box(modifier.fillMaxWidth().testTag(FOLIO_BAR_TAG)) {
         GlassSurface(
             hazeState,
             Modifier.padding(top = tileLift).fillMaxWidth(),
@@ -121,6 +128,98 @@ internal fun FolioBar(
             onClick = if (current != null) onContinue else onOptions,
             onOptions = onOptions,
             modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
+}
+
+/**
+ * The bar while books are selected: the four tabs give way to Send, Add to list, Status and Remove
+ * as icon-and-label actions on the same glass, at the same height, so the content under it does not
+ * move.
+ */
+@Composable
+internal fun SelectionActionBar(
+    enabled: Boolean,
+    sendEnabled: Boolean,
+    onSend: () -> Unit,
+    onLists: () -> Unit,
+    onStatus: () -> Unit,
+    onRemove: () -> Unit,
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+) {
+    GlassSurface(
+        hazeState,
+        modifier.fillMaxWidth().padding(top = tileLift).testTag(SELECTION_BAR_TAG),
+        shape = FolioSpace.sheetShape,
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .windowInsetsPadding(NavigationBarDefaults.windowInsets)
+                .height(80.dp)
+                .padding(horizontal = FolioSpace.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BarAction(
+                Icons.AutoMirrored.Outlined.Send,
+                stringResource(R.string.rd_action_send),
+                enabled && sendEnabled,
+                onSend,
+            )
+            BarAction(
+                Icons.Outlined.BookmarkAdd,
+                stringResource(R.string.shell_add_to_list),
+                enabled,
+                onLists,
+            )
+            BarAction(
+                Icons.Outlined.Timeline,
+                stringResource(R.string.rd_action_status),
+                enabled,
+                onStatus,
+            )
+            BarAction(
+                Icons.Outlined.DeleteOutline,
+                stringResource(R.string.rd_action_remove),
+                enabled,
+                onRemove,
+                destructive = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.BarAction(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+) {
+    val tint =
+        when {
+            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            destructive -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurface
+        }
+    Column(
+        Modifier.weight(1f)
+            .fillMaxHeight()
+            .clip(FolioSpace.tileShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {},
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, null, tint = tint)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = tint,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
+import dev.sadking.folio.ui.*
 import java.io.File
 import java.util.zip.*
 import kotlinx.coroutines.runBlocking
@@ -115,8 +116,26 @@ class ProductJourneyTest {
         }
     }
 
+    /** A bottom-bar tab. "Library" is also the first tab inside the Library screen. */
     private fun tab(text: String) =
-        compose.onNode(hasText(text) and hasClickAction()).performClick()
+        compose
+            .onNode(
+                hasText(text) and hasClickAction() and hasAnyAncestor(hasTestTag(FOLIO_BAR_TAG))
+            )
+            .performClick()
+
+    /**
+     * A cover in the Library: captionless, so TalkBack and the tests read "Title, Author". A book
+     * in progress shows twice, on the Reading shelf and in the grid; the centre tile is excluded.
+     */
+    private fun cover(title: String) =
+        compose
+            .onAllNodes(
+                hasContentDescription(title, substring = true) and
+                    hasClickAction() and
+                    !hasTestTag(NOW_READING_TILE_TAG)
+            )
+            .onFirst()
 
     private fun find(node: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
         if (node == null) return null
@@ -228,7 +247,12 @@ class ProductJourneyTest {
                     )
                 )
         }
-        waitText("A Room of One’s Own")
+        waitFor("the library") {
+            compose
+                .onAllNodes(hasContentDescription("Frankenstein", substring = true))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         tab("Settings")
         compose.onNodeWithText("Light").performClick()
         val wallpaper = compose.onNodeWithContentDescription("Use wallpaper colours")
@@ -240,9 +264,9 @@ class ProductJourneyTest {
         capture("settings-light")
         tab("Library")
         capture("library-light")
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
-        waitText("Pride and Prejudice")
-        compose.onNode(hasText("Pride and Prejudice") and hasClickAction()).performClick()
+        // Pride and Prejudice is being read, so it leads the Reading shelf.
+        compose.onNodeWithTag(LIBRARY_SHELF_TAG).assertIsDisplayed()
+        cover("Pride and Prejudice, Jane Austen, 37%").performClick()
         compose.onNodeWithText("Send to device").assertIsDisplayed()
         compose.onNodeWithText("Update progress").assertIsDisplayed()
         compose.onNodeWithText("Manage lists").performClick()
@@ -291,10 +315,19 @@ class ProductJourneyTest {
         compose.onNodeWithContentDescription("Back").performClick()
         tab("Lists")
         capture("lists-light")
-        compose.onNodeWithText("Want to Read").performClick()
-        waitText("A Room of One’s Own")
+        // Want to read is the Library's second tab; the record has no EPUB yet.
+        tab("Library")
+        compose.onNodeWithTag(LIBRARY_TAB_WANTED_TAG).performClick()
+        waitFor("the wanted record") {
+            compose
+                .onAllNodes(hasContentDescription("A Room of One’s Own", substring = true))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         capture("want-to-read-light")
-        compose.onNode(hasText("A Room of One’s Own") and hasClickAction()).performClick()
+        cover("A Room of One’s Own, Virginia Woolf")
+            .assert(hasStateDescription("No EPUB yet"))
+            .performClick()
         compose.onNodeWithText("Add EPUB").assertIsDisplayed()
         capture("catalogue-light")
         val input = epub("A Room of One’s Own", "Virginia Woolf", Color.rgb(223, 202, 215))
@@ -321,10 +354,12 @@ class ProductJourneyTest {
         compose.onNodeWithText("Add EPUB").assertDoesNotExist()
         app.contentResolver.delete(uri, null, null)
         compose.onNodeWithContentDescription("Back").performClick()
+        // Attaching the EPUB keeps the record where it was, without the dashed frame.
+        cover("A Room of One’s Own, Virginia Woolf").assert(!hasStateDescription("No EPUB yet"))
         tab("Settings")
         compose.onNodeWithText("Dark").performClick()
         tab("Library")
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        compose.onNodeWithTag(LIBRARY_TAB_LIBRARY_TAG).performClick()
         capture("library-dark")
         compose.onNodeWithContentDescription("Show list").performClick()
         capture("library-list-dark")
@@ -345,12 +380,9 @@ class ProductJourneyTest {
         compose.onNodeWithText("Open book page").performClick()
         waitText("Send to device")
         compose.onNodeWithContentDescription("Back").performClick()
-        // Hamlet is read without an EPUB; its progress lives on the Currently Reading list.
-        tab("Lists")
-        waitText("Currently Reading")
-        compose.onNodeWithText("Currently Reading").performScrollTo().performClick()
-        waitText("Hamlet")
-        compose.onNode(hasText("Hamlet") and hasClickAction()).performClick()
+        // Hamlet is read without an EPUB; it sits on the Library's Reading shelf all the same.
+        tab("Library")
+        cover("Hamlet, William Shakespeare").performClick()
         compose.onNodeWithText("Update progress").performScrollTo().performClick()
         waitText("Hardcover reading")
         compose.onNodeWithText("1 · Manual progress").assertIsDisplayed()

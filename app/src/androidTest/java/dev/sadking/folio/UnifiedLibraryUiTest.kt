@@ -16,13 +16,15 @@ class UnifiedLibraryUiTest {
             Book(
                 "file",
                 "Owned book",
-                "[]",
+                "[\"Ann Hollis\"]",
                 originalPath = "book.epub",
                 currentPath = "book.epub",
                 originalHash = "a",
                 currentHash = "a",
             )
-        val wish = WishBook("wish", "hardcover:1", "Future read", "[]")
+        // A record tracked as Reading lives on the Library tab, framed as needing its EPUB.
+        val wish =
+            WishBook("wish", "hardcover:1", "Future read", "[\"Bo Lind\"]", status = "Reading")
         var opened = ""
         compose.setContent {
             FolioTheme(dynamic = false) {
@@ -36,13 +38,16 @@ class UnifiedLibraryUiTest {
                 )
             }
         }
-        compose.onNodeWithText("Refine").performClick()
+        compose.onNodeWithContentDescription("Filter").performClick()
         compose.onNodeWithText("Needs EPUB").performClick()
         compose.onNodeWithText("Show 1 book").performClick()
-        compose.onNodeWithText("Owned book").assertDoesNotExist()
+        compose.onNode(hasContentDescription("Owned book", substring = true)).assertDoesNotExist()
+        // The record is on the Reading shelf and in the grid; either opens it.
         compose
-            .onNode(hasText("Future read") and hasClickAction())
+            .onAllNodes(hasContentDescription("Future read, Bo Lind") and hasClickAction())
+            .onFirst()
             .assertIsDisplayed()
+            .assert(hasStateDescription("No EPUB yet"))
             .performClick()
         compose.runOnIdle { org.junit.Assert.assertEquals(wish.id, opened) }
     }

@@ -5,15 +5,11 @@
 
 package dev.sadking.folio.ui
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -251,7 +247,7 @@ internal enum class CoverVariant {
 /**
  * A lifted cover with at most one badge at the top-right and, for a book in progress, a 3 dp
  * progress bar flush to its bottom edge. The one cover component for grids, shelves, lists and the
- * queue; [BookTile] and [LibraryCover] keep today's layouts until each screen moves over.
+ * queue.
  */
 @Composable
 internal fun CoverTile(
@@ -433,82 +429,6 @@ internal fun Illustration(kind: FolioIllustration, modifier: Modifier = Modifier
 }
 
 @Composable
-internal fun BookTile(
-    book: Book,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLong: () -> Unit,
-    signals: BookSignals? = null,
-    selectable: Boolean = true,
-    longActionLabel: String? = null,
-) {
-    val actionLabel =
-        longActionLabel
-            ?: stringResource(
-                if (!selectable) R.string.shell_open_book_details
-                else if (selected) R.string.shell_deselect_book else R.string.shell_select_book
-            )
-    Column(
-        Modifier.animateContentSize(animationSpec = spring())
-            .semantics {
-                this.selected = selected
-                customActions =
-                    listOf(
-                        CustomAccessibilityAction(actionLabel) {
-                            onLong()
-                            true
-                        }
-                    )
-            }
-            .combinedClickable(onClick = onClick, onLongClick = onLong)
-    ) {
-        Box {
-            LibraryCover(
-                book,
-                signals,
-                Modifier.fillMaxWidth()
-                    .aspectRatio(0.68f)
-                    .then(
-                        if (selected)
-                            Modifier.border(
-                                3.dp,
-                                MaterialTheme.colorScheme.primary,
-                                FolioSpace.coverShape,
-                            )
-                        else Modifier
-                    ),
-            )
-            if (selected)
-                Surface(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp),
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primary,
-                ) {
-                    Icon(
-                        Icons.Outlined.Check,
-                        stringResource(R.string.shell_selected),
-                        Modifier.padding(6.dp).size(20.dp),
-                    )
-                }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            book.title,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            book.authorLabel,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 internal fun EmptyState(
     title: String,
     message: String,
@@ -518,6 +438,9 @@ internal fun EmptyState(
     actionEnabled: Boolean = true,
     /** When set, the drawn vector replaces [icon]. */
     illustration: FolioIllustration? = null,
+    /** A second, quieter way out, as a text button under the first. */
+    secondaryAction: (() -> Unit)? = null,
+    secondaryLabel: String = "",
 ) {
     Column(
         Modifier.fillMaxWidth().padding(32.dp),
@@ -526,75 +449,25 @@ internal fun EmptyState(
         if (illustration != null) Illustration(illustration)
         else Icon(icon, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(20.dp))
-        Text(title, style = MaterialTheme.typography.headlineMedium)
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
         Spacer(Modifier.height(12.dp))
-        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
         if (action != null) {
             Spacer(Modifier.height(20.dp))
             FilledTonalButton(onClick = action, enabled = actionEnabled) { Text(actionLabel) }
         }
-    }
-}
-
-@Composable
-internal fun SelectionBar(
-    count: Int,
-    shelves: List<Shelf>,
-    enabled: Boolean,
-    onShelf: (String) -> Unit,
-    onSync: () -> Unit,
-    onClear: () -> Unit,
-    onRemove: (() -> Unit)? = null,
-    syncEnabled: Boolean = true,
-    onManage: (() -> Unit)? = null,
-) {
-    var menu by remember { mutableStateOf(false) }
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-    ) {
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClear) {
-                Icon(Icons.Outlined.Close, stringResource(R.string.shell_clear_selection))
+        if (secondaryAction != null)
+            TextButton(onClick = secondaryAction, enabled = actionEnabled) {
+                Text(secondaryLabel)
             }
-            Text(stringResource(R.string.shell_selected_count, count), Modifier.weight(1f))
-            Box {
-                if (onManage == null)
-                    IconButton(
-                        onClick = { menu = true },
-                        enabled = enabled && shelves.isNotEmpty(),
-                    ) {
-                        Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.shell_add_to_list))
-                    }
-                DropdownMenu(menu, { menu = false }) {
-                    shelves.forEach { shelf ->
-                        DropdownMenuItem(
-                            text = { Text(shelf.name) },
-                            onClick = {
-                                onShelf(shelf.id)
-                                menu = false
-                            },
-                        )
-                    }
-                }
-            }
-            if (onManage != null)
-                IconButton(onClick = onManage, enabled = enabled) {
-                    Icon(Icons.Outlined.MoreVert, stringResource(R.string.shell_manage_selected))
-                }
-            IconButton(onClick = onSync, enabled = enabled && syncEnabled) {
-                Icon(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.send_selected))
-            }
-            if (onRemove != null)
-                IconButton(onClick = onRemove, enabled = enabled) {
-                    Icon(
-                        Icons.Outlined.DeleteOutline,
-                        stringResource(R.string.shell_remove_selected),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-        }
     }
 }
 
@@ -727,88 +600,4 @@ internal fun rememberOperationSnackbar(
         }
     }
     return host
-}
-
-@Composable
-internal fun BookBadges(signals: BookSignals) {
-    Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val progress = signals.progress
-        Text(
-            if (progress == null) signals.reading
-            else
-                stringResource(
-                    R.string.shell_reading_with_progress,
-                    signals.reading,
-                    (progress * 100).toInt(),
-                ),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                displayDeviceState(signals),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, false),
-            )
-            if (signals.hardcover != null)
-                Icon(Icons.Outlined.Link, signals.hardcover, Modifier.size(16.dp))
-        }
-    }
-}
-
-/**
- * A cover with at most one small status icon, so artwork stays readable. Records without an EPUB
- * are dimmed; reading progress is the thin bar along the bottom.
- */
-@Composable
-internal fun LibraryCover(
-    book: Book,
-    signals: BookSignals?,
-    modifier: Modifier,
-    compact: Boolean = false,
-) {
-    val reading = signals?.reading ?: book.status
-    val device = signals?.device
-    val noEpub = device == "No EPUB"
-    val noEpubState = stringResource(R.string.shell_device_no_epub)
-    val badge: Pair<ImageVector, String>? =
-        when {
-            reading.startsWith("Finished") -> Icons.Outlined.DoneAll to reading
-            device == "On Kindle" ->
-                Icons.Outlined.TabletAndroid to stringResource(R.string.shell_device_on_ereader)
-            device == "Sending" || device == "Queued" ->
-                Icons.Outlined.Sync to stringResource(R.string.shell_device_sending_badge)
-            device in listOf("Transfer failed", "Transfer paused", "Needs update") ->
-                Icons.Outlined.ErrorOutline to displayDeviceState(signals!!)
-            else -> null
-        }
-    Box(
-        modifier.clip(FolioSpace.coverShape).semantics(mergeDescendants = false) {
-            if (noEpub) stateDescription = noEpubState
-        }
-    ) {
-        Cover(book, Modifier.matchParentSize().alpha(if (noEpub) 0.55f else 1f))
-        badge?.let { (icon, description) ->
-            Surface(
-                Modifier.align(if (compact) Alignment.BottomEnd else Alignment.TopEnd)
-                    .padding(if (compact) 4.dp else 6.dp),
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Icon(icon, description, Modifier.padding(4.dp).size(16.dp))
-            }
-        }
-        signals?.progress?.let { progress ->
-            LinearProgressIndicator(
-                progress = { progress.toFloat() },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-            )
-        }
-    }
 }

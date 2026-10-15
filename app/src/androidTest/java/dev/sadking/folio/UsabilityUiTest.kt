@@ -75,8 +75,13 @@ class UsabilityUiTest {
                 }
             }
         }
+        // Search opens from its icon; the field keeps the query while a book is open.
+        compose.onNodeWithContentDescription("Search").performClick()
         compose.onNodeWithContentDescription("Search library").performTextInput("Orchard")
-        compose.onNodeWithText("The Orchard").performClick()
+        compose
+            .onAllNodes(hasContentDescription("The Orchard, Alex Rowan") and hasClickAction())
+            .onFirst()
+            .performClick()
         compose.onNodeWithText("Return to library").performClick()
         compose.onNodeWithContentDescription("Search library").assertTextContains("Orchard")
     }

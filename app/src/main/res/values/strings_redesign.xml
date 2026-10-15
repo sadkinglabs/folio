@@ -18,10 +18,15 @@
     <string name="rd_action_hardcover">Hardcover</string>
     <string name="rd_action_share">Share</string>
     <string name="rd_action_remove">Remove</string>
+    <string name="rd_action_status">Status</string>
     <string name="rd_open_book_page">Open book page</string>
     <string name="rd_pick_a_book">Pick a book to read</string>
     <string name="rd_pick_a_book_body">The book you open last shows here.</string>
     <string name="rd_go_to_library">Go to Library</string>
+
+    <!-- Redesign: Library covers. TalkBack reads one line per cover. -->
+    <string name="rd_tile_book">%1$s, %2$s</string>
+    <string name="rd_tile_book_progress">%1$s, %2$s, %3$d%%</string>
 
     <!-- Redesign: Settings, reading section (moved from the Reading tab) -->
     <string name="rd_settings_reading">Reading</string>
