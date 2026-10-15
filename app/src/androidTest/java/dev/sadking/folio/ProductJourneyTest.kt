@@ -268,8 +268,9 @@ class ProductJourneyTest {
         )
             wallpaper.performClick()
         wallpaper.assertIsOff()
-        compose.onNodeWithTag(SETTINGS_SSH_TAG).assertIsDisplayed()
         capture("settings-light")
+        // Advanced sits below the fold on a phone; scroll to it before checking it is there.
+        compose.onNodeWithTag(SETTINGS_SSH_TAG).performScrollTo().assertIsDisplayed()
         tab("Library")
         capture("library-light")
         // Pride and Prejudice is being read, so it leads the Reading shelf.
