@@ -20,7 +20,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          # 21 runs Robolectric on Android 16; 17, listed last, stays the default.
+          java-version: |
+            21
+            17
       - uses: android-actions/setup-android@v3
         with:
           # The default list includes the removed 'tools' package, which fails on current cmdline-tools.

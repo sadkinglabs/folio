@@ -347,7 +347,8 @@ class ProductJourneyTest {
         compose.onNodeWithContentDescription("Back").performClick()
         // Hamlet is read without an EPUB; its progress lives on the Currently Reading list.
         tab("Lists")
-        compose.onNodeWithText("Currently Reading").performClick()
+        waitText("Currently Reading")
+        compose.onNodeWithText("Currently Reading").performScrollTo().performClick()
         waitText("Hamlet")
         compose.onNode(hasText("Hamlet") and hasClickAction()).performClick()
         compose.onNodeWithText("Update progress").performScrollTo().performClick()
