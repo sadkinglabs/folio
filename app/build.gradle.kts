@@ -95,7 +95,12 @@ dependencies {
 
 // Framework regression tests need Android's SDK jar; keep downloads on Maven Central.
 tasks.withType<Test>().configureEach {
-    if (project.hasProperty("screenshots")) systemProperty("roborazzi.test.record", "true")
+    if (project.hasProperty("screenshots")) {
+        systemProperty("roborazzi.test.record", "true")
+        // Images are the point of the run; never reuse a cached or up-to-date result.
+        outputs.upToDateWhen { false }
+        outputs.cacheIf { false }
+    }
     systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     if (System.getenv("FOLIO_USE_ENV_PROXY") != null) {
         val proxy = URI(System.getenv("HTTPS_PROXY"))
