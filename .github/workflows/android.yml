@@ -29,6 +29,10 @@ jobs:
           # The default list includes the removed 'tools' package, which fails on current cmdline-tools.
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # By default only the default branch saves its cache, so every run on a working branch
+          # recompiled from scratch (about 3.5 minutes of the emulator job).
+          cache-read-only: false
       - name: Restore preserved debug signing key
         # Without it CI APKs get a random key and cannot install over an existing Folio.
         env:
@@ -99,6 +103,10 @@ jobs:
           # The default list includes the removed 'tools' package, which fails on current cmdline-tools.
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # By default only the default branch saves its cache, so every run on a working branch
+          # recompiled from scratch (about 3.5 minutes of the emulator job).
+          cache-read-only: false
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
