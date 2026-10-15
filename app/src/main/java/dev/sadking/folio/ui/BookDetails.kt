@@ -420,6 +420,7 @@ internal fun StatusStrip(
             }
         }
     }
+    // In a row the tiles share one height: a "2 hours ago" line on one sets it for the others.
     if (stacked)
         Column(
             modifier.fillMaxWidth().testTag(BOOK_STATUS_STRIP_TAG),
@@ -428,8 +429,7 @@ internal fun StatusStrip(
             tiles.forEach { Tile(it, Modifier.fillMaxWidth()) }
         }
     else
-    // Equal heights: a tile with a "2 hours ago" line sets the row's height for the others.
-    Row(
+        Row(
             modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag(BOOK_STATUS_STRIP_TAG),
             horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
         ) {

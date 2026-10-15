@@ -352,8 +352,11 @@ fun FolioApp(model: LibraryViewModel) {
         // A list's "Add from Library": the Library picks books for it until added or cancelled.
         var pickingListId by rememberSaveable { mutableStateOf<String?>(null) }
         val pickingShelf = pickingListId?.let { id -> shelves.firstOrNull { it.id == id } }
-        LaunchedEffect(pickingListId, pickingShelf == null) {
-            if (pickingListId != null && pickingShelf == null) pickingListId = null
+        // A list deleted while picking for it ends the picking; an empty `shelves` is still
+        // loading.
+        LaunchedEffect(pickingListId, pickingShelf == null, shelves.isEmpty()) {
+            if (pickingListId != null && pickingShelf == null && shelves.isNotEmpty())
+                pickingListId = null
         }
         var deletingShelfId by rememberSaveable { mutableStateOf<String?>(null) }
         val cards = remember(shelves, library) { listCards(shelves, library) }
