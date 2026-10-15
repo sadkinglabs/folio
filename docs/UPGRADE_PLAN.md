@@ -323,9 +323,66 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - **Device check:** Want to Read → EPUB on the e-reader in 5 taps or fewer, excluding the steps inside the web page.
 
 ### M6: Reader depth and polish
-- Search, highlights and notes (round-tripping KOReader), dictionary, TTS, time left.
+- Search, highlights and notes (round-tripping KOReader), dictionary, time left. Read-aloud is its own milestone, M7.
 - Adaptive tablet layout and an accessibility audit (TalkBack, 200% font).
 - Data hardening: foreign keys and cascades, relative paths, revision pruning, typed errors, DAO split.
+
+### M7: Read aloud
+Librillo reads the open book aloud with the voice engine already on the phone, highlights the sentence being read and turns the page with it. Listening moves your place like reading does.
+
+**Approach (decided 2026-10-15):**
+- Use Readium's own read-aloud module, `readium-navigator-media-tts` 3.4.0 (`TtsNavigatorFactory`, `AndroidTtsEngineProvider`). It walks the book sentence by sentence, gives a locator for each one and runs a Media3 session for lock-screen and headphone controls. Writing this ourselves would repeat Readium's work for no gain.
+- Speak through Android's `TextToSpeech`, so any installed engine works. Google's voices work offline once downloaded.
+- For the most natural voice, recommend the **sherpa-onnx TTS engine with Kokoro-82M** (Apache 2.0). It installs as a normal Android engine, so Librillo needs no model of its own.
+- **Not bundling a model.** Kokoro inside the app would add roughly 80–300 MB plus native code, and it would duplicate the highlighting Readium already does. Revisit only if the system-engine route sounds or performs badly on the phone.
+
+**New dependencies:** `readium-navigator-media-tts` and, through it, `androidx.media3:media3-session` 1.11.0. The benefit: background playback, lock-screen controls and audio focus without our own player.
+
+**Slices:**
+1. **Spike on the phone (first).**
+   - Install the sherpa-onnx engine with Kokoro.
+   - Time how long it takes to make 1 minute of speech. Check whether it stalls between sentences.
+   - Record the result here.
+   - Decide whether Kokoro is the recommendation or just an option next to Google's voices.
+2. **Play from the reader.**
+   - A Listen button in the reader bar starts reading from the first sentence on screen.
+   - Play/pause, previous and next sentence, and speed (0.75×–2×).
+   - The current sentence is highlighted with a Readium decoration, and the page follows it.
+   - Tapping the page while listening shows the controls. It doesn't stop playback.
+3. **Keep your place.**
+   - Each spoken sentence's locator goes through the existing debounced save.
+   - Stopping saves at once.
+   - The position is published to Librillo Link like a read page, so the e-reader opens where listening stopped.
+   - Hardcover progress only moves forward, as now.
+4. **Background and lock screen.**
+   - A `mediaPlayback` foreground service. This adds `FOREGROUND_SERVICE_MEDIA_PLAYBACK`.
+   - A media notification with play/pause and next.
+   - Pause when headphones disconnect or another app takes audio focus.
+   - A sleep timer: 15, 30 or 60 minutes, or the end of the chapter.
+5. **Voice settings.**
+   - Pick the voice from those that match the book's language. Remember it per language.
+   - Speed is remembered globally, and per book if changed in the reader.
+   - When an engine is missing or has no voice for the language, link to Android's text-to-speech settings. A short line explains that better voices can be installed there.
+   - Copy goes in `strings.xml`.
+
+**Tests:**
+- Emulator: start, pause and stop on the corpus books. The highlight follows the page. Stopping saves a position inside the right chapter. Skips images and empty chapters without stalling.
+- Robolectric screenshots of the player bar and voice sheet in light, dark and 200% text.
+- The emulator's engine is not the phone's. Voice quality and speed are only checked in the device check.
+
+**Device check:**
+- Listen for 10 minutes with the screen off.
+- Pause from the lock screen, then unplug the headphones.
+- Reopen the book: it opens at the last spoken sentence.
+- Open it in KOReader: it's at the same passage.
+- Do it once with Google's voice and once with Kokoro.
+
+**Risks:**
+- Kokoro's speed on your phone is unknown, so the spike decides it. Reported figures are 20–40 s of compute per minute of speech on recent flagships, and several minutes on budget chips.
+- Some EPUBs split sentences badly, for example with drop caps or inline footnotes. Check them in the corpus.
+- Long listening sessions use battery. Measure it during the device check.
+
+**Not in this milestone:** making audiobook files, cloud voices, and reading aloud on the e-reader.
 
 ---
 
