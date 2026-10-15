@@ -249,7 +249,8 @@ internal fun ReaderListenNaturalPreview() {
                 onSleep = {},
                 onVoice = {},
                 onAddVoices = {},
-                natural = NaturalVoiceRow(fits = true, NaturalVoice.Ready, speaking = true),
+                natural =
+                    NaturalVoiceRow(fits = true, NaturalVoice.Ready, speaking = true, pace = 1.4),
             )
         }
     }

@@ -35,6 +35,7 @@ import org.readium.r2.navigator.preferences.PreferencesEditor
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.services.content.Content
+import org.readium.r2.shared.publication.services.content.TextContentTokenizer
 import org.readium.r2.shared.publication.services.content.content
 import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.util.Language
@@ -55,9 +56,10 @@ internal val sentenceTokenizer: (Language?) -> Tokenizer<String, IntRange> = {
 internal fun normalize(text: String) = text.trim().replace(Regex("\\s+"), " ")
 
 /**
- * The [count] sentences that follow [current], walking the book from [locator] with the same
- * splitter as Readium's player. Empty when [current] is not found nearby: better no look-ahead than
- * generating the wrong sentences.
+ * The [count] utterances that follow [current], walking the book from [locator] exactly as
+ * Readium's player does: each paragraph is split into sentences with [TextContentTokenizer], then
+ * every text piece of a sentence (italics make several) is one utterance. Empty when [current] is
+ * not found nearby: better no look-ahead than generating the wrong sentences.
  */
 internal suspend fun sentencesAfter(
     publication: Publication,
@@ -66,28 +68,81 @@ internal suspend fun sentencesAfter(
     count: Int,
 ): List<String> {
     val elements = publication.content(locator)?.iterator() ?: return emptyList()
+    val splitter =
+        TextContentTokenizer(
+            language = publication.metadata.language ?: Language(java.util.Locale.getDefault()),
+            overrideContentLanguage = false,
+            textTokenizerFactory = sentenceTokenizer,
+        )
     val target = normalize(current)
     val found = mutableListOf<String>()
     var passed = false
     var scanned = 0
     while (found.size < count && scanned < SCAN_LIMIT && elements.hasNext()) {
-        val element = elements.next() as? Content.TextElement ?: continue
-        for (segment in element.segments) {
-            val text = segment.text
-            val language = segment.language ?: element.language
-            for (range in sentenceTokenizer(language).tokenize(text)) {
-                val sentence = text.substring(range)
-                if (sentence.isBlank()) continue
+        for (piece in splitter.tokenize(elements.next())) {
+            for (text in utteranceTexts(piece)) {
                 scanned++
-                if (!passed) passed = normalize(sentence) == target
+                if (!passed) passed = normalize(text) == target
                 else {
-                    found += sentence
+                    found += text
                     if (found.size == count) return found
                 }
             }
         }
     }
     return if (passed) found else emptyList()
+}
+
+/** The utterances Readium makes of one sentence element: one per non-blank text piece. */
+internal fun utteranceTexts(element: Content.Element): List<String> =
+    when (element) {
+        is Content.TextElement -> element.segments.map { it.text }.filter { it.isNotBlank() }
+        is Content.TextualElement -> listOfNotNull(element.text?.takeIf { it.isNotBlank() })
+        else -> emptyList()
+    }
+
+/**
+ * Splits a long sentence at commas, semicolons, colons and dashes into parts of at least
+ * [CLAUSE_MIN] characters, so the first part can play while the rest is generated. Short sentences
+ * stay whole: each part is spoken with its own intonation.
+ */
+internal fun clauses(text: String): List<String> {
+    if (text.length <= CLAUSE_SPLIT_FROM) return listOf(text)
+    val parts = mutableListOf<String>()
+    var start = 0
+    for (match in CLAUSE_BREAK.findAll(text)) {
+        val cut = match.range.last + 1
+        if (cut - start >= CLAUSE_MIN && text.length - cut >= CLAUSE_MIN) {
+            parts += text.substring(start, cut)
+            start = cut
+        }
+    }
+    parts += text.substring(start)
+    return parts
+}
+
+private val CLAUSE_BREAK = Regex("[,;:\u2014\u2013]\\s+")
+private const val CLAUSE_SPLIT_FROM = 120
+private const val CLAUSE_MIN = 50
+private const val FADE_SAMPLES = 120
+
+/**
+ * Makes generated audio safe to play: values the model failed to produce (NaN) become silence,
+ * levels stay within range, and each part fades in and out over 5 ms so its edges do not click.
+ */
+internal fun cleanAudio(samples: FloatArray): FloatArray {
+    val out = FloatArray(samples.size)
+    for (i in samples.indices) {
+        val value = samples[i]
+        out[i] = if (value.isNaN() || value.isInfinite()) 0f else value.coerceIn(-1f, 1f)
+    }
+    val fade = minOf(FADE_SAMPLES, out.size / 2)
+    for (i in 0 until fade) {
+        val gain = i.toFloat() / fade
+        out[i] *= gain
+        out[out.size - 1 - i] *= gain
+    }
+    return out
 }
 
 /** How far to look for the sentence being read before giving up on look-ahead. */
@@ -190,11 +245,24 @@ internal class KokoroEngine(
     override val voices: Set<KokoroVoice> = KOKORO_VOICES.toSet()
 
     private var listener: TtsEngine.Listener<KokoroError>? = null
-    /** Sentences generated or being generated, by voice, speed and text. Main thread only. */
-    private val audio = LinkedHashMap<String, Deferred<FloatArray>>()
+    /**
+     * Sentences generated or being generated, by voice, speed and text; each is a list of parts
+     * (see [clauses]) so a long sentence can start playing before it is all made. Main thread only.
+     */
+    private val audio = LinkedHashMap<String, List<Deferred<FloatArray>>>()
     private var speaking: Job? = null
     private var speakingId: TtsEngine.RequestId? = null
     private var lookahead: Job? = null
+
+    /** Recent (seconds of speech, seconds to make it), for [pace]. Synthesis thread only. */
+    private val timings = ArrayDeque<Pair<Double, Double>>()
+    private val mutablePace = MutableStateFlow<Double?>(null)
+
+    /**
+     * How fast this phone makes speech compared with reading it aloud: above 1 it keeps ahead,
+     * below 1 long sentences can pause. Null until something has been generated.
+     */
+    val pace: StateFlow<Double?> = mutablePace
 
     private fun resolve(preferences: KokoroPreferences) =
         KokoroSettings(
@@ -218,19 +286,31 @@ internal class KokoroEngine(
         return "${now.speaker}|${now.speed}|${normalize(text)}"
     }
 
-    /** The sentence's audio, generated now or already on its way. */
-    private fun audioFor(text: String): Deferred<FloatArray> {
+    /** The sentence's parts, generated now or already on their way, in order. */
+    private fun audioFor(text: String): List<Deferred<FloatArray>> {
         val key = key(text)
         audio[key]?.let {
             return it
         }
         val now = mutableSettings.value
-        val job =
-            scope.async(synthesis) {
-                tts.generate(text, now.speaker, now.speed.toFloat()).samples
+        val parts =
+            clauses(text).map { part ->
+                scope.async(synthesis) { generate(part, now.speaker, now.speed.toFloat()) }
             }
-        audio[key] = job
-        return job
+        audio[key] = parts
+        return parts
+    }
+
+    /** Generates one part, cleans it for playback and records how long it took. */
+    private fun generate(text: String, speaker: Int, speed: Float): FloatArray {
+        val started = System.nanoTime()
+        val samples = cleanAudio(tts.generate(text, speaker, speed).samples)
+        val took = (System.nanoTime() - started) / 1e9
+        timings.addLast(samples.size.toDouble() / sampleRate to took)
+        while (timings.size > PACE_WINDOW) timings.removeFirst()
+        val made = timings.sumOf { it.second }
+        if (made > 0) mutablePace.value = timings.sumOf { it.first } / made
+        return samples
     }
 
     override fun speak(requestId: TtsEngine.RequestId, text: String, language: Language?) {
@@ -239,12 +319,19 @@ internal class KokoroEngine(
         val key = key(text)
         speaking = scope.launch {
             try {
-                val samples = awaitAudio(text)
+                val count = audioFor(text).size
+                var heard = 0
+                for (index in 0 until count) {
+                    val samples = awaitPart(text, index)
+                    if (samples.isEmpty()) continue
+                    if (heard == 0) listener?.onStart(requestId)
+                    heard += samples.size
+                    val last = index == count - 1
+                    withContext(output) { play(samples, untilHeard = last) }
+                }
                 audio.remove(key)
                 // Never report an empty sentence as heard: the player would race through the book.
-                if (samples.isEmpty()) throw IllegalStateException("Kokoro produced no audio")
-                listener?.onStart(requestId)
-                withContext(output) { play(samples) }
+                if (heard == 0) throw IllegalStateException("Kokoro produced no audio")
                 speakingId = null
                 listener?.onDone(requestId)
             } catch (cancel: CancellationException) {
@@ -257,13 +344,13 @@ internal class KokoroEngine(
     }
 
     /**
-     * Waits for [text]'s audio. A voice or speed change drops sentences generated for the old
+     * Waits for part [index] of [text]. A voice or speed change drops parts generated for the old
      * settings, including one being waited for; it is then generated again with the new ones rather
      * than leaving the player waiting for an answer that never comes.
      */
-    private suspend fun awaitAudio(text: String): FloatArray {
+    private suspend fun awaitPart(text: String, index: Int): FloatArray {
         while (true) {
-            val pending = audioFor(text)
+            val pending = audioFor(text)[index]
             try {
                 return pending.await()
             } catch (cancel: CancellationException) {
@@ -272,10 +359,12 @@ internal class KokoroEngine(
         }
     }
 
-    /** Streams [samples] and returns once they have been heard, so the next sentence follows. */
-    private suspend fun play(samples: FloatArray) {
+    /**
+     * Streams [samples]. Parts of one sentence are queued back to back; after the last
+     * ([untilHeard]) it returns only once they have been heard, so the next sentence follows.
+     */
+    private suspend fun play(samples: FloatArray, untilHeard: Boolean) {
         if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
-        val start = track.playbackHeadPosition.toLong()
         var offset = 0
         while (offset < samples.size) {
             kotlin.coroutines.coroutineContext.ensureActive()
@@ -283,13 +372,17 @@ internal class KokoroEngine(
             val written = track.write(samples, offset, count, AudioTrack.WRITE_BLOCKING)
             if (written < 0) throw IllegalStateException("Audio output failed ($written)")
             offset += written
+            queued += written
         }
-        val end = start + samples.size
-        while (track.playbackHeadPosition.toLong() < end) {
+        if (!untilHeard) return
+        while (track.playbackHeadPosition.toLong() < queued) {
             kotlin.coroutines.coroutineContext.ensureActive()
             delay(15)
         }
     }
+
+    /** Frames written since the last flush; the playback head counts from there too. */
+    @Volatile private var queued = 0L
 
     override fun stop() {
         val interrupted = speakingId
@@ -298,6 +391,7 @@ internal class KokoroEngine(
         speakingId = null
         track.pause()
         track.flush()
+        queued = 0
         if (interrupted != null) listener?.onInterrupted(interrupted)
     }
 
@@ -323,9 +417,9 @@ internal class KokoroEngine(
     private fun dropAhead(keep: Set<String>) {
         val iterator = audio.entries.iterator()
         while (iterator.hasNext()) {
-            val (key, job) = iterator.next()
+            val (key, parts) = iterator.next()
             if (key !in keep) {
-                job.cancel()
+                parts.forEach { it.cancel() }
                 iterator.remove()
             }
         }
@@ -347,8 +441,10 @@ internal class KokoroEngine(
 
     private companion object {
         /** Sentences generated ahead of the one being read. */
-        const val LOOKAHEAD = 3
+        const val LOOKAHEAD = 5
         const val CHUNK = 4096
+        /** Parts the pace is averaged over. */
+        const val PACE_WINDOW = 20
     }
 }
 

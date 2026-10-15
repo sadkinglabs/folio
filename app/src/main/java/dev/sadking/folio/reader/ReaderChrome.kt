@@ -51,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -943,6 +944,8 @@ internal class NaturalVoiceRow(
     val state: NaturalVoice?,
     /** Kokoro is the voice speaking now. */
     val speaking: Boolean,
+    /** How fast this phone makes Kokoro's speech compared with reading it; null until measured. */
+    val pace: Double? = null,
 )
 
 /**
@@ -990,6 +993,17 @@ internal fun ListenOptionsSheet(
                 style = MaterialTheme.typography.titleMedium,
             )
             NaturalVoiceSection(natural.state, voice, onVoice, onDownload)
+            natural.pace?.let { pace ->
+                Text(
+                    stringResource(
+                        if (pace >= 1.0) R.string.listen_natural_pace
+                        else R.string.listen_natural_pace_slow,
+                        String.format(LocalConfiguration.current.locales[0], "%.1f", pace),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Spacer(Modifier.height(FolioSpace.small))
         Text(

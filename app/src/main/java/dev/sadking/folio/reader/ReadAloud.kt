@@ -150,6 +150,10 @@ internal class ReadAloud(
     var natural by mutableStateOf(false)
         private set
 
+    /** How fast Kokoro makes speech on this phone compared with reading it; null until known. */
+    var naturalPace by mutableStateOf<Double?>(null)
+        private set
+
     /** True when the book can use the natural voice: Kokoro speaks English only. */
     var naturalFits by mutableStateOf(false)
         private set
@@ -269,6 +273,7 @@ internal class ReadAloud(
         navigator = created
         val onFailure = reading?.onFailure ?: {}
         watch = scope.launch {
+            kokoro?.engine?.let { engine -> launch { engine.pace.collect { naturalPace = it } } }
             launch {
                 created.location.collect {
                     utterance = it.utteranceLocator
@@ -421,6 +426,7 @@ internal class ReadAloud(
         voice = null
         language = null
         natural = false
+        naturalPace = null
         state = ListenState.OFF
     }
 }

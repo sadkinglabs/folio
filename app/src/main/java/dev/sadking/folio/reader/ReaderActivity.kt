@@ -657,6 +657,7 @@ class ReaderActivity : FragmentActivity() {
                                     listen.naturalFits,
                                     naturalState,
                                     listen.natural,
+                                    listen.naturalPace,
                                 ),
                             onDownload = { KokoroModel.install(this@ReaderActivity) },
                         )

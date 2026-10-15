@@ -69,4 +69,34 @@ class KokoroModelTest {
     fun sentencesMatchWhateverTheSpacing() {
         assertEquals(normalize("A  quiet\n beginning. "), normalize(" A quiet beginning."))
     }
+
+    @Test
+    fun longSentencesSplitAtClausesShortOnesStayWhole() {
+        val short = "They shook hands over the body."
+        assertEquals(listOf(short), clauses(short))
+        val long =
+            "A little squeamishly, Ben helped him turn the body on its belly, and the flesh was " +
+                "cool, not yet cold, still pliant, while Jimmy stared closely at the back and then " +
+                "pulled the jockey shorts down from the buttocks."
+        val parts = clauses(long)
+        assertTrue(parts.size > 1)
+        assertEquals(long, parts.joinToString(""))
+        assertTrue(parts.all { it.length >= 50 })
+    }
+
+    @Test
+    fun cleanAudioSilencesBadValuesAndFadesTheEdges() {
+        val raw =
+            FloatArray(1000) { 0.5f }
+                .also {
+                    it[500] = Float.NaN
+                    it[501] = 3f
+                }
+        val clean = cleanAudio(raw)
+        assertEquals(0f, clean[500], 0f)
+        assertEquals(1f, clean[501], 0f)
+        assertEquals(0f, clean[0], 0f)
+        assertEquals(0f, clean[999], 0f)
+        assertEquals(0.5f, clean[300], 0f)
+    }
 }
