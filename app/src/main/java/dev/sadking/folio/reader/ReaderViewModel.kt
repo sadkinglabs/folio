@@ -115,6 +115,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var positions by mutableStateOf<ReaderPositions?>(null)
         private set
 
+    private var positionsJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Computes the slider's positions the first time the controls show. Opening a book does not
+     * wait on it or compete with the first page, and closing the reader stops it.
+     */
+    fun loadPositions() {
+        val opened = publication ?: return
+        if (positions != null || positionsJob?.isActive == true) return
+        positionsJob = viewModelScope.launch {
+            try {
+                positions = withContext(Dispatchers.Default) { ReaderPositions.compute(opened) }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                // The slider keeps showing progression only.
+            }
+        }
+    }
+
     /** Total Readium positions ("pages" at the current layout), or 0 until computed. */
     val positionCount: Int
         get() = positions?.locators?.size ?: 0
@@ -211,12 +231,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 book = loaded.first
                 publication = opened
-                launch {
-                    positions =
-                        withContext(Dispatchers.Default) {
-                            runCatching { ReaderPositions.compute(opened) }.getOrNull()
-                        }
-                }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {

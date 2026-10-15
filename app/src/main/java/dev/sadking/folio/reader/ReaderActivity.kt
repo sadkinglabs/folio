@@ -414,6 +414,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val fade = FolioMotion.standardSpec<Float>()
         val showBars = controls && book != null && model.error == null
+        LaunchedEffect(showBars) { if (showBars) model.loadPositions() }
         // Controls are drawn over the page. The page area itself never changes size when they
         // appear or disappear, so Readium does not re-paginate and the reading position holds.
         Box(Modifier.fillMaxSize().background(Color(model.pageColor(dark)))) {

@@ -74,10 +74,8 @@ class ReaderUiTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
-                compose.waitUntil(30000) {
-                    compose.onAllNodesWithText("Reader Fixture").fetchSemanticsNodes().isNotEmpty()
-                }
-                // A title alone can appear before the fragment mounts; wait for its real view.
+                // The reader opens immersive, so its title bar is hidden: wait for the page's own
+                // view instead.
                 compose.waitUntil(30000) {
                     var attached = false
                     scenario.onActivity { activity ->
