@@ -24,6 +24,7 @@ import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.navigator.media.tts.android.AndroidTtsSettings
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.Language
 import org.readium.r2.shared.util.Url
 
 /** The sleep timer's choices, in menu order. */
@@ -34,6 +35,23 @@ internal enum class SleepTimer(val minutes: Int) {
     MINUTES_60(60),
     CHAPTER(0),
 }
+
+/** One voice the engine offers for the book's language. */
+internal data class ListenVoice(
+    val id: String,
+    val locale: java.util.Locale,
+    val highQuality: Boolean,
+    val needsNetwork: Boolean,
+)
+
+/** Voices that work offline first, then the better ones, so the top of the list is the pick. */
+internal fun sortVoices(voices: List<ListenVoice>): List<ListenVoice> =
+    voices.sortedWith(
+        compareBy<ListenVoice> { it.needsNetwork }
+            .thenByDescending { it.highQuality }
+            .thenBy { it.locale.toLanguageTag() }
+            .thenBy { it.id }
+    )
 
 internal enum class ListenState {
     OFF,
@@ -90,6 +108,16 @@ internal class ReadAloud(
     var sleep by mutableStateOf(SleepTimer.OFF)
         private set
 
+    /** The engine's voices for the book's language; empty until reading starts. */
+    var voices by mutableStateOf<List<ListenVoice>>(emptyList())
+        private set
+
+    /** The chosen voice's ID, or null for the engine's default. Remembered per language. */
+    var voice by mutableStateOf<String?>(null)
+        private set
+
+    private var language: Language? = null
+
     /**
      * Starts reading at [from]. Returns false when no voice engine could be set up; [onFailure] is
      * also told when playback later stops on an engine error.
@@ -118,6 +146,24 @@ internal class ReadAloud(
             return false
         }
         navigator = created
+        val spoken = created.settings.value.language
+        language = spoken
+        voices =
+            sortVoices(
+                created.voices
+                    .filter { it.language.removeRegion() == spoken.removeRegion() }
+                    .map {
+                        ListenVoice(
+                            it.id.value,
+                            it.language.locale,
+                            it.quality >= AndroidTtsEngine.Voice.Quality.High,
+                            it.requiresNetwork,
+                        )
+                    }
+            )
+        voice =
+            settings.getString(voiceKey(spoken), null)?.takeIf { id -> voices.any { it.id == id } }
+        if (voice != null) created.submitPreferences(preferences())
         watch = scope.launch {
             launch {
                 created.location.collect {
@@ -173,7 +219,32 @@ internal class ReadAloud(
     fun cycleSpeed() {
         speed = nextListenSpeed(speed)
         settings.edit().putFloat("listenSpeed", speed.toFloat()).apply()
-        navigator?.submitPreferences(AndroidTtsPreferences(speed = speed))
+        navigator?.submitPreferences(preferences())
+    }
+
+    /** Picks a voice for this language, or the engine's default with null. */
+    fun chooseVoice(id: String?) {
+        val spoken = language ?: return
+        voice = id
+        settings
+            .edit()
+            .apply { if (id == null) remove(voiceKey(spoken)) else putString(voiceKey(spoken), id) }
+            .apply()
+        navigator?.submitPreferences(preferences())
+    }
+
+    private fun voiceKey(spoken: Language) = "listenVoice:" + spoken.removeRegion().code
+
+    private fun preferences(): AndroidTtsPreferences {
+        val spoken = language
+        val chosen = voice
+        return AndroidTtsPreferences(
+            speed = speed,
+            voices =
+                if (spoken != null && chosen != null)
+                    mapOf(spoken to AndroidTtsEngine.Voice.Id(chosen))
+                else null,
+        )
     }
 
     /** Pauses after [timer]'s minutes or at the end of the current chapter; OFF cancels it. */
@@ -208,6 +279,9 @@ internal class ReadAloud(
         navigator?.close()
         navigator = null
         utterance = null
+        voices = emptyList()
+        voice = null
+        language = null
         state = ListenState.OFF
     }
 }

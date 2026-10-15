@@ -29,7 +29,13 @@
     <string name="listen_sleep_off">Off</string>
     <string name="listen_sleep_minutes">%1$d min</string>
     <string name="listen_sleep_chapter">End of chapter</string>
-    <string name="listen_sleep_set">Sleep timer: %1$s</string>
+    <string name="listen_title">Listening</string>
+    <string name="listen_options">Voice and sleep timer</string>
+    <string name="listen_voice">Voice</string>
+    <string name="listen_voice_default">Phone default</string>
+    <string name="listen_voice_high">High quality</string>
+    <string name="listen_voice_network">Needs internet</string>
+    <string name="listen_add_voices">Add voices in Android settings</string>
     <string name="listen_failed">Reading aloud stopped.</string>
     <string name="reader_slider">Place in the book</string>
     <string name="reader_previous_page">Previous page</string>

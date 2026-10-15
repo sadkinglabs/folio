@@ -207,8 +207,31 @@ internal fun ReaderListenPreview() {
                 onNext = {},
                 onSpeed = {},
                 onStop = {},
-                sleep = SleepTimer.MINUTES_30,
+                timerOn = true,
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader listening options · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenOptionsPreview() {
+    val uk = java.util.Locale.UK
+    val us = java.util.Locale.US
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ListenOptionsSheet(
+                SleepTimer.MINUTES_30,
+                listOf(
+                    ListenVoice("uk-1", uk, highQuality = true, needsNetwork = false),
+                    ListenVoice("uk-2", uk, highQuality = true, needsNetwork = false),
+                    ListenVoice("us-1", us, highQuality = false, needsNetwork = false),
+                    ListenVoice("us-2", us, highQuality = true, needsNetwork = true),
+                ),
+                "uk-2",
                 onSleep = {},
+                onVoice = {},
+                onAddVoices = {},
             )
         }
     }

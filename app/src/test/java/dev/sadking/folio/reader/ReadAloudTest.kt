@@ -26,4 +26,18 @@ class ReadAloudTest {
         assertEquals("1.25×", listenSpeedLabel(1.25))
         assertEquals("0.75×", listenSpeedLabel(0.75))
     }
+
+    @Test
+    fun offlineVoicesComeFirstThenTheBetterOnes() {
+        val uk = java.util.Locale.UK
+        val sorted =
+            sortVoices(
+                listOf(
+                    ListenVoice("net-high", uk, highQuality = true, needsNetwork = true),
+                    ListenVoice("local-low", uk, highQuality = false, needsNetwork = false),
+                    ListenVoice("local-high", uk, highQuality = true, needsNetwork = false),
+                )
+            )
+        assertEquals(listOf("local-high", "local-low", "net-high"), sorted.map { it.id })
+    }
 }

@@ -121,5 +121,8 @@ class ScreenshotTest {
 
     @Test fun readerListen() = shoot("reader-listen") { ReaderListenPreview() }
 
+    @Test
+    fun readerListenOptions() = shoot("reader-listen-options") { ReaderListenOptionsPreview() }
+
     @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
 }

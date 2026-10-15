@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,6 +77,7 @@ internal const val READER_DEVICES_SHEET_TAG = "reader-devices-sheet"
 internal const val READER_LINK_OFFER_TAG = "reader-link-offer"
 internal const val READER_FAILED_TAG = "reader-failed"
 internal const val READER_LISTEN_BAR_TAG = "reader-listen-bar"
+internal const val READER_LISTEN_SHEET_TAG = "reader-listen-sheet"
 
 /** The test tag of one theme swatch in the Text sheet: `reader-theme-Paper`. */
 internal fun readerThemeTag(theme: String) = "reader-theme-$theme"
@@ -85,6 +87,7 @@ internal const val LINK_OFFER_TIMEOUT_MS = 8_000L
 
 /** The sheets the top bar opens. */
 internal enum class ReaderPanel {
+    LISTEN,
     CONTENTS,
     TEXT,
     DEVICES,
@@ -875,8 +878,8 @@ internal fun ListenBar(
     onNext: () -> Unit,
     onSpeed: () -> Unit,
     onStop: () -> Unit,
-    sleep: SleepTimer = SleepTimer.OFF,
-    onSleep: (SleepTimer) -> Unit = {},
+    timerOn: Boolean = false,
+    onOptions: () -> Unit = {},
 ) {
     Surface(
         modifier.fillMaxWidth().then(lift(FolioSpace.panelShape)).testTag(READER_LISTEN_BAR_TAG),
@@ -911,7 +914,13 @@ internal fun ListenBar(
             IconButton(onClick = onNext, enabled = !starting) {
                 Icon(Icons.Outlined.SkipNext, stringResource(R.string.listen_next))
             }
-            SleepButton(sleep, onSleep)
+            // Voice and sleep timer; filled while a timer runs.
+            IconButton(onClick = onOptions) {
+                val name = stringResource(R.string.listen_options)
+                if (timerOn)
+                    Icon(Icons.Filled.Bedtime, name, tint = MaterialTheme.colorScheme.primary)
+                else Icon(Icons.Outlined.Tune, name)
+            }
             IconButton(onClick = onStop) {
                 Icon(Icons.Outlined.Close, stringResource(R.string.listen_stop))
             }
@@ -927,32 +936,100 @@ private fun sleepLabel(timer: SleepTimer): String =
         else -> stringResource(R.string.listen_sleep_minutes, timer.minutes)
     }
 
-/** The moon: a menu of sleep timers. It fills in while one is set. */
+/**
+ * Listening options: the sleep timer and the voice. Only voices for the book's language are listed;
+ * more can be added in Android's text-to-speech settings through [onAddVoices].
+ */
 @Composable
-private fun SleepButton(sleep: SleepTimer, onSleep: (SleepTimer) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    val name =
-        if (sleep == SleepTimer.OFF) stringResource(R.string.listen_sleep)
-        else stringResource(R.string.listen_sleep_set, sleepLabel(sleep))
-    Box {
-        IconButton(onClick = { open = true }) {
-            if (sleep == SleepTimer.OFF) Icon(Icons.Outlined.Bedtime, name)
-            else Icon(Icons.Filled.Bedtime, name, tint = MaterialTheme.colorScheme.primary)
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+internal fun ListenOptionsSheet(
+    sleep: SleepTimer,
+    voices: List<ListenVoice>,
+    voice: String?,
+    onSleep: (SleepTimer) -> Unit,
+    onVoice: (String?) -> Unit,
+    onAddVoices: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = FolioSpace.section)
+            .padding(bottom = 32.dp)
+            .testTag(READER_LISTEN_SHEET_TAG),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        Text(stringResource(R.string.listen_title), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.listen_sleep), style = MaterialTheme.typography.titleMedium)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+        ) {
             SleepTimer.entries.forEach { timer ->
-                DropdownMenuItem(
-                    text = { Text(sleepLabel(timer)) },
-                    onClick = {
-                        open = false
-                        onSleep(timer)
-                    },
-                    trailingIcon =
-                        if (timer == sleep) {
-                            { Icon(Icons.Outlined.Check, null) }
-                        } else null,
+                FilterChip(
+                    selected = timer == sleep,
+                    onClick = { onSleep(timer) },
+                    label = { Text(sleepLabel(timer)) },
                 )
             }
+        }
+        Spacer(Modifier.height(FolioSpace.small))
+        Text(stringResource(R.string.listen_voice), style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.selectableGroup()) {
+            VoiceRow(
+                stringResource(R.string.listen_voice_default),
+                null,
+                selected = voice == null,
+                onClick = { onVoice(null) },
+            )
+            voices.forEachIndexed { index, it ->
+                VoiceRow(
+                    voiceName(it, voices, index),
+                    listOfNotNull(
+                            stringResource(R.string.listen_voice_high).takeIf { _ ->
+                                it.highQuality
+                            },
+                            stringResource(R.string.listen_voice_network).takeIf { _ ->
+                                it.needsNetwork
+                            },
+                        )
+                        .joinToString(" · ")
+                        .ifEmpty { null },
+                    selected = voice == it.id,
+                    onClick = { onVoice(it.id) },
+                )
+            }
+        }
+        TextButton(onClick = onAddVoices) { Text(stringResource(R.string.listen_add_voices)) }
+    }
+}
+
+/** "English (United Kingdom) 2": the language and, when it has several voices, which one. */
+private fun voiceName(voice: ListenVoice, voices: List<ListenVoice>, index: Int): String {
+    val same = voices.filter { it.locale == voice.locale }
+    val place = voices.take(index + 1).count { it.locale == voice.locale }
+    val language = voice.locale.getDisplayName(voice.locale).replaceFirstChar { it.titlecase() }
+    return if (same.size > 1) "$language $place" else language
+}
+
+@Composable
+private fun VoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(FolioSpace.tileShape)
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (detail != null)
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
         }
     }
 }

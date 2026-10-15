@@ -119,6 +119,15 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /** Android's text-to-speech settings, where voices are added; general settings if hidden. */
+    private fun openVoiceSettings() {
+        try {
+            startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+        } catch (_: android.content.ActivityNotFoundException) {
+            startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+        }
+    }
+
     /** Volume keys turn pages when set, except over a sheet or while reading aloud. */
     private fun volumeTurnsPages() =
         model.volumeKeys && !panelOpen && model.listen.state == ListenState.OFF
@@ -583,8 +592,8 @@ class ReaderActivity : FragmentActivity() {
                     onNext = listen::next,
                     onSpeed = listen::cycleSpeed,
                     onStop = listen::stop,
-                    sleep = listen.sleep,
-                    onSleep = listen::sleepIn,
+                    timerOn = listen.sleep != SleepTimer.OFF,
+                    onOptions = { panel = ReaderPanel.LISTEN },
                 )
             model.linkOffer?.let { offer ->
                 LinkOfferCard(
@@ -618,6 +627,15 @@ class ReaderActivity : FragmentActivity() {
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 when (open) {
+                    ReaderPanel.LISTEN ->
+                        ListenOptionsSheet(
+                            listen.sleep,
+                            listen.voices,
+                            listen.voice,
+                            onSleep = listen::sleepIn,
+                            onVoice = listen::chooseVoice,
+                            onAddVoices = ::openVoiceSettings,
+                        )
                     ReaderPanel.TEXT -> TextPanel()
                     ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
                     ReaderPanel.DEVICES -> DevicesPanel(book?.id, scope) { panel = null }
