@@ -42,6 +42,23 @@ print('Plugin Lua syntax and 9 bridge scenarios passed; KOReader runtime remains
 link=lua.execute((root/'koreader/folio.koplugin/link.lua').read_text())
 lua.globals().Link=link
 lua.execute(r"""
+-- The installer's one-time setup: data only, applied to Progress sync, anything odd ignored.
+local function decode(fields) return function() return fields end end
+local base = { format = "librillo-link-setup", version = 1, server = "http://192.168.1.42:8765",
+  username = "folio", userkey = "0123abcdef", auto_fetch = true }
+local kosync, auto = Link.setup("x", decode(base), { custom_server = "old", sync_forward = 2 })
+assert(kosync.custom_server == "http://192.168.1.42:8765" and kosync.username == "folio")
+assert(kosync.userkey == "0123abcdef" and kosync.sync_forward == 2 and auto == true)
+local function copy(changes) local t = {} for k, v in pairs(base) do t[k] = v end
+  for k, v in pairs(changes) do t[k] = v end return t end
+assert(Link.setup("x", decode(copy({ format = "other" })), {}) == nil)
+assert(Link.setup("x", decode(copy({ version = 2 })), {}) == nil)
+assert(Link.setup("x", decode(copy({ server = "http://evil host:1" })), {}) == nil)
+assert(Link.setup("x", decode(copy({ server = "file:///etc" })), {}) == nil)
+assert(Link.setup("x", decode(copy({ userkey = "not-hex" })), {}) == nil)
+assert(Link.setup("x", function() error("bad json") end, {}) == nil)
+""")
+lua.execute(r"""
 local H = {} for i = 1, 64 do H[i] = "a" end
 local SHA_A = table.concat(H)
 local function sha(c) return (c:rep(64)) end

@@ -98,6 +98,24 @@ class SftpDevice(config: DeviceConfig, credential: DeviceCredential) : DeviceFil
             if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) false else throw e
         }
 
+    /**
+     * Whether [absolute] is a real directory on the device, not a link; used to find where KOReader
+     * is installed before installing anything.
+     */
+    fun isDirectory(absolute: String): Boolean {
+        require(
+            absolute.startsWith('/') &&
+                !absolute.contains('\\') &&
+                absolute.split('/').drop(1).none { it == ".." || it == "." || it.isEmpty() }
+        )
+        return try {
+            val attrs = channel.lstat(absolute)
+            attrs.isDir && !attrs.isLink
+        } catch (e: SftpException) {
+            if (e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE) false else throw e
+        }
+    }
+
     override fun read(path: String): InputStream {
         val a = channel.lstat(path(path))
         require(!a.isLink && !a.isDir && a.size <= Epub.MAX_FILE) {

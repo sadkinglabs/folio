@@ -26,7 +26,28 @@ function Folio:init()
     math.randomseed(os.time() + math.floor((os.clock() % 1) * 1e6))
     Bridge = dofile(self.path .. "/bridge.lua")
     Link = dofile(self.path .. "/link.lua")
+    self:applySetup()
     self.ui.menu:registerToMainMenu(self)
+end
+-- Librillo's installer leaves link-setup.json beside the plugin with the Link address and sign-in.
+-- It is read once as JSON data, applied to Progress sync, and removed so the key does not linger.
+function Folio:applySetup()
+    local path = self.path .. "/link-setup.json"
+    if lfs.attributes(path, "mode") ~= "file" then return end
+    local ok, text = pcall(bounded_read, path)
+    os.remove(path)
+    if not ok then return end
+    local kosync, auto_fetch = Link.setup(text, JSON.decode, G_reader_settings:readSetting("kosync"))
+    if not kosync then
+        message("Librillo's setup file could not be read. Set up Progress sync by hand.")
+        return
+    end
+    G_reader_settings:saveSetting("kosync", kosync)
+    if auto_fetch then G_reader_settings:saveSetting("folio_auto_fetch", true) end
+    G_reader_settings:flush()
+    UIManager:scheduleIn(1, function()
+        message("Librillo is set up. Restart KOReader once more so Progress sync uses it.")
+    end)
 end
 -- The folder Folio's books go to: the one set here, else the Kindle default if it exists,
 -- else "Librillo" in KOReader's home folder (any device).

@@ -22,8 +22,7 @@
 
     <!-- Shell: KOReader plugin install (the folder must be on a Kindle) -->
     <string name="shell_companion_title">Install the KOReader plugin</string>
-    <string name="shell_companion_body">The KOReader plugins folder on your e-reader. Older versions are kept. Restart KOReader afterwards.</string>
-    <string name="shell_companion_folder">KOReader plugins folder</string>
+    <string name="shell_companion_body">Installs Librillo\'s plugin into KOReader over SSH and sets up Librillo Link, so there is nothing to type on the e-reader. The previous plugin is kept.</string>
     <string name="shell_companion_install">Install</string>
 
     <!-- Shell: what a sync sends -->

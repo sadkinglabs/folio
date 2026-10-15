@@ -111,4 +111,28 @@ function Link.fetch(cfg, d)
     return result
 end
 
+-- The one-time setup Librillo's installer leaves beside the plugin: the Link address and the
+-- sign-in for Progress sync. Data only: anything unexpected is ignored. Returns the updated kosync
+-- settings and whether to get books when Wi-Fi connects, or nil when the setup is not usable.
+function Link.setup(text, decode, kosync)
+    local ok, setup = pcall(decode, text)
+    if not ok or type(setup) ~= "table" or setup.format ~= "librillo-link-setup" or setup.version ~= 1 then
+        return nil
+    end
+    local function clean(value, pattern)
+        if type(value) == "string" and #value <= 200 and value:match(pattern) then return value end
+        return nil
+    end
+    local server = clean(setup.server, "^https?://[%w%.%-]+:%d+$")
+    local username = clean(setup.username, "^[%w%._%-]+$")
+    local userkey = clean(setup.userkey, "^%x+$")
+    if not (server and username and userkey) then return nil end
+    local updated = {}
+    for key, value in pairs(kosync or {}) do updated[key] = value end
+    updated.custom_server = server
+    updated.username = username
+    updated.userkey = userkey
+    return updated, setup.auto_fetch == true
+end
+
 return Link

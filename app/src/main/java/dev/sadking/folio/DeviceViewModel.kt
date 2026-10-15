@@ -72,9 +72,9 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     val folderReport = MutableStateFlow<List<String>>(emptyList())
 
-    fun installCompanion(folder: String) =
+    fun installCompanion() =
         runOnDevice(app.getString(R.string.msg_device_installing_companion)) {
-            BridgeInstaller(app).install(folder)
+            BridgeInstaller(app).install()
         }
 
     fun clearFolderReport() {

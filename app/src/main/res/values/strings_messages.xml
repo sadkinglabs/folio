@@ -94,7 +94,10 @@
         <item quantity="one">%d new EPUB imported from the phone folder</item>
         <item quantity="other">%d new EPUBs imported from the phone folder</item>
     </plurals>
-    <string name="msg_device_installing_companion">Installing the KOReader companion…</string>
+    <string name="msg_device_installing_companion">Installing the KOReader plugin…</string>
+    <string name="msg_companion_no_koreader">KOReader was not found on the e-reader. Librillo looks in the usual places on Kindle, Kobo and PocketBook.</string>
+    <string name="msg_companion_installed">Plugin installed. Restart KOReader twice: the first start sets up Librillo Link.</string>
+    <string name="msg_companion_installed_no_link">Plugin installed. Restart KOReader, then set up Progress sync with the details under Librillo Link.</string>
     <string name="msg_device_comparing_folders">Comparing the paired folders…</string>
     <!-- Pairing setup: wording is redone with pairing in M4. -->
     <string name="msg_pairing_reading_fingerprint">Reading Kindle fingerprint…</string>

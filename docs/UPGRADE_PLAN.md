@@ -318,6 +318,11 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 - The SSH folder mirror stays as an advanced feature, with a hash cache, case-insensitive paths and a `WifiLock`.
 - **Device check:** fresh pairing of a Kindle (and a Kobo, if available) in under 3 minutes from zero; "Send to device" lands the book on the next Wi-Fi connect with no Kindle-side steps.
 
+**M4 status (2026-10-15):**
+- **Already in place from M3:** the plugin finds the phone (discovery), downloads the send queue into its folder with readable names, and acknowledges each book.
+- **Slice 1, install on the e-reader (built):** Settings → Install KOReader plugin uses the paired SSH connection. It finds KOReader's plugins folder on a Kindle, Kobo or PocketBook, installs the plugin with each file's hash checked and the previous version kept, and leaves a one-time `link-setup.json` (the Link address on the e-reader's network, the username and the key KOReader already stores, never the password). On its first start the plugin applies it to Progress sync, turns on getting books when Wi-Fi connects, and deletes it. Tested: Lua parsing (good, hostile and broken input), the address choice, the setup file, and the folder probe against a real SFTP server in CI. Not tried on a device.
+- **Next:** the pairing wizard (reachability test, key bootstrap) and the OPDS feed.
+
 ### M5: Acquisition loop
 - Search sources in Settings; the in-app WebView with download interception; the pending-acquisition → attach → send chain; a broader VIEW intent filter for `.epub` from other apps.
 - **Device check:** Want to Read → EPUB on the e-reader in 5 taps or fewer, excluding the steps inside the web page.
@@ -334,7 +339,7 @@ Librillo reads the open book aloud with the voice engine already on the phone, h
 - Use Readium's own read-aloud module, `readium-navigator-media-tts` 3.4.0 (`TtsNavigatorFactory`, `AndroidTtsEngineProvider`). It walks the book sentence by sentence, gives a locator for each one and runs a Media3 session for lock-screen and headphone controls. Writing this ourselves would repeat Readium's work for no gain.
 - Speak through Android's `TextToSpeech`, so any installed engine works. Google's voices work offline once downloaded.
 - For the most natural voice, recommend the **sherpa-onnx TTS engine with Kokoro-82M** (Apache 2.0). It installs as a normal Android engine, so Librillo needs no model of its own.
-- **Not bundling a model.** Kokoro inside the app would add roughly 80–300 MB plus native code, and it would duplicate the highlighting Readium already does. Revisit only if the system-engine route sounds or performs badly on the phone.
+- **Changed after the phone test:** the system voice was not good enough, so Kokoro now runs inside Librillo as a Readium engine, with the model as a one-time download (see the status below). The system-engine route stays as the fallback.
 
 **New dependencies:** `readium-navigator-media-tts` and, through it, `androidx.media3:media3-session` 1.11.0. The benefit: background playback, lock-screen controls and audio focus without our own player.
 

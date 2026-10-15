@@ -36,10 +36,17 @@ class SftpIntegrationTest {
         val source =
             File.createTempFile("folio-bridge", ".lua").apply { writeText("new plugin bytes") }
         try {
+            // The one-time Link setup travels with the plugin files.
             val files =
-                listOf("main.lua", "bridge.lua", "link.lua", "_meta.lua", "LICENSE").associateWith {
-                    source
-                }
+                listOf(
+                        "main.lua",
+                        "bridge.lua",
+                        "link.lua",
+                        "_meta.lua",
+                        "LICENSE",
+                        "link-setup.json",
+                    )
+                    .associateWith { source }
             SftpDevice(cfg.copy(directory = pluginRoot.path), credentials()).use {
                 it.installFolioBridge(files)
             }
@@ -52,6 +59,22 @@ class SftpIntegrationTest {
             assertFalse(pluginRoot.listFiles()!!.any { it.name.startsWith(".folio-install-") })
         } finally {
             source.delete()
+        }
+    }
+
+    @Test
+    fun findingKoreaderSeesRealFoldersOnly() {
+        val cfg = config()
+        val base = File(cfg.directory, "probe-${UUID.randomUUID()}")
+        val plugins = File(base, "koreader/plugins").apply { mkdirs() }
+        val link = File(base, "linked")
+        java.nio.file.Files.createSymbolicLink(link.toPath(), plugins.toPath())
+        SftpDevice(cfg, credentials()).use {
+            assertTrue(it.isDirectory(plugins.path))
+            assertFalse(it.isDirectory(File(base, "missing/plugins").path))
+            assertFalse(it.isDirectory(link.path))
+            assertFalse(runCatching { it.isDirectory("${base.path}/../etc") }.isSuccess)
+            assertFalse(runCatching { it.isDirectory("relative/plugins") }.isSuccess)
         }
     }
 

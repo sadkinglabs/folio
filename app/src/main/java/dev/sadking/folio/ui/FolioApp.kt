@@ -250,27 +250,16 @@ fun FolioApp(model: LibraryViewModel) {
                         ?.let { model.exportHighlights(it, uri) }
             }
         var installCompanion by rememberSaveable { mutableStateOf(false) }
-        var companionPath by rememberSaveable { mutableStateOf("/mnt/us/koreader/plugins") }
         if (installCompanion)
             AlertDialog(
                 onDismissRequest = { installCompanion = false },
                 title = { Text(stringResource(R.string.shell_companion_title)) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.shell_companion_body))
-                        OutlinedTextField(
-                            companionPath,
-                            { companionPath = it },
-                            label = { Text(stringResource(R.string.shell_companion_folder)) },
-                            singleLine = true,
-                        )
-                    }
-                },
+                text = { Text(stringResource(R.string.shell_companion_body)) },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             installCompanion = false
-                            devices.installCompanion(companionPath.trim())
+                            devices.installCompanion()
                         }
                     ) {
                         Text(stringResource(R.string.shell_companion_install))
