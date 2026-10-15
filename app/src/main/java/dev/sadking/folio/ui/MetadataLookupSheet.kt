@@ -150,8 +150,12 @@ internal fun MetadataLookupContent(
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Checkbox(on, null, enabled = !busy)
-                    Column(Modifier.weight(1f).padding(top = 12.dp, start = 4.dp)) {
+                    // The row is the tap target, so the box has no touch padding of its own: give
+                    // it a slot that centres it on the field name and the first line of the value.
+                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        Checkbox(on, null, enabled = !busy)
+                    }
+                    Column(Modifier.weight(1f).padding(top = 3.dp, start = 4.dp)) {
                         Text(
                             fieldLabels[field.key] ?: field.key,
                             style = MaterialTheme.typography.labelSmall,

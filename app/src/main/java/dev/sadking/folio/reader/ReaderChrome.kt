@@ -298,7 +298,8 @@ internal class ReaderTextActions(
     val onMargins: (Double) -> Unit,
     val onBookStyles: (Boolean) -> Unit,
     val onScroll: (Boolean) -> Unit,
-    val onBookOnly: (Boolean) -> Unit,
+    /** Null where there is no book, as in Settings: the switch is then left out. */
+    val onBookOnly: ((Boolean) -> Unit)?,
 )
 
 /**
@@ -306,19 +307,32 @@ internal class ReaderTextActions(
  * sliders, and three switches. No hints: every control shows its state.
  */
 @Composable
-internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions) {
+internal fun ReaderTextSheet(
+    state: ReaderTextState,
+    actions: ReaderTextActions,
+    /** One line under the title, such as Settings' note that these are the defaults. */
+    subtitle: String? = null,
+    tag: String = READER_TEXT_SHEET_TAG,
+) {
     Column(
         Modifier.fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(bottom = 32.dp)
-            .testTag(READER_TEXT_SHEET_TAG),
+            .testTag(tag),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
     ) {
-        Text(
-            stringResource(R.string.appearance_title),
-            Modifier.padding(horizontal = FolioSpace.section),
-            style = MaterialTheme.typography.titleLarge,
-        )
+        Column(Modifier.padding(horizontal = FolioSpace.section)) {
+            Text(
+                stringResource(R.string.appearance_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            if (subtitle != null)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+        }
         TextSizeStepper(state.fontSize, state.serif, actions.onSize)
         ThemeSwatches(state.pageTheme, actions.onTheme)
         val haptics = rememberHaptics()
@@ -373,11 +387,9 @@ internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions)
                 state.scroll,
                 actions.onScroll,
             )
-            SheetSwitch(
-                stringResource(R.string.appearance_book_only),
-                state.bookOnly,
-                actions.onBookOnly,
-            )
+            actions.onBookOnly?.let {
+                SheetSwitch(stringResource(R.string.appearance_book_only), state.bookOnly, it)
+            }
         }
     }
 }

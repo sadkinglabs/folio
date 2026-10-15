@@ -41,13 +41,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
@@ -55,14 +49,11 @@ import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.LinkStatus
 import dev.sadking.folio.data.linkStatus
 import dev.sadking.folio.link.FolioLink
-import dev.sadking.folio.reader.LINE_SPACING_CHOICES
-import dev.sadking.folio.reader.MARGIN_CHOICES
-import dev.sadking.folio.reader.MAX_TEXT
-import dev.sadking.folio.reader.MIN_TEXT
 import dev.sadking.folio.reader.ReaderDefaults
+import dev.sadking.folio.reader.ReaderTextActions
+import dev.sadking.folio.reader.ReaderTextSheet
+import dev.sadking.folio.reader.ReaderTextState
 import dev.sadking.folio.reader.ReaderTypography
-import dev.sadking.folio.reader.nearestChoice
-import dev.sadking.folio.reader.steppedTextSize
 import kotlinx.coroutines.delay
 
 internal const val SETTINGS_TAG = "settings"
@@ -573,7 +564,8 @@ private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) ->
 }
 
 /**
- * The reader's text defaults: the same choices as the reader's Text sheet, applied to every book.
+ * The reader's text defaults: the reader's own Text sheet, applied to every book, without "Only for
+ * this book". One design for the same choices wherever they are made.
  */
 @Composable
 internal fun ReadingDefaultsSheet(
@@ -581,7 +573,14 @@ internal fun ReadingDefaultsSheet(
     onReading: (ReadingDefaults) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    SettingsSheet(onDismiss) { ReadingDefaultsContent(reading, onReading) }
+    // Not SettingsSheet: the Text sheet scrolls itself, and a scroll inside a scroll fails.
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        ReadingDefaultsContent(reading, onReading)
+    }
 }
 
 @Composable
@@ -591,164 +590,29 @@ internal fun ReadingDefaultsContent(
 ) {
     val text = reading.typography
     fun typography(value: ReaderTypography) = onReading(reading.copy(typography = value.bounded()))
-    Column(
-        Modifier.fillMaxWidth().padding(bottom = 32.dp).testTag(TEXT_SHEET_TAG),
-        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
-    ) {
-        SheetHeading(
-            stringResource(R.string.settings_text),
-            stringResource(R.string.settings_text_body),
-        )
-        TextSizeStepper(text.fontSize, text.serif) { typography(text.copy(fontSize = it)) }
-        FlowRow(
-            Modifier.padding(horizontal = FolioSpace.section),
-            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
-        ) {
-            listOf(
-                    "System" to R.string.appearance_theme_system,
-                    "Light" to R.string.appearance_theme_light,
-                    "Paper" to R.string.appearance_theme_paper,
-                    "Dark" to R.string.appearance_theme_dark,
-                )
-                .forEach { (name, label) ->
-                    FilterChip(
-                        reading.pageTheme == name,
-                        { onReading(reading.copy(pageTheme = name)) },
-                        { Text(stringResource(label)) },
-                    )
-                }
-        }
-        Segments(
-            listOf(
-                stringResource(R.string.appearance_serif) to true,
-                stringResource(R.string.appearance_sans) to false,
-            ),
+    ReaderTextSheet(
+        ReaderTextState(
+            text.fontSize,
+            reading.pageTheme,
             text.serif,
-        ) {
-            typography(text.copy(serif = it))
-        }
-        ChoiceRow(
-            stringResource(R.string.appearance_spacing),
-            listOf(
-                stringResource(R.string.appearance_compact),
-                stringResource(R.string.appearance_normal),
-                stringResource(R.string.appearance_relaxed),
-            ),
-            LINE_SPACING_CHOICES,
+            text.scroll,
             text.lineHeight,
-            enabled = !text.publisherStyles,
-        ) {
-            typography(text.copy(lineHeight = it))
-        }
-        ChoiceRow(
-            stringResource(R.string.appearance_margins),
-            listOf(
-                stringResource(R.string.appearance_narrow),
-                stringResource(R.string.appearance_normal),
-                stringResource(R.string.appearance_wide),
-            ),
-            MARGIN_CHOICES,
             text.margins,
-            enabled = !text.publisherStyles,
-        ) {
-            typography(text.copy(margins = it))
-        }
-        Column {
-            SheetSwitch(stringResource(R.string.appearance_book_styles), text.publisherStyles) {
-                typography(text.copy(publisherStyles = it))
-            }
-            SheetSwitch(stringResource(R.string.appearance_scrolling), text.scroll) {
-                typography(text.copy(scroll = it))
-            }
-        }
-    }
-}
-
-@Composable
-private fun <T> Segments(
-    options: List<Pair<String, T>>,
-    selected: T,
-    enabled: Boolean = true,
-    onSelect: (T) -> Unit,
-) {
-    SingleChoiceSegmentedButtonRow(
-        Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section)
-    ) {
-        options.forEachIndexed { index, (label, value) ->
-            SegmentedButton(
-                selected = selected == value,
-                onClick = { onSelect(value) },
-                shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                enabled = enabled,
-                label = { Text(label, textAlign = TextAlign.Center) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ChoiceRow(
-    label: String,
-    labels: List<String>,
-    values: List<Double>,
-    current: Double,
-    enabled: Boolean,
-    onSelect: (Double) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = FolioSpace.section),
-        )
-        Segments(labels.zip(values), nearestChoice(current, values), enabled, onSelect)
-    }
-}
-
-/** Text size in steps, with "Aa" drawn at the chosen size and font. */
-@Composable
-private fun TextSizeStepper(size: Double, serif: Boolean, onSize: (Double) -> Unit) {
-    val smaller = stringResource(R.string.appearance_smaller)
-    val larger = stringResource(R.string.appearance_larger)
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        FilledTonalIconButton(
-            onClick = { onSize(steppedTextSize(size, up = false)) },
-            enabled = size > MIN_TEXT,
-            modifier = Modifier.semantics { contentDescription = smaller },
-        ) {
-            Text("A−", style = MaterialTheme.typography.labelLarge)
-        }
-        Column(
-            Modifier.weight(1f).semantics(mergeDescendants = true) {},
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // A fixed-height box keeps the buttons still while the sample grows.
-            Box(Modifier.height(64.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "Aa",
-                    fontSize = (22 * size / 100).sp,
-                    fontFamily = if (serif) FontFamily.Serif else FontFamily.SansSerif,
-                    modifier = Modifier.clearAndSetSemantics {},
-                )
-            }
-            Text(
-                stringResource(R.string.appearance_text_size, size.toInt()),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-        FilledTonalIconButton(
-            onClick = { onSize(steppedTextSize(size, up = true)) },
-            enabled = size < MAX_TEXT,
-            modifier = Modifier.semantics { contentDescription = larger },
-        ) {
-            Text("A+", style = MaterialTheme.typography.labelLarge)
-        }
-    }
+            text.publisherStyles,
+        ),
+        ReaderTextActions(
+            onSize = { typography(text.copy(fontSize = it)) },
+            onTheme = { onReading(reading.copy(pageTheme = it)) },
+            onSerif = { typography(text.copy(serif = it)) },
+            onSpacing = { typography(text.copy(lineHeight = it)) },
+            onMargins = { typography(text.copy(margins = it)) },
+            onBookStyles = { typography(text.copy(publisherStyles = it)) },
+            onScroll = { typography(text.copy(scroll = it)) },
+            onBookOnly = null,
+        ),
+        subtitle = stringResource(R.string.settings_text_body),
+        tag = TEXT_SHEET_TAG,
+    )
 }
 
 /** KOReader's reading statistics, fetched over the e-reader connection. */
