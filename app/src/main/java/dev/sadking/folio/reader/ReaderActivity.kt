@@ -72,6 +72,8 @@ class ReaderActivity : FragmentActivity() {
     private var positionNavigation = false
     private var closing by mutableStateOf(false)
     private var navigationError by mutableStateOf<String?>(null)
+    /** The highlight colour for the sentence being read, from the current theme. */
+    private var listenTint = android.graphics.Color.YELLOW
     private val scripts by lazy {
         assets.open("reader/positions.js").bufferedReader().use { it.readText() } +
             "\n" +
@@ -206,6 +208,27 @@ class ReaderActivity : FragmentActivity() {
                 }
             }
         )
+        // The sentence being read: highlight it and keep its page in view. The page turn saves the
+        // place through the usual debounced save. On the activity's scope, so WebView calls stay
+        // on the main thread.
+        lifecycleScope.launch {
+            snapshotFlow { model.listen.utterance }
+                .collectLatest { spoken ->
+                    fragment.applyDecorations(
+                        listOfNotNull(
+                            spoken?.let {
+                                Decoration(
+                                    "spoken",
+                                    it,
+                                    Decoration.Style.Highlight(tint = listenTint),
+                                )
+                            }
+                        ),
+                        "listen",
+                    )
+                    if (spoken != null) fragment.go(spoken, animated = false)
+                }
+        }
         lifecycleScope.launch {
             if (model.automaticKindleResume) {
                 try {
@@ -433,23 +456,9 @@ class ReaderActivity : FragmentActivity() {
             if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
             else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
-        // The sentence being read: highlight it and keep its page in view. The page turn saves the
-        // place through the usual debounced save.
         val listen = model.listen
         val highlight = MaterialTheme.colorScheme.primary.toArgb()
-        LaunchedEffect(listen.utterance) {
-            val nav = navigator ?: return@LaunchedEffect
-            val spoken = listen.utterance
-            nav.applyDecorations(
-                listOfNotNull(
-                    spoken?.let {
-                        Decoration("spoken", it, Decoration.Style.Highlight(tint = highlight))
-                    }
-                ),
-                "listen",
-            )
-            if (spoken != null) nav.go(spoken, animated = false)
-        }
+        SideEffect { listenTint = highlight }
         val fade = FolioMotion.standardSpec<Float>()
         val showBars = controls && book != null && model.error == null
         LaunchedEffect(showBars) { if (showBars) model.loadPositions() }
