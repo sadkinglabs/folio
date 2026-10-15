@@ -8,26 +8,34 @@ package dev.sadking.folio.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -234,7 +242,14 @@ fun LibraryScreen(
                 keyboard?.hide()
                 showFilter = true
             },
-        )
+        ) {
+            QuickFilters(
+                status = if (wanted) null else status,
+                files = files,
+                onStatus = { status = quickToggle(status, it, "All") },
+                onFiles = { files = quickToggle(files, it, "All books") },
+            )
+        }
         if (results == null) LoadingGrid(columns, Modifier.weight(1f))
         else if (filtered.isEmpty())
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -529,13 +544,63 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
     )
 }
 
-/** The content controls: sort menu (Library tab only) and Filter with a count dot. */
+internal const val LIBRARY_QUICK_FILTERS_TAG = "library-quick-filters"
+
+/** A quick filter chip turns its value on, or back to [none] when it is already on. */
+internal fun quickToggle(current: String, value: String, none: String): String =
+    if (current == value) none else value
+
+/**
+ * One-tap filters for the common cases, the same ones the Filter sheet sets: three reading statuses
+ * (not on Want to read, where [status] is null) and books that still need an EPUB.
+ */
+@Composable
+private fun QuickFilters(
+    status: String?,
+    files: String,
+    onStatus: (String) -> Unit,
+    onFiles: (String) -> Unit,
+) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState())
+            .padding(horizontal = FolioSpace.small)
+            .testTag(LIBRARY_QUICK_FILTERS_TAG),
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        if (status != null)
+            listOf("Reading", "Unread", "Finished").forEach { value ->
+                QuickChip(status == value, libraryStatusLabel(value)) { onStatus(value) }
+            }
+        QuickChip(files == "Needs EPUB", stringResource(R.string.library_files_needs_epub)) {
+            onFiles("Needs EPUB")
+        }
+    }
+}
+
+@Composable
+private fun QuickChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    FilterChip(
+        selected,
+        onClick,
+        label = { Text(label, maxLines = 1) },
+        leadingIcon =
+            if (selected) {
+                { Icon(Icons.Outlined.Check, null, Modifier.size(FilterChipDefaults.IconSize)) }
+            } else null,
+    )
+}
+
+/**
+ * The content controls: sort menu (Library tab only), the [quick] filter chips, which scroll in the
+ * space between, and Filter with a count dot.
+ */
 @Composable
 private fun LibraryToolbar(
     sort: String?,
     onSort: (String) -> Unit,
     activeFilters: Int,
     onFilter: () -> Unit,
+    quick: @Composable () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = FolioSpace.gap),
@@ -549,7 +614,20 @@ private fun LibraryToolbar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        Spacer(Modifier.weight(1f))
+        // The chips fade out at the end, so a cut chip reads as "scroll for more".
+        Box(
+            Modifier.weight(1f)
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.horizontalGradient(0.85f to Color.Black, 1f to Color.Transparent),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+        ) {
+            quick()
+        }
         IconButton(onClick = onFilter, modifier = Modifier.testTag(LIBRARY_FILTER_TAG)) {
             BadgedBox(
                 badge = {

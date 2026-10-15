@@ -84,4 +84,12 @@ class SheetLogicTest {
         assertTrue(importable(row, listOf(wish("one"))))
         assertFalse(importable(row, listOf(wish("one"), wish("two"))))
     }
+
+    @Test
+    fun quickFilterChipTurnsOnThenBackOff() {
+        assertEquals("Reading", quickToggle("All", "Reading", "All"))
+        assertEquals("Unread", quickToggle("Reading", "Unread", "All"))
+        assertEquals("All", quickToggle("Reading", "Reading", "All"))
+        assertEquals("All books", quickToggle("Needs EPUB", "Needs EPUB", "All books"))
+    }
 }
