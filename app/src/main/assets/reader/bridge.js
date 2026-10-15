@@ -50,6 +50,18 @@
     return 'html > ' + parts.join(' > ');
   }
   window.FolioReader = {
+    // Whether the page has scrolled to the locator's progression. Readium reports a restored
+    // locator before the page gets there; capturing earlier would name the chapter's first line.
+    settled(expected) {
+      if (expected === null || expected === undefined) return true;
+      const el = document.scrollingElement || document.documentElement;
+      const horizontal = el.scrollWidth > el.clientWidth + 1;
+      const size = horizontal ? el.scrollWidth : el.scrollHeight;
+      if (!size) return true;
+      const offset = Math.abs(horizontal ? el.scrollLeft : el.scrollTop);
+      const page = (horizontal ? innerWidth : innerHeight) / size;
+      return Math.abs(offset / size - expected) <= page + 0.01;
+    },
     capture(index) {
       const position = firstText();
       return position ? FolioPositions.generateXPointer(position, index) || '' : '';

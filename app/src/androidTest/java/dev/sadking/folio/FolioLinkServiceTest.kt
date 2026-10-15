@@ -88,7 +88,14 @@ class FolioLinkServiceTest {
             val stored = runBlocking { app.database.library().kosyncReports(document) }
             assertEquals(listOf("emulated-ereader"), stored.map { it.deviceId })
 
-            val kinds = app.link.log.entries.value.map { it.kind }
+            // The server logs a request after sending its response, so the last entry can lag.
+            val kinds = runBlocking {
+                withTimeout(5_000) {
+                    app.link.log.entries
+                        .first { list -> list.count { it.kind == LinkLog.Kind.REQUEST } >= 3 }
+                        .map { it.kind }
+                }
+            }
             assertTrue(LinkLog.Kind.STARTED in kinds)
             assertEquals(3, kinds.count { it == LinkLog.Kind.REQUEST })
             assertNotNull(app.link.log.lastHeard)

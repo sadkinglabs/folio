@@ -267,22 +267,33 @@ class ReaderActivity : FragmentActivity() {
      */
     private suspend fun savePosition() {
         val nav = navigator ?: return
-        val locator = nav.currentLocator.value
-        val index = docFragmentIndex(locator.href.toString(), model.spine)
-        val pointer =
-            if (index == null) ""
-            else
-                try {
+        var locator = nav.currentLocator.value
+        var pointer = ""
+        try {
+            // Readium reports a restored place before the page has scrolled there. Wait for the
+            // page to catch up; if it never does, save without a pointer rather than a wrong one.
+            for (attempt in 1..SETTLE_ATTEMPTS) {
+                locator = nav.currentLocator.value
+                val index = docFragmentIndex(locator.href.toString(), model.spine) ?: break
+                val progression = locator.locations.progression
+                if (nav.bridge("FolioReader.settled($progression);") == "true") {
                     val raw = nav.bridge("JSON.stringify(FolioReader.capture($index));")
                     val quoted = raw?.let { JSONTokener(it).nextValue() as? String }
-                    quoted
-                        ?.let { runCatching { JSONTokener(it).nextValue() as? String }.getOrNull() }
-                        .orEmpty()
-                } catch (cancel: CancellationException) {
-                    throw cancel
-                } catch (_: Exception) {
-                    ""
+                    pointer =
+                        quoted
+                            ?.let {
+                                runCatching { JSONTokener(it).nextValue() as? String }.getOrNull()
+                            }
+                            .orEmpty()
+                    break
                 }
+                delay(SETTLE_STEP_MS)
+            }
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            pointer = ""
+        }
         if (nav.currentLocator.value == locator) model.save(locator, pointer)
     }
 
@@ -691,6 +702,8 @@ class ReaderActivity : FragmentActivity() {
     companion object {
         private const val BOOK_ID = "book_id"
         private const val SAVE_DEBOUNCE_MS = 1000L
+        private const val SETTLE_ATTEMPTS = 30
+        private const val SETTLE_STEP_MS = 100L
 
         fun open(context: Context, bookId: String) {
             context.startActivity(
