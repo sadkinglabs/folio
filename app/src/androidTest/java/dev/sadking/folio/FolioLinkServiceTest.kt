@@ -174,6 +174,17 @@ class FolioLinkServiceTest {
                         extra = mapOf("x-folio-device" to "kindle"),
                     )
                 assertTrue(other.second.contains(id))
+                // Taking the book out of the queue on the Device tab stops further downloads.
+                app.linkQueue.remove(id)
+                assertTrue(app.linkQueue.queued.value.none { it == id })
+                val gone =
+                    call(
+                        port,
+                        "GET",
+                        "/folio/v1/queue",
+                        extra = mapOf("x-folio-device" to "kindle"),
+                    )
+                assertTrue(gone.second, !gone.second.contains(id))
             }
         } finally {
             runBlocking { app.database.library().deleteLocalBook(id) }

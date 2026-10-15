@@ -10,6 +10,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceConfig
+import dev.sadking.folio.link.LinkLog
 
 private val sampleBooks =
     listOf(
@@ -138,27 +139,130 @@ internal fun CollectionsPreview() {
     }
 }
 
-@Preview(name = "Kindle · light", widthDp = 412, heightDp = 892)
+@Preview(name = "Device · light", widthDp = 412, heightDp = 892)
 @Preview(
-    name = "Kindle · dark",
+    name = "Device · dark",
     widthDp = 412,
     heightDp = 892,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
 internal fun KindlePreview() {
+    val now = System.currentTimeMillis()
     FolioTheme(dynamic = false) {
-        Surface {
-            KindleScreen(
-                DeviceConfig(host = "192.168.1.42"),
-                emptyList(),
-                emptyList(),
-                emptyList(),
-                false,
-                {},
-                {},
-                {},
-                {},
+        Surface(Modifier.fillMaxSize()) {
+            DeviceScreen(
+                status = LinkStatus.ON,
+                addresses = listOf("192.168.1.42:8765"),
+                onLink = {},
+                onCopy = {},
+                onSignIn = {},
+                ereaders =
+                    listOf(
+                        EreaderSeen(
+                            "kindle-pw5",
+                            "Kindle",
+                            now - 3 * 60_000,
+                            EreaderPosition(sampleBooks[0], 0.41),
+                        ),
+                        EreaderSeen("kobo-clara", "", now - 2 * 86_400_000, null),
+                    ),
+                queue = listOf(QueuedBook(sampleBooks[1], false), QueuedBook(sampleBooks[2], true)),
+                onOpenBook = {},
+                onRemoveQueued = {},
+                activity =
+                    listOf(
+                        LinkLog.Entry(
+                            now - 3 * 60_000,
+                            LinkLog.Kind.REQUEST,
+                            "/syncs/progress",
+                            200,
+                            "192.168.1.17",
+                        ),
+                        LinkLog.Entry(
+                            now - 4 * 60_000,
+                            LinkLog.Kind.REQUEST,
+                            "/users/auth",
+                            200,
+                            "192.168.1.17",
+                        ),
+                        LinkLog.Entry(now - 50 * 60_000, LinkLog.Kind.SCREEN_ON),
+                        LinkLog.Entry(now - 3 * 3_600_000, LinkLog.Kind.SCREEN_OFF),
+                        LinkLog.Entry(now - 5 * 3_600_000, LinkLog.Kind.STARTED, port = 8765),
+                    ),
+                onClearActivity = {},
+                onSavePlugin = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Device off · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Device off · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun DeviceOffPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            DeviceScreen(
+                status = LinkStatus.OFF,
+                addresses = emptyList(),
+                onLink = {},
+                onCopy = {},
+                onSignIn = {},
+                ereaders = emptyList(),
+                queue = emptyList(),
+                onOpenBook = {},
+                onRemoveQueued = {},
+                activity = emptyList(),
+                onClearActivity = {},
+                onSavePlugin = {},
+                sshHost = "192.168.1.42",
+                syncJob =
+                    SyncJob(
+                        "job",
+                        "ssh",
+                        "PAUSED",
+                        totalBooks = 3,
+                        totalBytes = 6_000_000,
+                        completedBooks = 1,
+                        bytesSent = 2_000_000,
+                        currentTitle = sampleBooks[1].title,
+                    ),
+            )
+        }
+    }
+}
+
+@Preview(name = "Device first run · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun DeviceFirstRunPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            DeviceScreen(
+                status = LinkStatus.ON,
+                addresses = listOf("192.168.1.42:8765"),
+                onLink = {},
+                onCopy = {},
+                onSignIn = {},
+                ereaders = emptyList(),
+                queue = emptyList(),
+                onOpenBook = {},
+                onRemoveQueued = {},
+                activity =
+                    listOf(
+                        LinkLog.Entry(
+                            System.currentTimeMillis(),
+                            LinkLog.Kind.STARTED,
+                            port = 8765,
+                        )
+                    ),
+                onClearActivity = {},
+                onSavePlugin = {},
             )
         }
     }

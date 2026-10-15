@@ -7,6 +7,8 @@ import dev.sadking.folio.data.LibraryDao
 import dev.sadking.folio.data.Transfer
 import dev.sadking.folio.data.decode
 import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
@@ -17,6 +19,9 @@ import org.json.JSONObject
  */
 class LinkQueue(context: Context) {
     private val prefs = context.getSharedPreferences("link-queue", Context.MODE_PRIVATE)
+    private val _ids = MutableStateFlow(ids())
+    /** The queued book ids, oldest first, for the Device tab. */
+    val queued: StateFlow<List<String>> = _ids
 
     @Synchronized
     fun add(ids: Collection<String>) {
@@ -24,6 +29,13 @@ class LinkQueue(context: Context) {
         val now = System.currentTimeMillis()
         ids.forEach { queued.putIfAbsent(it, now) }
         save(queued)
+    }
+
+    /** Takes a book out of the queue; e-readers that already have it keep it. */
+    @Synchronized
+    fun remove(id: String) {
+        val queued = load()
+        if (queued.remove(id) != null) save(queued)
     }
 
     @Synchronized
@@ -41,8 +53,10 @@ class LinkQueue(context: Context) {
             }
             .getOrDefault(mutableMapOf())
 
-    private fun save(value: Map<String, Long>) =
+    private fun save(value: Map<String, Long>) {
         prefs.edit().putString("books", JSONObject(value).toString()).apply()
+        _ids.value = value.entries.sortedBy { it.value }.map { it.key }
+    }
 }
 
 /** Folio's library as Folio Link serves it. Called from the server's own threads. */

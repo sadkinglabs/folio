@@ -92,6 +92,37 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     val activeSyncTasks =
         dao.activeTasks().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** KOReader document digests by revision hash, so each file is sampled once. */
+    private val digests = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** E-readers that reached the phone through Folio Link, newest first. Read-only. */
+    val linkEreaders: StateFlow<List<EreaderSeen>> =
+        combine(dao.kosyncFlow(), dao.transferFlow(), dao.books()) { reports, transfers, books ->
+                ereadersSeen(reports, transfers, books, app.link.settings.phoneDeviceId) { book ->
+                    digests[book.currentHash]
+                        ?: File(book.currentPath)
+                            .takeIf { book.currentPath.isNotBlank() && it.isFile }
+                            ?.let {
+                                runCatching { dev.sadking.folio.reader.koreaderDigest(it) }
+                                    .getOrNull()
+                            }
+                            ?.also { digests[book.currentHash] = it }
+                }
+            }
+            .flowOn(Dispatchers.IO)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Books waiting for Folio Link e-readers, oldest first. Read-only. */
+    val linkQueue: StateFlow<List<QueuedBook>> =
+        combine(app.linkQueue.queued, dao.books(), dao.transferFlow()) { ids, books, transfers ->
+                queuedBooks(ids, books, transfers)
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Takes a book out of the Folio Link queue. Nothing on any e-reader changes. */
+    fun removeFromLinkQueue(id: String) = app.linkQueue.remove(id)
+
     val syncJobs = dao.jobs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val observedHost = MutableStateFlow<ObservedHostKey?>(null)
     val probeStatus = MutableStateFlow(Operation())

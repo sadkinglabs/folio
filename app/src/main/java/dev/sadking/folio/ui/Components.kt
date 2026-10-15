@@ -208,25 +208,40 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                 androidx.compose.ui.platform.LocalDensity provides
                     Density(density.density, fontScale = 1f)
             ) {
-                Column(
-                    Modifier.fillMaxSize().padding(start = 14.dp, top = 14.dp, end = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    HorizontalDivider(
-                        Modifier.width(24.dp),
-                        thickness = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        book.title,
-                        style =
-                            (if (book.title.length > 28) MaterialTheme.typography.titleSmall
-                                else MaterialTheme.typography.titleMedium)
-                                .copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Serif),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 5,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                BoxWithConstraints {
+                    // A queue-sized cover (72 dp) takes a smaller title and tighter margins.
+                    val small = maxWidth < 90.dp
+                    Column(
+                        Modifier.fillMaxSize()
+                            .padding(
+                                start = if (small) 10.dp else 14.dp,
+                                top = if (small) 10.dp else 14.dp,
+                                end = if (small) 6.dp else 10.dp,
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(if (small) 6.dp else 10.dp),
+                    ) {
+                        HorizontalDivider(
+                            Modifier.width(if (small) 16.dp else 24.dp),
+                            thickness = 2.dp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        )
+                        Text(
+                            book.title,
+                            style =
+                                (when {
+                                        small -> MaterialTheme.typography.labelMedium
+                                        book.title.length > 28 ->
+                                            MaterialTheme.typography.titleSmall
+                                        else -> MaterialTheme.typography.titleMedium
+                                    })
+                                    .copy(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                                    ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 5,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

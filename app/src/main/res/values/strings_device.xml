@@ -1,11 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Device tab (KindleScreen.kt) -->
-    <string name="device_title">Your e-reader</string>
-    <string name="device_subtitle_not_set_up">Connect once, then send books over Wi-Fi.</string>
-    <string name="device_subtitle_checked">Last checked %1$s</string>
-    <string name="device_subtitle_not_checked">Set up · not checked yet</string>
-    <string name="device_sync_scope_default">Sync includes every book on your phone.</string>
+    <!-- Device tab (DeviceScreen.kt) -->
+    <string name="device_title">Device</string>
+
+    <!-- Device tab: the Folio Link card -->
+    <string name="device_link_on">On</string>
+    <string name="device_link_off">Off</string>
+    <string name="device_link_waiting_network">Waiting for Wi-Fi</string>
+    <string name="device_link_waiting_ereader">Waiting for your e-reader</string>
+    <string name="device_link_off_line">Turn on Folio Link to sync and send.</string>
+    <string name="device_copy_address">Copy address</string>
+    <string name="device_open_wifi">Open Wi-Fi settings</string>
+    <string name="device_sign_in">Sign-in details</string>
+
+    <!-- Device tab: e-readers seen -->
+    <string name="device_ereaders">E-readers</string>
+    <string name="device_ereader_default">E-reader</string>
+    <string name="device_ereader_seen">Seen %1$s</string>
+    <string name="device_ereader_seen_position">Seen %1$s · %2$d%% of %3$s</string>
+
+    <!-- Device tab: first time, before any e-reader has connected -->
+    <string name="device_setup_title">Set up your e-reader</string>
+    <string name="device_setup_step1">Save the plugin and unzip it into KOReader\'s plugins folder.</string>
+    <string name="device_setup_step2">In KOReader: Tools → Progress sync → Custom sync server. Enter the address, then log in.</string>
+    <string name="device_setup_step3">Keep both on the same Wi-Fi. Books you send download on their own.</string>
+
+    <!-- Device tab: the send queue -->
+    <string name="device_queue">Send queue</string>
+    <string name="device_queue_empty">Nothing waiting. Send a book from its page.</string>
+    <string name="device_queue_waiting">Waiting</string>
+    <string name="device_queue_sent">Sent</string>
+    <string name="device_queue_remove">Remove %1$s from the queue</string>
+
+    <!-- Device tab: activity -->
+    <string name="device_activity">Activity</string>
+    <string name="device_activity_all">All activity</string>
+
+    <!-- Device tab: the e-reader paired over SSH (legacy) -->
+    <string name="device_legacy">Legacy</string>
+    <string name="device_legacy_ssh">Over SSH</string>
+    <string name="device_send_missing">Send missing books</string>
 
     <!-- Device tab: sending in progress -->
     <string name="device_job_complete">Books sent</string>
@@ -34,56 +68,6 @@
     <string name="device_state_cancelled">Cancelled</string>
     <string name="device_state_cancelling">Cancelling</string>
     <string name="device_state_interrupted">Interrupted</string>
-
-    <!-- Device tab: connection and actions -->
-    <string name="device_set_up">Set up your e-reader</string>
-    <string name="device_set_up_summary">Phone hotspot or shared Wi-Fi · no computer needed</string>
-    <string name="device_connection_settings">Connection settings</string>
-    <string name="device_set_up_hint">Start the SSH server on your e-reader and connect both devices to the same Wi-Fi. Then check the fingerprint shown here to pair.</string>
-    <string name="device_send_missing">Send missing books</string>
-    <string name="device_check">Check your e-reader</string>
-    <string name="device_no_books">Add an EPUB to your library to send it to your e-reader.</string>
-    <string name="device_browse_library">Browse library</string>
-
-    <!-- Device tab: preview before sending -->
-    <string name="device_preview_title">Before you send</string>
-    <string name="device_preview_counts">To send: %1$d · Already there: %2$d · Different copy: %3$d</string>
-    <plurals name="device_preview_send">
-        <item quantity="one">Send %1$d book</item>
-        <item quantity="other">Send %1$d books</item>
-    </plurals>
-    <string name="device_preview_note">Folio only adds books. If your e-reader has a different copy, it is left as it is. Nothing is deleted, including reading data.</string>
-
-    <!-- Device tab: KOReader collections -->
-    <string name="device_collections_title">KOReader collections</string>
-    <string name="device_collections_summary">Optional · add your lists to KOReader, after you review them</string>
-    <string name="device_collections_send">Send list additions</string>
-    <string name="device_collections_hint">Send the books first, then review the additions in the Folio plugin on your e-reader. Books already in a collection stay there.</string>
-
-    <!-- Device tab: books on the e-reader -->
-    <string name="device_inventory_title">On your e-reader</string>
-    <plurals name="device_inventory_summary_dated">
-        <item quantity="one">%1$d EPUB · checked %2$s</item>
-        <item quantity="other">%1$d EPUBs · checked %2$s</item>
-    </plurals>
-    <plurals name="device_inventory_summary_session">
-        <item quantity="one">%1$d EPUB · checked this session</item>
-        <item quantity="other">%1$d EPUBs · checked this session</item>
-    </plurals>
-    <string name="device_inventory_book_line">%1$s · %2$d KB</string>
-    <string name="device_inventory_file_line">%1$d KB · %2$s</string>
-    <string name="device_inventory_more">Showing the first 100 of %1$d EPUBs</string>
-
-    <!-- Device tab: history -->
-    <string name="device_history_title">Recent transfers</string>
-    <string name="device_history_empty_summary">Nothing sent yet</string>
-    <plurals name="device_history_summary">
-        <item quantity="one">%1$d entry</item>
-        <item quantity="other">%1$d entries</item>
-    </plurals>
-    <string name="device_history_empty">Books you send will appear here.</string>
-    <string name="device_history_unknown_book">Sent book</string>
-    <string name="device_history_line">%1$s · %2$s</string>
 
     <!-- Lists (CollectionsScreen.kt) -->
     <string name="lists_title">Lists</string>

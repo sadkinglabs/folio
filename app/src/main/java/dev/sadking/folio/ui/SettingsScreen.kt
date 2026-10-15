@@ -216,7 +216,6 @@ internal fun SettingsScreen(
                 enabled = !busy,
                 onClick = onHardcover,
             )
-            HardcoverAutomaticRow()
             FolioLinkSection()
             Text(
                 stringResource(R.string.settings_device_title),

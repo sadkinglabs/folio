@@ -52,6 +52,10 @@ class ScreenshotTest {
 
     @Test fun device() = shoot("device") { KindlePreview() }
 
+    @Test fun deviceOff() = shoot("device-off") { DeviceOffPreview() }
+
+    @Test fun deviceFirstRun() = shoot("device-first-run") { DeviceFirstRunPreview() }
+
     @Test fun pairing() = shoot("pairing") { PairingPreview() }
 
     @Test fun bar() = shoot("bar") { BarPreview() }

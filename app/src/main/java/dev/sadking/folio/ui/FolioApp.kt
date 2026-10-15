@@ -143,10 +143,8 @@ fun FolioApp(model: LibraryViewModel) {
                 }
         }
 
-        val plan by devices.plan.collectAsStateWithLifecycle()
-        val history by model.history.collectAsStateWithLifecycle()
-        val inventory by devices.inventory.collectAsStateWithLifecycle()
-        val inventoryCheckedAt by devices.inventoryCheckedAt.collectAsStateWithLifecycle()
+        val linkEreaders by devices.linkEreaders.collectAsStateWithLifecycle()
+        val linkQueue by devices.linkQueue.collectAsStateWithLifecycle()
         val device by devices.device.collectAsStateWithLifecycle()
         val observedHost by devices.observedHost.collectAsStateWithLifecycle()
         val probeStatus by devices.probeStatus.collectAsStateWithLifecycle()
@@ -867,68 +865,27 @@ fun FolioApp(model: LibraryViewModel) {
                                                             },
                                                         )
                                                     FolioNav.DEVICE ->
-                                                        KindleScreen(
-                                                            device,
-                                                            inventory,
-                                                            plan,
-                                                            history,
-                                                            deviceBusy,
-                                                            inventoryCheckedAt = inventoryCheckedAt,
-                                                            localBookCount = books.size,
-                                                            onLibrary = {
-                                                                nav.root(FolioNav.LIBRARY)
-                                                            },
-                                                            onConfigure = { showConnection = true },
-                                                            onPreview = { devices.preview() },
-                                                            onSync = { requestSync("preview") },
-                                                            onSyncMissing = {
-                                                                requestSync("missing")
-                                                            },
-                                                            onCollections =
-                                                                devices::sendCollections,
-                                                            syncJob = syncJob,
-                                                            onCancelJob = devices::cancelSync,
-                                                            onResumeJob = devices::resumeSync,
-                                                            bookTitles =
-                                                                books.associate {
-                                                                    it.id to it.title
-                                                                },
-                                                            remoteBooks =
-                                                                transfers
-                                                                    .filter {
-                                                                        it.deviceId == device.id
-                                                                    }
-                                                                    .mapNotNull { t ->
-                                                                        books
-                                                                            .firstOrNull {
-                                                                                it.id == t.bookId
-                                                                            }
-                                                                            ?.let {
-                                                                                t.remotePath to it
-                                                                            }
-                                                                    }
-                                                                    .toMap(),
+                                                        DeviceTab(
+                                                            link =
+                                                                (context.applicationContext
+                                                                        as FolioApplication)
+                                                                    .link,
+                                                            ereaders = linkEreaders,
+                                                            queue = linkQueue,
                                                             onOpenBook = {
                                                                 nav.open(Route.Book(it.id))
                                                             },
-                                                            syncScope =
-                                                                if (shelves.any { it.syncEnabled })
-                                                                    stringResource(
-                                                                        R.string
-                                                                            .shell_sync_scope_lists,
-                                                                        shelves
-                                                                            .filter {
-                                                                                it.syncEnabled
-                                                                            }
-                                                                            .joinToString {
-                                                                                it.name
-                                                                            },
-                                                                    )
-                                                                else
-                                                                    stringResource(
-                                                                        R.string
-                                                                            .shell_sync_scope_all
-                                                                    ),
+                                                            onRemoveQueued = {
+                                                                devices.removeFromLinkQueue(it.id)
+                                                            },
+                                                            sshHost = device.host,
+                                                            onSendOverSsh = {
+                                                                requestSync("missing")
+                                                            },
+                                                            syncJob = syncJob,
+                                                            onCancelJob = devices::cancelSync,
+                                                            onResumeJob = devices::resumeSync,
+                                                            busy = deviceBusy,
                                                         )
                                                     FolioNav.SETTINGS ->
                                                         SettingsScreen(

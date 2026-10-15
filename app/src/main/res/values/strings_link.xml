@@ -2,23 +2,16 @@
 <resources>
     <!-- Folio Link: settings -->
     <string name="link_title">Folio Link</string>
-    <string name="link_summary">Let KOReader on your e-reader sync your reading position with this phone, over Wi-Fi or your phone\'s hotspot.</string>
     <string name="link_starting">Starting…</string>
-    <string name="link_no_network">Connect this phone to Wi-Fi or turn on its hotspot. Your e-reader needs to be on the same network.</string>
-    <string name="link_address_label">Server address for KOReader</string>
     <string name="link_username">Username: %1$s</string>
     <string name="link_password">Password: %1$s</string>
     <string name="link_show_password">Show password</string>
     <string name="link_hide_password">Hide password</string>
     <string name="link_new_password">New password</string>
-    <string name="link_steps">In KOReader, open a book, then go to Tools → Progress sync → Custom sync server and enter the address above. Then choose Register or Login and use this username and password.</string>
-    <string name="link_not_heard">Your e-reader hasn\'t connected yet.</string>
-    <string name="link_last_heard">Last heard from your e-reader %1$s.</string>
+    <string name="link_steps">In KOReader: Tools → Progress sync → Custom sync server. Enter the address, then Register or Login with these details.</string>
     <string name="link_keep_awake">Keep the phone awake</string>
     <string name="link_keep_awake_hint">Try this if your e-reader can\'t reach the phone while its screen is off. It uses more battery.</string>
-    <string name="link_show_log">Show connection log</string>
-    <string name="link_hide_log">Hide connection log</string>
-    <string name="link_log_empty">Nothing yet.</string>
+    <string name="link_log_empty">Nothing yet</string>
     <string name="link_log_clear">Clear log</string>
     <string name="link_log_line">%1$s · %2$s</string>
     <string name="link_log_started">Started on port %1$d</string>
@@ -44,13 +37,12 @@
 
     <!-- Hardcover: automatic updates -->
     <string name="hardcover_automatic">Update Hardcover automatically</string>
-    <string name="hardcover_automatic_hint">Sends your reading position from this phone and from your e-reader about a minute after you stop reading. Only moves forward, and only for books already marked Currently Reading on Hardcover.</string>
 
     <!-- Folio Link: installing the KOReader plugin over USB -->
-    <string name="link_plugin_title">The Folio plugin for KOReader</string>
-    <string name="link_plugin_hint">It fetches the books you send and finds this phone on the network. Save it, connect the e-reader by USB, unzip it into KOReader\'s plugins folder, then restart KOReader.</string>
+    <string name="link_plugin_title">KOReader plugin</string>
+    <string name="link_plugin_hint">Save it, then unzip it into KOReader\'s plugins folder over USB.</string>
     <string name="link_plugin_save">Save the plugin</string>
-    <string name="link_plugin_saved">Saved. Unzip it on the e-reader into the folder below.</string>
+    <string name="link_plugin_saved">Saved. Unzip it on the e-reader into:</string>
     <string name="link_plugin_failed">Couldn\'t save the plugin. Try another folder.</string>
     <string name="link_plugin_folders">Kindle: koreader/plugins\nKobo: .adds/koreader/plugins\nPocketBook: applications/koreader/plugins\nAndroid e-reader: koreader/plugins</string>
 

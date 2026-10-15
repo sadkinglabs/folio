@@ -120,6 +120,9 @@ class LargeFontUiTest {
             }
             compose.onNode(hasText("Device") and hasClickAction()).performClick()
             compose.waitForIdle()
+            // The Link card and its switch stay on screen at 200%.
+            compose.onNodeWithTag(DEVICE_LINK_CARD_TAG).assertIsDisplayed()
+            compose.onNodeWithTag(DEVICE_LINK_SWITCH_TAG).assertIsDisplayed()
             QaScreenshots.capture("device-font200")
         }
     }

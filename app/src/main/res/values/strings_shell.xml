@@ -24,8 +24,6 @@
     <string name="shell_companion_install">Install</string>
 
     <!-- Shell: what a sync sends -->
-    <string name="shell_sync_scope_lists">Sync includes: %1$s. Books already on your e-reader are never removed.</string>
-    <string name="shell_sync_scope_all">Sync includes every book on this phone. To send fewer, choose which lists to include in sync.</string>
 
     <!-- Shell: unsaved edits -->
     <string name="shell_discard_title">Discard unsaved changes?</string>
