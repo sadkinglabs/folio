@@ -53,6 +53,7 @@ import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.readium.r2.navigator.Decoration
@@ -389,9 +390,20 @@ class ReaderActivity : FragmentActivity() {
                 navigationError = getString(R.string.reader_kindle_chapter_failed)
                 return false
             }
-            // evaluateJavascript waits for Readium's page to load; no delay guesses.
+            // Wait until Readium shows the chapter before asking its page: a script sent while the
+            // pager is still settling can go to a page that never answers. Each try has a limit,
+            // so a slow page fails visibly instead of leaving the reader unable to save.
+            val chapter = model.spine[index]
+            withTimeoutOrNull(CHAPTER_WAIT_MS) {
+                nav.currentLocator.first { resourcePath(it.href.toString()) == chapter }
+            }
+            val call = "JSON.stringify(FolioReader.resolve(${JSONObject.quote(pointer)}));"
             val raw =
-                nav.bridge("JSON.stringify(FolioReader.resolve(${JSONObject.quote(pointer)}));")
+                withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(call) }
+                    ?: run {
+                        delay(500)
+                        withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(call) }
+                    }
             val serialized = raw?.let { JSONTokener(it).nextValue() as? String }
             val resolved = serialized?.takeIf { it != "null" }?.let { JSONObject(it) }
             if (resolved == null) {
@@ -620,6 +632,7 @@ class ReaderActivity : FragmentActivity() {
             }
             SnackbarHost(snackbar, floating)
         }
+        val naturalState by remember { KokoroModel.state(this@ReaderActivity) }.collectAsState()
         panel?.let { open ->
             ModalBottomSheet(
                 onDismissRequest = { panel = null },
@@ -635,6 +648,13 @@ class ReaderActivity : FragmentActivity() {
                             onSleep = listen::sleepIn,
                             onVoice = listen::chooseVoice,
                             onAddVoices = ::openVoiceSettings,
+                            natural =
+                                NaturalVoiceRow(
+                                    listen.naturalFits,
+                                    naturalState,
+                                    listen.natural,
+                                ),
+                            onDownload = { KokoroModel.install(this@ReaderActivity) },
                         )
                     ReaderPanel.TEXT -> TextPanel()
                     ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
@@ -768,6 +788,8 @@ class ReaderActivity : FragmentActivity() {
         private const val SAVE_DEBOUNCE_MS = 1000L
         private const val SETTLE_ATTEMPTS = 30
         private const val SETTLE_STEP_MS = 100L
+        private const val CHAPTER_WAIT_MS = 10_000L
+        private const val BRIDGE_WAIT_MS = 8_000L
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
         private const val LEGACY_ROW = "legacy-ssh"
 

@@ -26,6 +26,10 @@ readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", v
 readium-navigator-tts = { module = "org.readium.kotlin-toolkit:readium-navigator-media-tts", version.ref = "readium" }
 # The version Readium's TTS module brings; declared because the listening service uses it directly.
 media3-session = { module = "androidx.media3:media3-session", version = "1.11.0" }
+# On-device neural voice (Kokoro) for read-aloud. JitPack only; see settings.gradle.kts.
+sherpa-onnx = { module = "com.github.k2-fsa.sherpa-onnx:sherpa-onnx", version = "v1.13.8" }
+# Unpacks the downloaded voice model (.tar.bz2).
+commons-compress = { module = "org.apache.commons:commons-compress", version = "1.28.0" }
 mlkit-text = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
 json-test = { module = "org.json:json", version.ref = "json-test" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }

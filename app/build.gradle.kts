@@ -43,6 +43,8 @@ android {
         // past 130 MB. Compressed, it downloads and sideloads far faster.
         dex.useLegacyPackaging = true
         jniLibs.useLegacyPackaging = true
+        // sherpa-onnx's JNI library needs only ONNX Runtime; its C and C++ APIs are unused.
+        jniLibs.excludes += listOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
     }
 }
 
@@ -68,6 +70,8 @@ dependencies {
     implementation(libs.readium.navigator)
     implementation(libs.readium.navigator.tts)
     implementation(libs.media3.session)
+    implementation(libs.sherpa.onnx) { artifact { type = "aar" } }
+    implementation(libs.commons.compress)
     implementation(project(":core"))
     implementation(project(":transport"))
     implementation(libs.work.runtime)

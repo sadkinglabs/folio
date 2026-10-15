@@ -142,6 +142,22 @@ class ReaderUiTest {
                 compose.waitUntil(15000) { listening() || noVoice() }
                 QaScreenshots.capture("reader-listen")
                 if (listening()) {
+                    // The Listening sheet offers the natural voice for this English book.
+                    compose.onNodeWithContentDescription("Voice and sleep timer").performClick()
+                    compose.waitUntil(5000) {
+                        compose
+                            .onAllNodesWithText("Natural voice")
+                            .fetchSemanticsNodes()
+                            .isNotEmpty()
+                    }
+                    compose.onNodeWithText("Download", substring = true).assertExists()
+                    QaScreenshots.capture("reader-listen-sheet")
+                    compose
+                        .onNodeWithContentDescription("Close sheet")
+                        .performSemanticsAction(SemanticsActions.OnClick)
+                    compose.waitUntil(5000) {
+                        compose.onAllNodesWithText("Natural voice").fetchSemanticsNodes().isEmpty()
+                    }
                     compose.onNodeWithContentDescription("Stop listening").performClick()
                     compose.waitUntil(5000) { !listening() }
                 }

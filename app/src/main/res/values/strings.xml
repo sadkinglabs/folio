@@ -33,6 +33,14 @@
     <string name="listen_options">Voice and sleep timer</string>
     <string name="listen_voice">Voice</string>
     <string name="listen_voice_default">Phone default</string>
+    <string name="listen_natural">Natural voice</string>
+    <string name="listen_phone_voices">Phone voices</string>
+    <string name="listen_natural_offer">Kokoro sounds close to a person reading. It runs on your phone, with no internet once downloaded.</string>
+    <string name="listen_natural_download">Download (%1$d MB)</string>
+    <string name="listen_natural_downloading">Downloading… %1$d%%</string>
+    <string name="listen_natural_unpacking">Unpacking…</string>
+    <string name="listen_natural_failed">The download did not finish. Try again.</string>
+    <string name="listen_natural_unavailable">The natural voice could not start. Using the phone voice.</string>
     <string name="listen_voice_high">High quality</string>
     <string name="listen_voice_network">Needs internet</string>
     <string name="listen_add_voices">Add voices in Android settings</string>

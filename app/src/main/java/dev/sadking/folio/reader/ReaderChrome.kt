@@ -936,9 +936,19 @@ private fun sleepLabel(timer: SleepTimer): String =
         else -> stringResource(R.string.listen_sleep_minutes, timer.minutes)
     }
 
+/** What the Listening sheet shows about the natural voice. */
+internal class NaturalVoiceRow(
+    /** The book is in English, so Kokoro can read it. */
+    val fits: Boolean,
+    val state: NaturalVoice?,
+    /** Kokoro is the voice speaking now. */
+    val speaking: Boolean,
+)
+
 /**
- * Listening options: the sleep timer and the voice. Only voices for the book's language are listed;
- * more can be added in Android's text-to-speech settings through [onAddVoices].
+ * Listening options: the sleep timer, the natural voice (Kokoro: download, then its voices) and the
+ * phone's voices for the book's language. More phone voices can be added in Android's
+ * text-to-speech settings through [onAddVoices].
  */
 @Composable
 internal fun ListenOptionsSheet(
@@ -948,6 +958,8 @@ internal fun ListenOptionsSheet(
     onSleep: (SleepTimer) -> Unit,
     onVoice: (String?) -> Unit,
     onAddVoices: () -> Unit,
+    natural: NaturalVoiceRow = NaturalVoiceRow(fits = false, state = null, speaking = false),
+    onDownload: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -971,13 +983,26 @@ internal fun ListenOptionsSheet(
                 )
             }
         }
+        if (natural.fits) {
+            Spacer(Modifier.height(FolioSpace.small))
+            Text(
+                stringResource(R.string.listen_natural),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            NaturalVoiceSection(natural.state, voice, onVoice, onDownload)
+        }
         Spacer(Modifier.height(FolioSpace.small))
-        Text(stringResource(R.string.listen_voice), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(
+                if (natural.fits) R.string.listen_phone_voices else R.string.listen_voice
+            ),
+            style = MaterialTheme.typography.titleMedium,
+        )
         Column(Modifier.selectableGroup()) {
             VoiceRow(
                 stringResource(R.string.listen_voice_default),
                 null,
-                selected = voice == null,
+                selected = !natural.speaking && voice == null,
                 onClick = { onVoice(null) },
             )
             voices.forEachIndexed { index, it ->
@@ -999,6 +1024,69 @@ internal fun ListenOptionsSheet(
             }
         }
         TextButton(onClick = onAddVoices) { Text(stringResource(R.string.listen_add_voices)) }
+    }
+}
+
+/** The natural voice: an offer to download it, its progress, or its voices once it is here. */
+@Composable
+private fun NaturalVoiceSection(
+    state: NaturalVoice?,
+    voice: String?,
+    onVoice: (String?) -> Unit,
+    onDownload: () -> Unit,
+) {
+    when (state) {
+        NaturalVoice.Ready ->
+            Column(Modifier.selectableGroup()) {
+                NATURAL_VOICES.forEach {
+                    VoiceRow(
+                        it.name.orEmpty(),
+                        it.locale.getDisplayName(it.locale),
+                        selected = voice == it.id,
+                        onClick = { onVoice(it.id) },
+                    )
+                }
+            }
+        is NaturalVoice.Downloading -> {
+            LinearProgressIndicator(
+                progress = { state.fraction },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(R.string.listen_natural_downloading, (state.fraction * 100).toInt()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        NaturalVoice.Unpacking -> {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(
+                stringResource(R.string.listen_natural_unpacking),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        else -> {
+            Text(
+                stringResource(R.string.listen_natural_offer),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state == NaturalVoice.Failed)
+                Text(
+                    stringResource(R.string.listen_natural_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            FilledTonalButton(onClick = onDownload) {
+                Text(
+                    stringResource(
+                        R.string.listen_natural_download,
+                        (KokoroModel.DOWNLOAD_BYTES / 1_000_000).toInt(),
+                    )
+                )
+            }
+        }
     }
 }
 

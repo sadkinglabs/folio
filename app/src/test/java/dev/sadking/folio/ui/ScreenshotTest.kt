@@ -124,5 +124,11 @@ class ScreenshotTest {
     @Test
     fun readerListenOptions() = shoot("reader-listen-options") { ReaderListenOptionsPreview() }
 
+    @Test
+    fun readerListenNatural() =
+        shoot("reader-listen-natural", tall = true) { ReaderListenNaturalPreview() }
+
+    @Test fun readerListenOffer() = shoot("reader-listen-offer") { ReaderListenOfferPreview() }
+
     @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
 }

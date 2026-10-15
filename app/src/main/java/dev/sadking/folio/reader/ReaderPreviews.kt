@@ -237,6 +237,50 @@ internal fun ReaderListenOptionsPreview() {
     }
 }
 
+@Preview(name = "Reader natural voice · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenNaturalPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ListenOptionsSheet(
+                SleepTimer.OFF,
+                emptyList(),
+                naturalVoiceId(3),
+                onSleep = {},
+                onVoice = {},
+                onAddVoices = {},
+                natural = NaturalVoiceRow(fits = true, NaturalVoice.Ready, speaking = true),
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader natural voice offer · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenOfferPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ListenOptionsSheet(
+                SleepTimer.OFF,
+                listOf(
+                    ListenVoice(
+                        "uk-1",
+                        java.util.Locale.UK,
+                        highQuality = true,
+                        needsNetwork = false,
+                    )
+                ),
+                null,
+                onSleep = {},
+                onVoice = {},
+                onAddVoices = {},
+                natural =
+                    NaturalVoiceRow(fits = true, NaturalVoice.Downloading(0.42f), speaking = false),
+            )
+        }
+    }
+}
+
 @Preview(name = "Reader failed · light", widthDp = 412, heightDp = 892)
 @Composable
 internal fun ReaderFailedPreview() {

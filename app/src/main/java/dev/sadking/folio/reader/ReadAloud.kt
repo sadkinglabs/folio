@@ -21,7 +21,6 @@ import org.readium.navigator.media.tts.TtsNavigator
 import org.readium.navigator.media.tts.TtsNavigatorFactory
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
 import org.readium.navigator.media.tts.android.AndroidTtsPreferences
-import org.readium.navigator.media.tts.android.AndroidTtsSettings
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.Language
@@ -42,7 +41,26 @@ internal data class ListenVoice(
     val locale: java.util.Locale,
     val highQuality: Boolean,
     val needsNetwork: Boolean,
+    /** A natural (Kokoro) voice's name, such as Heart; phone voices are named by language. */
+    val name: String? = null,
 )
+
+/** The ID a natural voice has in [ListenVoice.id]: `kokoro:3`. */
+internal fun naturalVoiceId(speaker: Int) = "kokoro:$speaker"
+
+internal fun naturalSpeaker(id: String?): Int? =
+    id?.removePrefix("kokoro:")?.takeIf { id.startsWith("kokoro:") }?.toIntOrNull()
+
+/** The natural voices as the sheet lists them. */
+internal val NATURAL_VOICES = KOKORO_VOICES.map {
+    ListenVoice(
+        naturalVoiceId(it.speaker),
+        it.language.locale,
+        highQuality = true,
+        needsNetwork = false,
+        name = it.name,
+    )
+}
 
 /** Voices that work offline first, then the better ones, so the top of the list is the pick. */
 internal fun sortVoices(voices: List<ListenVoice>): List<ListenVoice> =
@@ -71,30 +89,34 @@ internal fun listenSpeedLabel(speed: Double): String =
     (if (speed % 1.0 == 0.0) speed.toInt().toString() else speed.toString()) + "×"
 
 /**
- * Reads the book aloud with Readium's TTS navigator over Android's text-to-speech, so whichever
- * voice engine the phone has speaks. [utterance] is the sentence being read; the reader highlights
- * it and turns to its page, which saves the place like any page turn. [ListenService] keeps it
- * playing with the screen off and puts its controls on the lock screen.
+ * Reads the book aloud through Readium's TTS navigator. The voice is Kokoro, the natural voice,
+ * when it is downloaded and the book is in English; otherwise whichever engine the phone uses.
+ * [utterance] is the sentence being read; the reader highlights it and turns to its page, which
+ * saves the place like any page turn. [ListenService] keeps it playing with the screen off and puts
+ * its controls on the lock screen.
  */
 internal class ReadAloud(
     private val app: Application,
     private val scope: CoroutineScope,
     private val settings: SharedPreferences,
 ) {
-    private var navigator:
-        TtsNavigator<
-            AndroidTtsSettings,
-            AndroidTtsPreferences,
-            AndroidTtsEngine.Error,
-            AndroidTtsEngine.Voice,
-        >? =
-        null
+    private var navigator: TtsNavigator<*, *, *, *>? = null
+    /** Sends the current speed and voice to whichever engine is speaking. */
+    private var applyPreferences: () -> Unit = {}
+    private var kokoro: KokoroEngineProvider? = null
     private var watch: Job? = null
     /** Binds [ListenService] while reading, so Media3 can make it foreground when it plays. */
     private var controller: ListenableFuture<MediaController>? = null
     private var sleepJob: Job? = null
     /** With the end-of-chapter timer, the chapter that was playing when it was set. */
     private var sleepChapter: Url? = null
+    private var reading: Reading? = null
+
+    private class Reading(
+        val bookId: String,
+        val publication: Publication,
+        val onFailure: () -> Unit,
+    )
 
     var state by mutableStateOf(ListenState.OFF)
         private set
@@ -108,15 +130,28 @@ internal class ReadAloud(
     var sleep by mutableStateOf(SleepTimer.OFF)
         private set
 
-    /** The engine's voices for the book's language; empty until reading starts. */
+    /** True while Kokoro is speaking. */
+    var natural by mutableStateOf(false)
+        private set
+
+    /** True when the book can use the natural voice: Kokoro speaks English only. */
+    var naturalFits by mutableStateOf(false)
+        private set
+
+    /** The phone engine's voices for the book's language; empty while Kokoro speaks. */
     var voices by mutableStateOf<List<ListenVoice>>(emptyList())
         private set
 
-    /** The chosen voice's ID, or null for the engine's default. Remembered per language. */
+    /**
+     * The voice speaking: `kokoro:<speaker>`, a phone voice's ID, or null for the phone default.
+     */
     var voice by mutableStateOf<String?>(null)
         private set
 
     private var language: Language? = null
+
+    private val speaker: Int
+        get() = settings.getInt("kokoroSpeaker", KOKORO_DEFAULT_SPEAKER)
 
     /**
      * Starts reading at [from]. Returns false when no voice engine could be set up; [onFailure] is
@@ -130,22 +165,54 @@ internal class ReadAloud(
     ): Boolean {
         if (state != ListenState.OFF) return true
         state = ListenState.STARTING
-        val factory = TtsNavigatorFactory(app, publication)
-        val created =
-            factory
-                ?.createNavigator(
-                    object : TtsNavigator.Listener {
-                        override fun onStopRequested() = stop()
-                    },
-                    from,
-                    AndroidTtsPreferences(speed = speed),
-                )
-                ?.getOrNull()
-        if (created == null) {
+        reading = Reading(bookId, publication, onFailure)
+        val bookLanguage = publication.metadata.languages.firstOrNull()
+        naturalFits = bookLanguage == null || Language(bookLanguage).removeRegion().code == "en"
+        val wantsNatural =
+            naturalFits &&
+                KokoroModel.ready(app) &&
+                settings.getString("listenEngine", "natural") == "natural"
+        val started =
+            (wantsNatural && startNatural(publication, from)) || startPhone(publication, from)
+        if (!started) {
             state = ListenState.OFF
+            reading = null
             return false
         }
-        navigator = created
+        ListenService.current =
+            ListenService.Listening(bookId, navigator!!.asMedia3Player(), ::stop)
+        controller =
+            MediaController.Builder(
+                    app,
+                    SessionToken(app, ComponentName(app, ListenService::class.java)),
+                )
+                .buildAsync()
+        navigator?.play()
+        return true
+    }
+
+    private suspend fun startNatural(publication: Publication, from: Locator?): Boolean {
+        val provider = KokoroEngineProvider(app)
+        val created =
+            TtsNavigatorFactory(app, publication, provider, sentenceTokenizer)
+                ?.createNavigator(listener, from, kokoroPreferences())
+                ?.getOrNull() ?: return false
+        kokoro = provider
+        natural = true
+        voices = emptyList()
+        voice = naturalVoiceId(speaker)
+        applyPreferences = { created.submitPreferences(kokoroPreferences()) }
+        attach(created)
+        return true
+    }
+
+    private suspend fun startPhone(publication: Publication, from: Locator?): Boolean {
+        val created =
+            TtsNavigatorFactory(app, publication)
+                ?.createNavigator(listener, from, AndroidTtsPreferences(speed = speed))
+                ?.getOrNull() ?: return false
+        kokoro = null
+        natural = false
         val spoken = created.settings.value.language
         language = spoken
         voices =
@@ -163,11 +230,25 @@ internal class ReadAloud(
             )
         voice =
             settings.getString(voiceKey(spoken), null)?.takeIf { id -> voices.any { it.id == id } }
-        if (voice != null) created.submitPreferences(preferences())
+        applyPreferences = { created.submitPreferences(androidPreferences()) }
+        if (voice != null) applyPreferences()
+        attach(created)
+        return true
+    }
+
+    private val listener =
+        object : TtsNavigator.Listener {
+            override fun onStopRequested() = stop()
+        }
+
+    private fun attach(created: TtsNavigator<*, *, *, *>) {
+        navigator = created
+        val onFailure = reading?.onFailure ?: {}
         watch = scope.launch {
             launch {
                 created.location.collect {
                     utterance = it.utteranceLocator
+                    kokoro?.engine?.prefetchFrom(it.utteranceLocator, it.utterance)
                     val chapter = sleepChapter
                     if (sleep == SleepTimer.CHAPTER && chapter != null && it.href != chapter) {
                         created.pause()
@@ -188,15 +269,6 @@ internal class ReadAloud(
                 }
             }
         }
-        ListenService.current = ListenService.Listening(bookId, created.asMedia3Player(), ::stop)
-        controller =
-            MediaController.Builder(
-                    app,
-                    SessionToken(app, ComponentName(app, ListenService::class.java)),
-                )
-                .buildAsync()
-        created.play()
-        return true
     }
 
     fun toggle() {
@@ -219,23 +291,61 @@ internal class ReadAloud(
     fun cycleSpeed() {
         speed = nextListenSpeed(speed)
         settings.edit().putFloat("listenSpeed", speed.toFloat()).apply()
-        navigator?.submitPreferences(preferences())
+        applyPreferences()
     }
 
-    /** Picks a voice for this language, or the engine's default with null. */
+    /**
+     * Picks a voice: a natural one (`kokoro:<speaker>`), a phone voice, or null for the phone's
+     * default. Moving between Kokoro and the phone, or between American and British Kokoro voices
+     * (each has its own pronunciation dictionary), restarts at the sentence being read.
+     */
     fun chooseVoice(id: String?) {
+        val chosen = naturalSpeaker(id)
+        if (chosen != null) {
+            val restart = !natural || accent(chosen) != accent(speaker)
+            settings
+                .edit()
+                .putString("listenEngine", "natural")
+                .putInt("kokoroSpeaker", chosen)
+                .apply()
+            voice = id
+            if (restart) restartHere() else applyPreferences()
+            return
+        }
+        settings.edit().putString("listenEngine", "phone").apply()
+        if (natural) {
+            restartHere()
+            return
+        }
         val spoken = language ?: return
         voice = id
         settings
             .edit()
             .apply { if (id == null) remove(voiceKey(spoken)) else putString(voiceKey(spoken), id) }
             .apply()
-        navigator?.submitPreferences(preferences())
+        applyPreferences()
+    }
+
+    private fun accent(speaker: Int) =
+        KOKORO_VOICES.firstOrNull { it.speaker == speaker }?.language?.code
+
+    /** Stops and starts again at the sentence being read, with the voice now chosen. */
+    private fun restartHere() {
+        val current = reading ?: return
+        val at = utterance
+        val playing = state == ListenState.PLAYING
+        stop()
+        scope.launch {
+            if (start(current.bookId, current.publication, at, current.onFailure) && !playing)
+                navigator?.pause()
+        }
     }
 
     private fun voiceKey(spoken: Language) = "listenVoice:" + spoken.removeRegion().code
 
-    private fun preferences(): AndroidTtsPreferences {
+    private fun kokoroPreferences() = KokoroPreferences(speed = speed, speaker = speaker)
+
+    private fun androidPreferences(): AndroidTtsPreferences {
         val spoken = language
         val chosen = voice
         return AndroidTtsPreferences(
@@ -278,10 +388,13 @@ internal class ReadAloud(
         watch = null
         navigator?.close()
         navigator = null
+        kokoro = null
+        applyPreferences = {}
         utterance = null
         voices = emptyList()
         voice = null
         language = null
+        natural = false
         state = ListenState.OFF
     }
 }

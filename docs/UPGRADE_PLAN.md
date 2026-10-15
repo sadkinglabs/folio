@@ -389,7 +389,12 @@ Librillo reads the open book aloud with the voice engine already on the phone, h
 - **Tried on the phone (owner, 2026-10-15):** works. Volume keys turned pages while listening; they now set the volume instead.
 - **Slice 4 built:** a `mediaPlayback` Media3 service (`ListenService`) wraps Readium's player, so reading continues with the screen off and shows on the lock screen and in the notification shade. Headphone unplugging and audio focus are Readium's. A sleep timer (15, 30, 60 minutes or end of chapter) sits on the player. With the reader in the background, the spoken sentence is saved at most every 15 seconds; the page save adds the KOReader pointer when it is back on screen. Closing the book or swiping Librillo away stops reading.
 - **Not verified on a device:** the lock screen, notification and screen-off playback.
-- **Next:** slice 5 (voice choice).
+- **Slice 5 built:** a Listening sheet with the sleep timer and the phone engine's voices for the book's language.
+- **Natural voice (owner: the phone voice is not good enough):** Kokoro 1.0 (8-bit, Apache 2.0) through sherpa-onnx v1.13.8, plugged into Readium as its own `TtsEngine`, so highlighting, place saving, lock screen and sleep timer are unchanged. The model is a one-time 132 MB download from sherpa-onnx's release, checked against its size and SHA-256, unpacked to app storage (English files only). 12 English voices; Heart is the default. Non-English books, or a failure to start, use the phone voice.
+  - Look-ahead: Readium asks for one sentence at a time, so the engine walks the book with Readium's content API and the same sentence splitter and generates the next 3 sentences while one plays.
+  - Measured on the JVM here (4-core Xeon, not the phone): 5.2 s of speech in 6.2 s, about 0.83× real time; the model loads in 2.5 s. On the phone it must beat 1× or there will be pauses. Not measured on a device yet.
+  - APK grows from 45 to 70 MB (ONNX Runtime for arm64 and the emulator's x86_64).
+- **Next:** the phone test of the natural voice: speed, pauses between sentences, battery.
 
 ---
 
