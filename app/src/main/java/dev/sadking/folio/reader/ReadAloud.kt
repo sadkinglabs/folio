@@ -3,13 +3,18 @@
 package dev.sadking.folio.reader
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.readium.navigator.media.common.MediaNavigator
 import org.readium.navigator.media.tts.TtsNavigator
@@ -19,6 +24,16 @@ import org.readium.navigator.media.tts.android.AndroidTtsPreferences
 import org.readium.navigator.media.tts.android.AndroidTtsSettings
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.util.Url
+
+/** The sleep timer's choices, in menu order. */
+internal enum class SleepTimer(val minutes: Int) {
+    OFF(0),
+    MINUTES_15(15),
+    MINUTES_30(30),
+    MINUTES_60(60),
+    CHAPTER(0),
+}
 
 internal enum class ListenState {
     OFF,
@@ -40,8 +55,8 @@ internal fun listenSpeedLabel(speed: Double): String =
 /**
  * Reads the book aloud with Readium's TTS navigator over Android's text-to-speech, so whichever
  * voice engine the phone has speaks. [utterance] is the sentence being read; the reader highlights
- * it and turns to its page, which saves the place like any page turn. Plays only while the reader
- * is open: there is no background service yet.
+ * it and turns to its page, which saves the place like any page turn. [ListenService] keeps it
+ * playing with the screen off and puts its controls on the lock screen.
  */
 internal class ReadAloud(
     private val app: Application,
@@ -57,6 +72,11 @@ internal class ReadAloud(
         >? =
         null
     private var watch: Job? = null
+    /** Binds [ListenService] while reading, so Media3 can make it foreground when it plays. */
+    private var controller: ListenableFuture<MediaController>? = null
+    private var sleepJob: Job? = null
+    /** With the end-of-chapter timer, the chapter that was playing when it was set. */
+    private var sleepChapter: Url? = null
 
     var state by mutableStateOf(ListenState.OFF)
         private set
@@ -67,11 +87,19 @@ internal class ReadAloud(
     var utterance by mutableStateOf<Locator?>(null)
         private set
 
+    var sleep by mutableStateOf(SleepTimer.OFF)
+        private set
+
     /**
      * Starts reading at [from]. Returns false when no voice engine could be set up; [onFailure] is
      * also told when playback later stops on an engine error.
      */
-    suspend fun start(publication: Publication, from: Locator?, onFailure: () -> Unit): Boolean {
+    suspend fun start(
+        bookId: String,
+        publication: Publication,
+        from: Locator?,
+        onFailure: () -> Unit,
+    ): Boolean {
         if (state != ListenState.OFF) return true
         state = ListenState.STARTING
         val factory = TtsNavigatorFactory(app, publication)
@@ -91,7 +119,16 @@ internal class ReadAloud(
         }
         navigator = created
         watch = scope.launch {
-            launch { created.location.collect { utterance = it.utteranceLocator } }
+            launch {
+                created.location.collect {
+                    utterance = it.utteranceLocator
+                    val chapter = sleepChapter
+                    if (sleep == SleepTimer.CHAPTER && chapter != null && it.href != chapter) {
+                        created.pause()
+                        clearSleep()
+                    }
+                }
+            }
             created.playback.collect { playback ->
                 when (playback.state) {
                     is MediaNavigator.State.Ended -> stop()
@@ -105,6 +142,13 @@ internal class ReadAloud(
                 }
             }
         }
+        ListenService.current = ListenService.Listening(bookId, created.asMedia3Player(), ::stop)
+        controller =
+            MediaController.Builder(
+                    app,
+                    SessionToken(app, ComponentName(app, ListenService::class.java)),
+                )
+                .buildAsync()
         created.play()
         return true
     }
@@ -132,7 +176,33 @@ internal class ReadAloud(
         navigator?.submitPreferences(AndroidTtsPreferences(speed = speed))
     }
 
+    /** Pauses after [timer]'s minutes or at the end of the current chapter; OFF cancels it. */
+    fun sleepIn(timer: SleepTimer) {
+        clearSleep()
+        sleep = timer
+        when (timer) {
+            SleepTimer.OFF -> Unit
+            SleepTimer.CHAPTER -> sleepChapter = navigator?.location?.value?.href
+            else -> sleepJob = scope.launch {
+                    delay(timer.minutes * 60_000L)
+                    pause()
+                    sleep = SleepTimer.OFF
+                }
+        }
+    }
+
+    private fun clearSleep() {
+        sleepJob?.cancel()
+        sleepJob = null
+        sleepChapter = null
+        sleep = SleepTimer.OFF
+    }
+
     fun stop() {
+        clearSleep()
+        controller?.let { MediaController.releaseFuture(it) }
+        controller = null
+        ListenService.end()
         watch?.cancel()
         watch = null
         navigator?.close()

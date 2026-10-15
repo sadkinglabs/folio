@@ -11,10 +11,16 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Read-aloud keeps speaking with the screen off. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:name=".FolioApplication" android:enableOnBackInvokedCallback="true" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Folio" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <service android:name=".sync.SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
         <receiver android:name=".sync.CancelSyncReceiver" android:exported="false" />
         <service android:name=".link.FolioLinkService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+        <!-- Exported so the lock screen, notification and headphones can control read-aloud. -->
+        <service android:name=".reader.ListenService" android:exported="true" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+        </service>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.photos" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/photo_paths" /></provider>
         <activity android:name=".reader.ReaderActivity" android:exported="false" android:theme="@style/Theme.Folio.Reader" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">

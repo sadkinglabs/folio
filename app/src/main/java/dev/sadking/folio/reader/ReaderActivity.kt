@@ -41,6 +41,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -104,12 +105,6 @@ class ReaderActivity : FragmentActivity() {
         super.onPause()
     }
 
-    override fun onStop() {
-        // No background playback yet: leaving the reader pauses it.
-        if (!isChangingConfigurations) model.listen.pause()
-        super.onStop()
-    }
-
     /** Reads aloud from the first sentence on screen. */
     private fun startListening() {
         val nav = navigator ?: return
@@ -118,7 +113,8 @@ class ReaderActivity : FragmentActivity() {
         lifecycleScope.launch {
             val from = nav.firstVisibleElementLocator() ?: nav.currentLocator.value
             val failed = getString(R.string.listen_failed)
-            if (!model.listen.start(publication, from) { navigationError = failed })
+            val bookId = model.book?.id ?: return@launch
+            if (!model.listen.start(bookId, publication, from) { navigationError = failed })
                 navigationError = getString(R.string.listen_no_voice)
         }
     }
@@ -223,6 +219,11 @@ class ReaderActivity : FragmentActivity() {
                 .collectLatest { spoken ->
                     if (spoken == null && !highlighted) return@collectLatest
                     highlighted = spoken != null
+                    // With the screen off the page may not follow; save the sentence itself.
+                    if (
+                        spoken != null && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                    )
+                        model.listened(spoken)
                     fragment.applyDecorations(
                         listOfNotNull(
                             spoken?.let {
@@ -582,6 +583,8 @@ class ReaderActivity : FragmentActivity() {
                     onNext = listen::next,
                     onSpeed = listen::cycleSpeed,
                     onStop = listen::stop,
+                    sleep = listen.sleep,
+                    onSleep = listen::sleepIn,
                 )
             model.linkOffer?.let { offer ->
                 LinkOfferCard(
@@ -743,7 +746,7 @@ class ReaderActivity : FragmentActivity() {
     }
 
     companion object {
-        private const val BOOK_ID = "book_id"
+        internal const val BOOK_ID = "book_id"
         private const val SAVE_DEBOUNCE_MS = 1000L
         private const val SETTLE_ATTEMPTS = 30
         private const val SETTLE_STEP_MS = 100L

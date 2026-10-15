@@ -207,6 +207,8 @@ internal fun ReaderListenPreview() {
                 onNext = {},
                 onSpeed = {},
                 onStop = {},
+                sleep = SleepTimer.MINUTES_30,
+                onSleep = {},
             )
         }
     }

@@ -386,8 +386,10 @@ Librillo reads the open book aloud with the voice engine already on the phone, h
 
 **M7 status (2026-10-15):** first simple version built; the speed spike is skipped for now.
 - **Built:** a Listen button in the reader bar starts reading from the top of the screen with the phone's default voice engine. A floating player has speed (1×, 1.25×, 1.5×, 2×, 0.75×, remembered), previous and next sentence, play/pause and stop. The sentence being read is highlighted and its page follows, which saves the place and publishes it to Librillo Link through the usual page save.
-- **Simplified:** playback pauses when you leave the reader or the screen turns off (no background service or lock-screen controls yet). No voice picker: Android's default engine and voice are used.
-- **Next:** slices 4 and 5 (background, lock screen, sleep timer, voice choice), after you have tried it.
+- **Tried on the phone (owner, 2026-10-15):** works. Volume keys turned pages while listening; they now set the volume instead.
+- **Slice 4 built:** a `mediaPlayback` Media3 service (`ListenService`) wraps Readium's player, so reading continues with the screen off and shows on the lock screen and in the notification shade. Headphone unplugging and audio focus are Readium's. A sleep timer (15, 30, 60 minutes or end of chapter) sits on the player. With the reader in the background, the spoken sentence is saved at most every 15 seconds; the page save adds the KOReader pointer when it is back on screen. Closing the book or swiping Librillo away stops reading.
+- **Not verified on a device:** the lock screen, notification and screen-off playback.
+- **Next:** slice 5 (voice choice).
 
 ---
 

@@ -33,6 +33,8 @@ import org.readium.r2.shared.util.toUrl
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 
+private const val LISTEN_SAVE_MS = 15_000L
+
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as FolioApplication
     private val dao = app.database.library()
@@ -434,6 +436,29 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             reports
                 .filter { it.deviceId != phone && it.progress.startsWith("/") }
                 .sortedByDescending { it.timestamp }
+        }
+    }
+
+    private var listenedAt = 0L
+
+    /**
+     * Saves the sentence being read while the reader is in the background, at most every
+     * [LISTEN_SAVE_MS], so a long listen with the screen off keeps its place even if the process
+     * ends. It has no KOReader pointer; the page save adds one when the reader is back on screen.
+     */
+    fun listened(locator: Locator) {
+        lastLocation = locator
+        val now = System.currentTimeMillis()
+        if (now - listenedAt < LISTEN_SAVE_MS) return
+        listenedAt = now
+        viewModelScope.launch {
+            try {
+                save(locator)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                // The next sentence or the page save tries again.
+            }
         }
     }
 

@@ -24,6 +24,8 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -873,6 +875,8 @@ internal fun ListenBar(
     onNext: () -> Unit,
     onSpeed: () -> Unit,
     onStop: () -> Unit,
+    sleep: SleepTimer = SleepTimer.OFF,
+    onSleep: (SleepTimer) -> Unit = {},
 ) {
     Surface(
         modifier.fillMaxWidth().then(lift(FolioSpace.panelShape)).testTag(READER_LISTEN_BAR_TAG),
@@ -907,8 +911,47 @@ internal fun ListenBar(
             IconButton(onClick = onNext, enabled = !starting) {
                 Icon(Icons.Outlined.SkipNext, stringResource(R.string.listen_next))
             }
+            SleepButton(sleep, onSleep)
             IconButton(onClick = onStop) {
                 Icon(Icons.Outlined.Close, stringResource(R.string.listen_stop))
+            }
+        }
+    }
+}
+
+@Composable
+private fun sleepLabel(timer: SleepTimer): String =
+    when (timer) {
+        SleepTimer.OFF -> stringResource(R.string.listen_sleep_off)
+        SleepTimer.CHAPTER -> stringResource(R.string.listen_sleep_chapter)
+        else -> stringResource(R.string.listen_sleep_minutes, timer.minutes)
+    }
+
+/** The moon: a menu of sleep timers. It fills in while one is set. */
+@Composable
+private fun SleepButton(sleep: SleepTimer, onSleep: (SleepTimer) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val name =
+        if (sleep == SleepTimer.OFF) stringResource(R.string.listen_sleep)
+        else stringResource(R.string.listen_sleep_set, sleepLabel(sleep))
+    Box {
+        IconButton(onClick = { open = true }) {
+            if (sleep == SleepTimer.OFF) Icon(Icons.Outlined.Bedtime, name)
+            else Icon(Icons.Filled.Bedtime, name, tint = MaterialTheme.colorScheme.primary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            SleepTimer.entries.forEach { timer ->
+                DropdownMenuItem(
+                    text = { Text(sleepLabel(timer)) },
+                    onClick = {
+                        open = false
+                        onSleep(timer)
+                    },
+                    trailingIcon =
+                        if (timer == sleep) {
+                            { Icon(Icons.Outlined.Check, null) }
+                        } else null,
+                )
             }
         }
     }
