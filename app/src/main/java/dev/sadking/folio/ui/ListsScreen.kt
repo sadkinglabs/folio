@@ -342,7 +342,9 @@ internal fun ListDetailScreen(
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     val shelf = card.shelf
-    Column(Modifier.fillMaxSize().testTag(LIST_DETAIL_TAG)) {
+    // The list's page header: Back, the page actions (view, Send, Edit) and the banner. The view
+    // toggle comes from the grid, which owns the layout choice; an empty list has none.
+    val pageHeader: @Composable (viewToggle: (@Composable () -> Unit)?) -> Unit = { viewToggle ->
         Row(
             Modifier.fillMaxWidth().padding(horizontal = FolioSpace.small, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -351,6 +353,7 @@ internal fun ListDetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.library_back))
             }
             Spacer(Modifier.weight(1f))
+            viewToggle?.invoke()
             if (shelf != null && onSend != null)
                 IconButton(onClick = { onSend(shelf) }, enabled = !busy && card.count > 0) {
                     Icon(Icons.Outlined.TabletAndroid, stringResource(R.string.send_list))
@@ -414,7 +417,10 @@ internal fun ListDetailScreen(
                 }
             }
         }
-        if (card.books.isEmpty())
+    }
+    Column(Modifier.fillMaxSize().testTag(LIST_DETAIL_TAG)) {
+        if (card.books.isEmpty()) {
+            pageHeader(null)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 EmptyState(
                     stringResource(R.string.rd_list_empty_title),
@@ -426,7 +432,7 @@ internal fun ListDetailScreen(
                     illustration = FolioIllustration.Books,
                 )
             }
-        else
+        } else
             LibraryScreen(
                 card.books,
                 selection,
@@ -434,7 +440,7 @@ internal fun ListDetailScreen(
                 onOpen,
                 onSelect = onSelect,
                 filterName = card.name,
-                header = {},
+                header = { toggle -> pageHeader(toggle) },
                 busy = busy,
                 signals = signals,
                 fileIds = fileIds,

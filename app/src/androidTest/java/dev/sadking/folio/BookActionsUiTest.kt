@@ -69,7 +69,11 @@ class BookActionsUiTest {
                 LibraryScreen(listOf(book), emptySet(), onOpen = {}, onSelect = { selection = it })
             }
         }
-        compose.onNodeWithContentDescription("Show list").performClick()
+        // One icon shows the layout it switches to; the choice persists across tests.
+        if (
+            compose.onAllNodesWithContentDescription("Show list").fetchSemanticsNodes().isNotEmpty()
+        )
+            compose.onNodeWithContentDescription("Show list").performClick()
         cover().performTouchInput { longClick() }
         compose.runOnIdle { assertEquals(book.id, selection) }
     }

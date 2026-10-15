@@ -393,7 +393,11 @@ class ProductJourneyTest {
         tab("Library")
         compose.onNodeWithTag(LIBRARY_TAB_LIBRARY_TAG).performClick()
         capture("library-dark")
-        compose.onNodeWithContentDescription("Show list").performClick()
+        // One icon shows the layout it switches to; the choice persists across tests.
+        if (
+            compose.onAllNodesWithContentDescription("Show list").fetchSemanticsNodes().isNotEmpty()
+        )
+            compose.onNodeWithContentDescription("Show list").performClick()
         capture("library-list-dark")
         // The layout is remembered across launches; leave the grid for the tests that follow.
         compose.onNodeWithContentDescription("Show grid").performClick()

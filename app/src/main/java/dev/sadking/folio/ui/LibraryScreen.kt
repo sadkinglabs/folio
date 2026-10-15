@@ -52,6 +52,7 @@ internal const val LIBRARY_SHELF_TAG = "reading-shelf"
 internal const val LIBRARY_TAB_LIBRARY_TAG = "library-tab-library"
 internal const val LIBRARY_TAB_WANTED_TAG = "library-tab-wanted"
 internal const val LIBRARY_FILTER_TAG = "library-filter"
+internal const val LIBRARY_VIEW_TAG = "library-view"
 internal const val LIBRARY_SEARCH_TAG = "library-search"
 
 /**
@@ -82,7 +83,8 @@ fun LibraryScreen(
     requestedTab: LibraryTab? = null,
     onRequestHandled: () -> Unit = {},
     /** Replaces the title row (a list detail draws its own banner above the grid). */
-    header: (@Composable () -> Unit)? = null,
+    // A custom page header (a list's page) gets the view toggle to place among its actions.
+    header: (@Composable (viewToggle: @Composable () -> Unit) -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scoped = filterName != null
@@ -171,9 +173,23 @@ fun LibraryScreen(
         onClearFilter()
     }
 
+    fun switchGrid(showGrid: Boolean) {
+        if (showGrid == grid) return
+        grid = showGrid
+        motionScope.launch {
+            val target = maxOf(0, filtered.size - 1)
+            if (showGrid)
+                gridState.scrollToItem(listState.firstVisibleItemIndex.coerceAtMost(target))
+            else listState.scrollToItem(gridState.firstVisibleItemIndex.coerceAtMost(target))
+        }
+    }
+    // Grid or list changes how the whole page shows, so it sits with the page's actions, not with
+    // Sort and Filter, which change what is shown.
+    val viewToggle: @Composable () -> Unit = { ViewToggle(grid, ::switchGrid) }
+
     Column(modifier.fillMaxWidth()) {
         if (selection.isNotEmpty()) SelectionHeader(selection.size, onClearSelection)
-        else if (header != null) header()
+        else if (header != null) header(viewToggle)
         else
             LibraryHeader(
                 filterName ?: stringResource(R.string.library_title),
@@ -188,6 +204,7 @@ fun LibraryScreen(
                 },
                 onAdd = if (scoped) null else onImport,
                 busy = busy,
+                viewToggle = viewToggle,
             )
         if (!scoped)
             PrimaryTabRow(selectedTabIndex = tab.ordinal, containerColor = Color.Transparent) {
@@ -210,23 +227,6 @@ fun LibraryScreen(
         LibraryToolbar(
             sort = if (wanted) null else sort,
             onSort = { sort = it },
-            grid = grid,
-            onGrid = { showGrid ->
-                if (showGrid != grid) {
-                    grid = showGrid
-                    motionScope.launch {
-                        val target = maxOf(0, filtered.size - 1)
-                        if (showGrid)
-                            gridState.scrollToItem(
-                                listState.firstVisibleItemIndex.coerceAtMost(target)
-                            )
-                        else
-                            listState.scrollToItem(
-                                gridState.firstVisibleItemIndex.coerceAtMost(target)
-                            )
-                    }
-                }
-            },
             activeFilters = activeFilters,
             onFilter = {
                 keyboard?.hide()
@@ -387,6 +387,7 @@ private fun LibraryHeader(
     onSearch: () -> Unit,
     onAdd: (() -> Unit)?,
     busy: Boolean,
+    viewToggle: @Composable () -> Unit,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     Row(
@@ -428,6 +429,7 @@ private fun LibraryHeader(
                 ),
             )
         }
+        viewToggle()
         if (onAdd != null)
             FilledTonalIconButton(onClick = onAdd, enabled = !busy) {
                 Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
@@ -483,18 +485,14 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
     )
 }
 
-/** One line: sort menu (Library tab only), grid or list, and Filter with a count dot. */
+/** The content controls: sort menu (Library tab only) and Filter with a count dot. */
 @Composable
 private fun LibraryToolbar(
     sort: String?,
     onSort: (String) -> Unit,
-    grid: Boolean,
-    onGrid: (Boolean) -> Unit,
     activeFilters: Int,
     onFilter: () -> Unit,
 ) {
-    val showGridLabel = stringResource(R.string.library_show_grid)
-    val showListLabel = stringResource(R.string.library_show_list)
     Row(
         Modifier.fillMaxWidth().padding(horizontal = FolioSpace.gap),
         verticalAlignment = Alignment.CenterVertically,
@@ -508,26 +506,6 @@ private fun LibraryToolbar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         Spacer(Modifier.weight(1f))
-        SingleChoiceSegmentedButtonRow(Modifier.height(36.dp)) {
-            SegmentedButton(
-                selected = grid,
-                onClick = { onGrid(true) },
-                shape = SegmentedButtonDefaults.itemShape(0, 2),
-                icon = {},
-                modifier = Modifier.semantics { contentDescription = showGridLabel },
-            ) {
-                Icon(Icons.Outlined.GridView, null, Modifier.size(18.dp))
-            }
-            SegmentedButton(
-                selected = !grid,
-                onClick = { onGrid(false) },
-                shape = SegmentedButtonDefaults.itemShape(1, 2),
-                icon = {},
-                modifier = Modifier.semantics { contentDescription = showListLabel },
-            ) {
-                Icon(Icons.AutoMirrored.Filled.List, null, Modifier.size(18.dp))
-            }
-        }
         IconButton(onClick = onFilter, modifier = Modifier.testTag(LIBRARY_FILTER_TAG)) {
             BadgedBox(
                 badge = {
@@ -542,6 +520,15 @@ private fun LibraryToolbar(
                 )
             }
         }
+    }
+}
+
+/** One icon showing the layout it switches to, as Files and Gmail do. */
+@Composable
+private fun ViewToggle(grid: Boolean, onGrid: (Boolean) -> Unit) {
+    IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.testTag(LIBRARY_VIEW_TAG)) {
+        if (grid) Icon(Icons.AutoMirrored.Filled.List, stringResource(R.string.library_show_list))
+        else Icon(Icons.Outlined.GridView, stringResource(R.string.library_show_grid))
     }
 }
 
