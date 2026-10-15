@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -52,6 +53,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import org.json.JSONObject
 import org.json.JSONTokener
+import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
@@ -97,6 +99,25 @@ class ReaderActivity : FragmentActivity() {
     override fun onPause() {
         model.saveOnPause()
         super.onPause()
+    }
+
+    override fun onStop() {
+        // No background playback yet: leaving the reader pauses it.
+        if (!isChangingConfigurations) model.listen.pause()
+        super.onStop()
+    }
+
+    /** Reads aloud from the first sentence on screen. */
+    private fun startListening() {
+        val nav = navigator ?: return
+        val publication = model.publication ?: return
+        controls = false
+        lifecycleScope.launch {
+            val from = nav.firstVisibleElementLocator() ?: nav.currentLocator.value
+            val failed = getString(R.string.listen_failed)
+            if (!model.listen.start(publication, from) { navigationError = failed })
+                navigationError = getString(R.string.listen_no_voice)
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -412,6 +433,23 @@ class ReaderActivity : FragmentActivity() {
             if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
             else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
+        // The sentence being read: highlight it and keep its page in view. The page turn saves the
+        // place through the usual debounced save.
+        val listen = model.listen
+        val highlight = MaterialTheme.colorScheme.primary.toArgb()
+        LaunchedEffect(listen.utterance) {
+            val nav = navigator ?: return@LaunchedEffect
+            val spoken = listen.utterance
+            nav.applyDecorations(
+                listOfNotNull(
+                    spoken?.let {
+                        Decoration("spoken", it, Decoration.Style.Highlight(tint = highlight))
+                    }
+                ),
+                "listen",
+            )
+            if (spoken != null) nav.go(spoken, animated = false)
+        }
         val fade = FolioMotion.standardSpec<Float>()
         val showBars = controls && book != null && model.error == null
         LaunchedEffect(showBars) { if (showBars) model.loadPositions() }
@@ -464,6 +502,7 @@ class ReaderActivity : FragmentActivity() {
                         ),
                     onBack = ::closeReader,
                     onPanel = { panel = it },
+                    onListen = ::startListening,
                 )
             }
             AnimatedVisibility(
@@ -507,6 +546,18 @@ class ReaderActivity : FragmentActivity() {
                         end = 16.dp,
                         bottom = if (showBars) barHeight + 12.dp else 24.dp,
                     )
+            if (listen.state != ListenState.OFF)
+                ListenBar(
+                    playing = listen.state == ListenState.PLAYING,
+                    starting = listen.state == ListenState.STARTING,
+                    speed = listen.speed,
+                    modifier = floating,
+                    onToggle = listen::toggle,
+                    onPrevious = listen::previous,
+                    onNext = listen::next,
+                    onSpeed = listen::cycleSpeed,
+                    onStop = listen::stop,
+                )
             model.linkOffer?.let { offer ->
                 LinkOfferCard(
                     offer.device,

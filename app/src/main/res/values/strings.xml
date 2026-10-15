@@ -17,6 +17,15 @@
     <string name="reader_contents">Contents</string>
     <string name="reader_appearance">Text settings</string>
     <string name="reader_devices">Devices</string>
+    <string name="reader_listen">Listen</string>
+    <string name="listen_play">Play</string>
+    <string name="listen_pause">Pause</string>
+    <string name="listen_previous">Previous sentence</string>
+    <string name="listen_next">Next sentence</string>
+    <string name="listen_stop">Stop listening</string>
+    <string name="listen_speed">Speed %1$s</string>
+    <string name="listen_no_voice">No voice is available. Add one in Android settings, under Text-to-speech.</string>
+    <string name="listen_failed">Reading aloud stopped.</string>
     <string name="reader_slider">Place in the book</string>
     <string name="reader_previous_page">Previous page</string>
     <string name="reader_next_page">Next page</string>

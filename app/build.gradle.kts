@@ -66,6 +66,7 @@ dependencies {
     implementation(libs.readium.shared)
     implementation(libs.readium.streamer)
     implementation(libs.readium.navigator)
+    implementation(libs.readium.navigator.tts)
     implementation(project(":core"))
     implementation(project(":transport"))
     implementation(libs.work.runtime)

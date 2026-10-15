@@ -26,10 +26,16 @@ import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.*
@@ -67,6 +73,7 @@ internal const val READER_CONTENTS_SHEET_TAG = "reader-contents-sheet"
 internal const val READER_DEVICES_SHEET_TAG = "reader-devices-sheet"
 internal const val READER_LINK_OFFER_TAG = "reader-link-offer"
 internal const val READER_FAILED_TAG = "reader-failed"
+internal const val READER_LISTEN_BAR_TAG = "reader-listen-bar"
 
 /** The test tag of one theme swatch in the Text sheet: `reader-theme-Paper`. */
 internal fun readerThemeTag(theme: String) = "reader-theme-$theme"
@@ -92,6 +99,7 @@ internal fun ReaderTopBar(
     onBack: () -> Unit,
     onPanel: (ReaderPanel) -> Unit,
     modifier: Modifier = Modifier,
+    onListen: (() -> Unit)? = null,
 ) {
     GlassBar(
         hazeState,
@@ -113,6 +121,10 @@ internal fun ReaderTopBar(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,
             )
+            if (onListen != null)
+                IconButton(onClick = onListen, enabled = enabled) {
+                    Icon(Icons.Outlined.Headphones, stringResource(R.string.reader_listen))
+                }
             IconButton(onClick = { onPanel(ReaderPanel.CONTENTS) }, enabled = enabled) {
                 Icon(
                     Icons.AutoMirrored.Outlined.FormatListBulleted,
@@ -841,6 +853,62 @@ internal fun LinkOfferCard(
                 FilledTonalButton(onClick = onContinue) {
                     Text(stringResource(R.string.reader_link_continue))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The read-aloud player, floating over the page while listening: previous and next sentence,
+ * play/pause, speed, and stop. It stays while the bars are hidden so the page can be read along.
+ */
+@Composable
+internal fun ListenBar(
+    playing: Boolean,
+    starting: Boolean,
+    speed: Double,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSpeed: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Surface(
+        modifier.fillMaxWidth().then(lift(FolioSpace.panelShape)).testTag(READER_LISTEN_BAR_TAG),
+        shape = FolioSpace.panelShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            val speedLabel = listenSpeedLabel(speed)
+            val speedName = stringResource(R.string.listen_speed, speedLabel)
+            TextButton(
+                onClick = onSpeed,
+                modifier = Modifier.semantics { contentDescription = speedName },
+            ) {
+                Text(speedLabel, style = MaterialTheme.typography.titleMedium)
+            }
+            IconButton(onClick = onPrevious, enabled = !starting) {
+                Icon(Icons.Outlined.SkipPrevious, stringResource(R.string.listen_previous))
+            }
+            FilledIconButton(
+                onClick = onToggle,
+                enabled = !starting,
+                modifier = Modifier.size(56.dp),
+            ) {
+                if (starting) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                else if (playing) Icon(Icons.Outlined.Pause, stringResource(R.string.listen_pause))
+                else Icon(Icons.Outlined.PlayArrow, stringResource(R.string.listen_play))
+            }
+            IconButton(onClick = onNext, enabled = !starting) {
+                Icon(Icons.Outlined.SkipNext, stringResource(R.string.listen_next))
+            }
+            IconButton(onClick = onStop) {
+                Icon(Icons.Outlined.Close, stringResource(R.string.listen_stop))
             }
         }
     }

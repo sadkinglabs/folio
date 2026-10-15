@@ -23,6 +23,7 @@ desugar = { module = "com.android.tools:desugar_jdk_libs", version = "2.1.5" }
 readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
 readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
+readium-navigator-tts = { module = "org.readium.kotlin-toolkit:readium-navigator-media-tts", version.ref = "readium" }
 mlkit-text = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
 json-test = { module = "org.json:json", version.ref = "json-test" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }

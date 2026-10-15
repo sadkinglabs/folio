@@ -126,6 +126,27 @@ class ReaderUiTest {
                 // Let Readium lay the page out again at the larger size before capturing it.
                 Thread.sleep(1500)
                 QaScreenshots.capture("reader-text-larger")
+                // Listen: the player appears, or, on an emulator without a voice, the message
+                // saying how to add one. Either way the reader stays usable.
+                compose.onNodeWithContentDescription("Listen").performClick()
+                fun listening() =
+                    compose
+                        .onAllNodesWithTag("reader-listen-bar")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                fun noVoice() =
+                    compose
+                        .onAllNodesWithText("No voice is available", substring = true)
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                compose.waitUntil(15000) { listening() || noVoice() }
+                QaScreenshots.capture("reader-listen")
+                if (listening()) {
+                    compose.onNodeWithContentDescription("Stop listening").performClick()
+                    compose.waitUntil(5000) { !listening() }
+                }
+                QaScreenshots.tapScreenCentre()
+                compose.waitUntil(5000) { controlsShown() }
                 compose.onNodeWithContentDescription("Bookmark this page").performClick()
                 compose.waitUntil(10000) {
                     runBlocking {

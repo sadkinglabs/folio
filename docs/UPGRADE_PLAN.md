@@ -384,6 +384,11 @@ Librillo reads the open book aloud with the voice engine already on the phone, h
 
 **Not in this milestone:** making audiobook files, cloud voices, and reading aloud on the e-reader.
 
+**M7 status (2026-10-15):** first simple version built; the speed spike is skipped for now.
+- **Built:** a Listen button in the reader bar starts reading from the top of the screen with the phone's default voice engine. A floating player has speed (1×, 1.25×, 1.5×, 2×, 0.75×, remembered), previous and next sentence, play/pause and stop. The sentence being read is highlighted and its page follows, which saves the place and publishes it to Librillo Link through the usual page save.
+- **Simplified:** playback pauses when you leave the reader or the screen turns off (no background service or lock-screen controls yet). No voice picker: Android's default engine and voice are used.
+- **Next:** slices 4 and 5 (background, lock screen, sleep timer, voice choice), after you have tried it.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)

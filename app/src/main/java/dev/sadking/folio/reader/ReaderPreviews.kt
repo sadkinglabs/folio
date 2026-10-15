@@ -76,6 +76,7 @@ internal fun ReaderControlsPreview() {
                 onBack = {},
                 onPanel = {},
                 modifier = Modifier.align(Alignment.TopCenter),
+                onListen = {},
             )
             ReaderBottomBar(
                 null,
@@ -184,6 +185,28 @@ internal fun ReaderLinkOfferPreview() {
                 onContinue = {},
                 onStay = {},
                 onTimeout = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader listening · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        Box(Modifier.fillMaxSize()) {
+            ReaderPagePlaceholder(dark)
+            ListenBar(
+                playing = true,
+                starting = false,
+                speed = 1.25,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                onToggle = {},
+                onPrevious = {},
+                onNext = {},
+                onSpeed = {},
+                onStop = {},
             )
         }
     }

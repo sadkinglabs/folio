@@ -40,6 +40,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     /** Per-book typography overrides, keyed by book ID; absent means the book uses the defaults. */
     private val bookSettings = app.getSharedPreferences("reader-books", Application.MODE_PRIVATE)
     private val saveLock = Mutex()
+
+    /** Read-aloud; lives with the model so a rotation does not stop it. */
+    internal val listen = ReadAloud(application, viewModelScope, settings)
     var book by mutableStateOf<Book?>(null)
         private set
 
@@ -538,6 +541,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
+        listen.stop()
         publication?.close()
     }
 }

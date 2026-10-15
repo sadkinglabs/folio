@@ -119,5 +119,7 @@ class ScreenshotTest {
 
     @Test fun readerLinkOffer() = shoot("reader-link-offer") { ReaderLinkOfferPreview() }
 
+    @Test fun readerListen() = shoot("reader-listen") { ReaderListenPreview() }
+
     @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
 }
