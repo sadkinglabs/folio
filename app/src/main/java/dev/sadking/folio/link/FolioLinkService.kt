@@ -11,7 +11,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
-import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -87,8 +86,7 @@ class FolioLinkService : Service() {
             this,
             NOTIFICATION,
             notification(port),
-            if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            else 0,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
         holdLocks()
         if (server == null) {
@@ -136,11 +134,10 @@ class FolioLinkService : Service() {
                     acquire()
                 }
         if (wifiLock == null) {
-            @Suppress("DEPRECATION")
-            val mode =
-                if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-                else WifiManager.WIFI_MODE_FULL_HIGH_PERF
-            wifiLock = wifi.createWifiLock(mode, "folio:link").apply { acquire() }
+            wifiLock =
+                wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "folio:link").apply {
+                    acquire()
+                }
         }
         if (link.settings.keepAwake && wakeLock == null)
             wakeLock =

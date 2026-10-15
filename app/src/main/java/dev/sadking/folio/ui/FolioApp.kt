@@ -283,11 +283,10 @@ fun FolioApp(model: LibraryViewModel) {
             pendingSendId = target
             pendingSync = action
             if (
-                android.os.Build.VERSION.SDK_INT >= 33 &&
-                    androidx.core.content.ContextCompat.checkSelfPermission(
-                        context,
-                        android.Manifest.permission.POST_NOTIFICATIONS,
-                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
                     !notificationPrefs.getBoolean("requested", false)
             ) {
                 notificationPrefs.edit().putBoolean("requested", true).apply()

@@ -8,7 +8,6 @@ package dev.sadking.folio.reader
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -397,12 +396,10 @@ class ReaderActivity : FragmentActivity() {
             val bars = WindowCompat.getInsetsController(window, window.decorView)
             bars.isAppearanceLightStatusBars = !(if (controls) dark else pageDark)
             bars.isAppearanceLightNavigationBars = !(if (controls) dark else pageDark)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                bars.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
-                else bars.hide(WindowInsetsCompat.Type.systemBars())
-            }
+            bars.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
+            else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
         // Controls are drawn over the page. The page area itself never changes size when they
         // appear or disappear, so Readium does not re-paginate and the reading position holds.

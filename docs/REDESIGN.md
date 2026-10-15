@@ -410,10 +410,25 @@ Each slice ships on its own, passes the checks in `CLAUDE.md`, and gets a 5-minu
 
 Slices 1–2 unblock everything; 3–7 can go in any order; 8–9 are independent; 10 is last.
 
-## 8. Open questions
+## 8. Decisions (owner, 2026-10-15)
+
+1. **Glass:** yes, real blur. **minSdk is now 36 (Android 16)**, the owner's phone, so the system `RenderEffect` blur and AGSL `RuntimeShader` are always available; no API fallbacks. Haze only if the system APIs fall short.
+2. **Centre item:** tap = continue reading; long-press (and a TalkBack action) = the Now Reading sheet.
+3. **Current book:** the last one read anywhere, phone or e-reader through Folio Link.
+4. **Finished:** both a system list on Lists and a filter on Library.
+5. **SSH:** kept under Settings → Advanced as "Legacy", as a fallback if the plugin fails.
+
+Android 16 also allows: AGSL shaders (paper grain, refraction, cover sheen), predictive back with in-app previews, `ProgressStyle` live notifications for transfers, and envelope haptics. Use them where they serve the design.
+
+<details><summary>Original open questions</summary>
+
+
 
 1. **Haze for glass?** One new dependency (`dev.chrisbanes.haze`) gives real backdrop blur on API 31+. Without it, every API level gets the tinted fallback. Yes or no?
 2. **Centre item: long-press for the sheet, or tap for the sheet with a big Continue?** The spec picks long-press (one tap to read). Confirm.
 3. **"Current book" when the Kindle is ahead:** should the tile follow the latest *phone* position only, or the latest position from any device through Folio Link? The spec uses phone first, then Folio Link.
 4. **Finished as a system list on the Lists tab, or a filter on the Library tab?** The spec puts it on Lists so the Library stays "what I can read next".
 5. **Keep SSH pairing in Settings → Advanced, or drop it once Folio Link delivery (M4) is proven on your Kindle?** The spec keeps it, labelled "Legacy".
+
+</details>
+

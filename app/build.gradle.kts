@@ -12,7 +12,7 @@ android {
     buildToolsVersion = "36.0.0"
     defaultConfig {
         applicationId = "dev.sadking.folio"
-        minSdk = 26
+        minSdk = 36
         targetSdk = 36
         versionCode = 18
         versionName = "0.12.0-dev"
@@ -29,7 +29,6 @@ android {
         buildConfig = true
     }
     compileOptions {
-        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -43,7 +42,6 @@ kotlin { jvmToolchain(17) }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
-    coreLibraryDesugaring(libs.desugar)
     implementation(libs.fragment.ktx)
     implementation(libs.readium.shared)
     implementation(libs.readium.streamer)

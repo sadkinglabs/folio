@@ -1,6 +1,5 @@
 package dev.sadking.folio.ui
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,7 +20,7 @@ fun FolioTheme(
     val context = LocalContext.current
     val colors =
         when {
-            dynamic && Build.VERSION.SDK_INT >= 31 ->
+            dynamic ->
                 if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             dark ->
                 darkColorScheme(

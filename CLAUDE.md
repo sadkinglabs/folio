@@ -10,6 +10,7 @@ Modules:
 The current plan is in `docs/UPGRADE_PLAN.md`. Work one milestone at a time.
 
 ## Invariants (never break)
+- minSdk is 36 (Android 16, the owner's phone). No compatibility branches for older versions.
 - The package is `dev.sadking.folio`. Updates must install over the existing app, signed with the same development key.
 - Room: only additive migrations. Never use `fallbackToDestructiveMigration`. Every schema bump needs an exported schema and a `MigrationTestHelper` test.
 - Backups: older backup formats must still restore.

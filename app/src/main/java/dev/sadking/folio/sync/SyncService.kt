@@ -27,13 +27,11 @@ class SyncService : Service() {
             )
         val notification = notification(null)
         try {
-            if (Build.VERSION.SDK_INT >= 29)
-                startForeground(
-                    NOTIFICATION,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-                )
-            else startForeground(NOTIFICATION, notification)
+            startForeground(
+                NOTIFICATION,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
         } catch (e: RuntimeException) {
             alive.set(false)
         }
