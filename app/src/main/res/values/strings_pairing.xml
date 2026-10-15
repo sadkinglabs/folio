@@ -2,7 +2,7 @@
 <resources>
     <!-- Settings → Advanced → E-reader over SSH (ConnectionForm.kt). The legacy path. -->
     <string name="pairing_title">E-reader over SSH</string>
-    <string name="pairing_legacy_line">The older way to send books. Folio Link needs no setup here.</string>
+    <string name="pairing_legacy_line">The older way to send books. Librillo Link needs no setup here.</string>
 
     <!-- The four steps, in order -->
     <string name="pairing_step_network">Network</string>

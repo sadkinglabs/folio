@@ -35,9 +35,12 @@ class LinkSettings(context: Context) {
     val username: String
         get() = USERNAME
 
-    /** How this phone appears to KOReader, e.g. "Folio on Pixel 8". */
+    /**
+     * How this phone appears to KOReader, e.g. "Librillo on Pixel 8". The id below, not this name,
+     * identifies the phone.
+     */
     val phoneDeviceName: String
-        get() = "Folio on ${android.os.Build.MODEL}"
+        get() = "Librillo on ${android.os.Build.MODEL}"
 
     /** A stable id for this phone's reports, made once per install. */
     val phoneDeviceId: String

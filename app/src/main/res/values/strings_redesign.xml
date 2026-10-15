@@ -58,7 +58,7 @@
     <!-- Redesign: attach an EPUB to a record -->
     <string name="rd_attach_sheet_title">Attach an EPUB</string>
     <string name="rd_attach_pick_file">Pick a file</string>
-    <string name="rd_attach_in_folio">Already in Folio</string>
+    <string name="rd_attach_in_folio">Already in Librillo</string>
     <string name="rd_suggested">Suggested</string>
     <string name="rd_attach_confirm_title">Attach to %1$s?</string>
     <string name="rd_attach_confirm_body">%1$s by %2$s becomes this book’s file. Lists and the Hardcover match stay.</string>

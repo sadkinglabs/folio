@@ -132,7 +132,7 @@ internal fun DeviceTab(
             // Android 13+ confirms a copy itself, so no snackbar of our own.
             context
                 .getSystemService(ClipboardManager::class.java)
-                .setPrimaryClip(ClipData.newPlainText("Folio Link", address))
+                .setPrimaryClip(ClipData.newPlainText("Librillo Link", address))
         },
         onSignIn = { showSignIn = true },
         onOpenWifi = {

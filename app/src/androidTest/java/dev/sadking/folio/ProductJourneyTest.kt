@@ -407,7 +407,7 @@ class ProductJourneyTest {
         // e-readers stay out of the way and the one line says what to do.
         waitTag(DEVICE_LINK_CARD_TAG)
         compose.onNodeWithTag(DEVICE_LINK_SWITCH_TAG).assertIsOff()
-        compose.onNodeWithText("Turn on Folio Link to sync and send.").assertIsDisplayed()
+        compose.onNodeWithText("Turn on Librillo Link to sync and send.").assertIsDisplayed()
         capture("kindle-dark")
         // The centre tile: Pride and Prejudice was read last on the phone (37%). Long-press opens
         // the Now Reading sheet; its "Open book page" row leads to the book.

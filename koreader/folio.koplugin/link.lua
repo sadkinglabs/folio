@@ -73,13 +73,13 @@ function Link.fetch(cfg, d)
             if d.save_server then d.save_server(found) end
         end
     end
-    assert(text, "Folio did not answer. Is Folio Link on and the phone on the same network?")
+    assert(text, "Librillo did not answer. Is Librillo Link on and the phone on the same network?")
     local status
     local hello = d.decode(text)
-    assert(hello and hello.api == Link.API, "Update Folio or the Folio plugin so they match")
+    assert(hello and hello.api == Link.API, "Update Librillo or the Librillo plugin so they match")
 
     status, text = d.request("GET", Link.url(cfg.server, "/folio/v1/queue"), headers)
-    assert(status == 200, "Folio did not send the list of books")
+    assert(status == 200, "Librillo did not send the list of books")
     local queue = d.decode(text)
     local result = { fetched = 0, already = 0, failed = 0 }
     for _, book in ipairs(queue and queue.books or {}) do
@@ -103,7 +103,7 @@ function Link.fetch(cfg, d)
             end
             local acked = d.request("POST", Link.url(cfg.server, "/folio/v1/ack"), headers,
                 d.encode({ id = book.id, sha256 = book.sha256, path = target }))
-            assert(acked == 200, "Folio did not confirm")
+            assert(acked == 200, "Librillo did not confirm")
             result[outcome] = result[outcome] + 1
         end)
         if not ok then result.failed = result.failed + 1 end
