@@ -150,17 +150,20 @@ class ReaderUiTest {
                             .fetchSemanticsNodes()
                             .isNotEmpty()
                     }
-                    val before =
-                        runBlocking { app.database.library().phoneReading(id, hash) }?.percent
-                            ?: 0.0
+                    // Progress within the chapter: this one-chapter book keeps a total of 0.
+                    fun savedProgression() =
+                        runBlocking { app.database.library().phoneReading(id, hash) }
+                            ?.locator
+                            ?.let { org.json.JSONObject(it).optJSONObject("locations") }
+                            ?.optDouble("progression", 0.0) ?: 0.0
+                    val before = savedProgression()
                     repeat(30) {
                         compose.onNodeWithContentDescription("Next sentence").performClick()
                         Thread.sleep(150)
                     }
                     try {
                         compose.waitUntil(15000) {
-                            (runBlocking { app.database.library().phoneReading(id, hash) }?.percent
-                                ?: 0.0) > before + 0.05
+                            savedProgression() > before + 0.05
                         }
                     } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
                         QaScreenshots.capture("reader-listen-not-following")
