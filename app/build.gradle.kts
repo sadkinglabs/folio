@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.compose.preview) // @Preview annotations live in main sources
     implementation(libs.compose.icons)
     implementation(libs.material)
+    implementation(libs.haze)
+    implementation(libs.haze.blur)
     implementation(libs.activity)
     implementation(libs.lifecycle.compose)
     implementation(libs.lifecycle.vm.compose)

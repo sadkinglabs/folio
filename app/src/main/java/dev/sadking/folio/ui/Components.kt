@@ -21,13 +21,28 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.sadking.folio.*
 import dev.sadking.folio.R
 import dev.sadking.folio.core.*
@@ -139,6 +154,26 @@ internal fun PageHeading(
     }
 }
 
+/**
+ * The twelve hues a generated cover can take; a title always maps to the same one. Muted so the
+ * serif title stays legible in both themes.
+ */
+private val generatedCoverHues =
+    listOf(18f, 42f, 68f, 95f, 128f, 160f, 190f, 212f, 236f, 268f, 300f, 335f)
+
+/** The ground of a generated cover: a hue from the title, lightness from the theme. */
+@Composable
+internal fun generatedCoverColor(title: String): Color {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val hue = generatedCoverHues[Math.floorMod(title.trim().lowercase().hashCode(), 12)]
+    return Color.hsl(hue, if (dark) 0.22f else 0.30f, if (dark) 0.26f else 0.82f)
+}
+
+/**
+ * A cover: 6 dp corners, the artwork never cropped away from its 2:3 frame, and a 1 px highlight
+ * near the left edge with a darker band beside it that reads as a spine. Books without artwork get
+ * a typographic cover on a ground derived from the title.
+ */
 @Composable
 fun Cover(book: Book, modifier: Modifier = Modifier) {
     val image by
@@ -148,10 +183,19 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                     runCatching { CoverImages.load(book.coverPath)?.asImageBitmap() }.getOrNull()
                 }
         }
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val spine = Color.White.copy(alpha = if (dark) 0.12f else 0.25f)
+    val shade = Color.Black.copy(alpha = if (dark) 0.28f else 0.10f)
     Surface(
-        modifier.clip(RoundedCornerShape(8.dp)),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        tonalElevation = 2.dp,
+        modifier.clip(FolioSpace.coverShape).drawWithContent {
+            drawContent()
+            val x = 3.dp.toPx()
+            drawRect(shade, topLeft = Offset(x + 1f, 0f), size = Size(2.dp.toPx(), size.height))
+            drawRect(spine, topLeft = Offset(x, 0f), size = Size(1f, size.height))
+        },
+        color =
+            if (image != null) MaterialTheme.colorScheme.surfaceContainerHigh
+            else generatedCoverColor(book.title),
     ) {
         if (image != null)
             Image(
@@ -168,18 +212,219 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                     Density(density.density, fontScale = 1f)
             ) {
                 Column(
-                    Modifier.fillMaxSize().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.fillMaxSize().padding(start = 14.dp, top = 14.dp, end = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    HorizontalDivider(thickness = 2.dp, color = MaterialTheme.colorScheme.primary)
+                    HorizontalDivider(
+                        Modifier.width(24.dp),
+                        thickness = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    )
                     Text(
                         book.title,
                         style =
-                            MaterialTheme.typography.titleMedium.copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
-                            ),
+                            (if (book.title.length > 28) MaterialTheme.typography.titleSmall
+                                else MaterialTheme.typography.titleMedium)
+                                .copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Serif),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 5,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** What a cover stands for. The badge and the dashed frame depend on it. */
+internal enum class CoverVariant {
+    /** The library grid. */
+    Grid,
+    /** The "Reading" shelf: a smaller cover with its progress and percentage. */
+    Shelf,
+    /** A book wanted but not owned: dashed frame, 80% artwork. */
+    Wanted,
+    /** Waiting in the send queue. */
+    Queued,
+}
+
+/**
+ * A lifted cover with at most one badge at the top-right and, for a book in progress, a 3 dp
+ * progress bar flush to its bottom edge. The one cover component for grids, shelves, lists and the
+ * queue; [BookTile] and [LibraryCover] keep today's layouts until each screen moves over.
+ */
+@Composable
+internal fun CoverTile(
+    book: Book,
+    modifier: Modifier = Modifier,
+    variant: CoverVariant = CoverVariant.Grid,
+    progress: Float? = null,
+    badge: Pair<ImageVector, String>? = null,
+    lifted: Boolean = true,
+) {
+    val outline = MaterialTheme.colorScheme.outline
+    Box(
+        modifier
+            .aspectRatio(FolioSpace.COVER_RATIO)
+            .then(if (lifted) lift(FolioSpace.coverShape, 4.dp) else Modifier)
+            .clip(FolioSpace.coverShape)
+            .then(
+                if (variant == CoverVariant.Wanted)
+                    Modifier.drawWithContent {
+                        drawContent()
+                        val stroke = 1.5.dp.toPx()
+                        drawRoundRect(
+                            outline,
+                            topLeft = Offset(stroke / 2, stroke / 2),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            cornerRadius = CornerRadius(6.dp.toPx()),
+                            style =
+                                Stroke(
+                                    stroke,
+                                    pathEffect =
+                                        PathEffect.dashPathEffect(
+                                            floatArrayOf(6.dp.toPx(), 4.dp.toPx())
+                                        ),
+                                ),
+                        )
+                    }
+                else Modifier
+            )
+    ) {
+        Cover(
+            book,
+            Modifier.matchParentSize().alpha(if (variant == CoverVariant.Wanted) 0.8f else 1f),
+        )
+        badge?.let { (icon, description) ->
+            Surface(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp),
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Icon(icon, description, Modifier.padding(3.dp))
+            }
+        }
+        progress?.let { value ->
+            LinearProgressIndicator(
+                progress = { value.coerceIn(0f, 1f) },
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primaryContainer,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+            )
+        }
+    }
+}
+
+/**
+ * Glass for bars and floating pills: the content behind, blurred 24 dp through Haze, a tint of
+ * `surface`, and a 1 px hairline on the edge facing the content. Without a [hazeState] (previews,
+ * tests, a surface with nothing behind it) the tint alone is drawn, near opaque, in the same
+ * layout.
+ */
+@Composable
+internal fun GlassSurface(
+    hazeState: dev.chrisbanes.haze.HazeState?,
+    modifier: Modifier = Modifier,
+    shape: Shape = RectangleShape,
+    /** Which edge faces the content: the top for a bottom bar, the bottom for a top bar. */
+    hairlineAtTop: Boolean = true,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val tint = FolioGlass.tint()
+    val flat = FolioGlass.flatTint()
+    val hairline = FolioGlass.hairline()
+    val ground = MaterialTheme.colorScheme.surface
+    Box(
+        modifier
+            .clip(shape)
+            .then(
+                if (hazeState != null)
+                    Modifier.hazeBlur(
+                        HazeInput.Sources(hazeState),
+                        style =
+                            HazeBlurStyle {
+                                blurRadius(FolioGlass.blurRadius)
+                                noiseFactor(0f)
+                                backgroundColor(ground)
+                                colorEffects(listOf(HazeColorEffect.tint(tint)))
+                                fallbackColorEffect(HazeColorEffect.tint(flat))
+                            },
+                    )
+                else Modifier.background(flat)
+            )
+            .drawWithContent {
+                drawContent()
+                val y = if (hairlineAtTop) 0.5f else size.height - 0.5f
+                drawLine(hairline, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+            },
+        content = content,
+    )
+}
+
+/** The drawn vectors for empty states: 96 dp, two tones, no bitmap. */
+internal enum class FolioIllustration {
+    /** Three stacked books. */
+    Books,
+    /** A bookmark ribbon. */
+    Bookmark,
+    /** An e-reader outline. */
+    Reader,
+}
+
+@Composable
+internal fun Illustration(kind: FolioIllustration, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    val container = MaterialTheme.colorScheme.primaryContainer
+    val tertiary = MaterialTheme.colorScheme.tertiaryContainer
+    Canvas(modifier.size(96.dp)) {
+        val w = size.width
+        val h = size.height
+        val r = CornerRadius(w * 0.04f)
+        when (kind) {
+            FolioIllustration.Books -> {
+                drawRoundRect(tertiary, Offset(w * 0.14f, h * 0.62f), Size(w * 0.72f, h * 0.16f), r)
+                drawRoundRect(
+                    container,
+                    Offset(w * 0.22f, h * 0.44f),
+                    Size(w * 0.60f, h * 0.16f),
+                    r,
+                )
+                drawRoundRect(primary, Offset(w * 0.18f, h * 0.26f), Size(w * 0.56f, h * 0.16f), r)
+                drawRect(container, Offset(w * 0.26f, h * 0.26f), Size(w * 0.03f, h * 0.16f))
+            }
+            FolioIllustration.Bookmark -> {
+                drawRoundRect(
+                    container,
+                    Offset(w * 0.20f, h * 0.14f),
+                    Size(w * 0.60f, h * 0.72f),
+                    r,
+                )
+                val ribbon =
+                    Path().apply {
+                        moveTo(w * 0.56f, h * 0.14f)
+                        lineTo(w * 0.72f, h * 0.14f)
+                        lineTo(w * 0.72f, h * 0.58f)
+                        lineTo(w * 0.64f, h * 0.50f)
+                        lineTo(w * 0.56f, h * 0.58f)
+                        close()
+                    }
+                drawPath(ribbon, primary)
+            }
+            FolioIllustration.Reader -> {
+                drawRoundRect(primary, Offset(w * 0.22f, h * 0.10f), Size(w * 0.56f, h * 0.80f), r)
+                drawRoundRect(
+                    container,
+                    Offset(w * 0.28f, h * 0.16f),
+                    Size(w * 0.44f, h * 0.58f),
+                    CornerRadius(w * 0.02f),
+                )
+                repeat(4) { line ->
+                    drawRect(
+                        primary.copy(alpha = 0.5f),
+                        Offset(w * 0.33f, h * (0.24f + line * 0.11f)),
+                        Size(w * (if (line == 3) 0.22f else 0.34f), h * 0.025f),
                     )
                 }
             }
@@ -271,12 +516,15 @@ internal fun EmptyState(
     action: (() -> Unit)? = null,
     actionLabel: String = stringResource(R.string.shell_import_epub),
     actionEnabled: Boolean = true,
+    /** When set, the drawn vector replaces [icon]. */
+    illustration: FolioIllustration? = null,
 ) {
     Column(
         Modifier.fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+        if (illustration != null) Illustration(illustration)
+        else Icon(icon, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(20.dp))
         Text(title, style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(12.dp))
@@ -541,7 +789,7 @@ internal fun LibraryCover(
             else -> null
         }
     Box(
-        modifier.clip(RoundedCornerShape(8.dp)).semantics(mergeDescendants = false) {
+        modifier.clip(FolioSpace.coverShape).semantics(mergeDescendants = false) {
             if (noEpub) stateDescription = noEpubState
         }
     ) {
