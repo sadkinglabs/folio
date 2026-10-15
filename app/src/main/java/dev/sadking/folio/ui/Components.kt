@@ -536,6 +536,32 @@ internal fun GlassSurface(
     )
 }
 
+/**
+ * A bar on glass over content that scrolls under it. The top variant is flat with its hairline on
+ * the bottom edge; the bottom variant has 28 dp top corners and its hairline on top. [insets] are
+ * padded inside the glass, so the tint runs under the system bars.
+ */
+@Composable
+internal fun GlassBar(
+    hazeState: dev.chrisbanes.haze.HazeState?,
+    top: Boolean,
+    insets: WindowInsets,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    GlassSurface(
+        hazeState,
+        modifier.fillMaxWidth(),
+        shape = if (top) RectangleShape else FolioSpace.sheetShape,
+        hairlineAtTop = !top,
+    ) {
+        // Bars sit over a page, not a Surface, so the text colour must be set here.
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            Column(Modifier.fillMaxWidth().windowInsetsPadding(insets), content = content)
+        }
+    }
+}
+
 /** The drawn vectors for empty states: 96 dp, two tones, no bitmap. */
 internal enum class FolioIllustration {
     /** Three stacked books. */

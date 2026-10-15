@@ -75,7 +75,7 @@ class ReaderUiTest {
         try {
             ActivityScenario.launch<ReaderActivity>(intent).use { scenario ->
                 compose.waitUntil(30000) {
-                    compose.onAllNodesWithText("QA Author").fetchSemanticsNodes().isNotEmpty()
+                    compose.onAllNodesWithText("Reader Fixture").fetchSemanticsNodes().isNotEmpty()
                 }
                 // A title alone can appear before the fragment mounts; wait for its real view.
                 compose.waitUntil(30000) {
@@ -97,7 +97,7 @@ class ReaderUiTest {
                 QaScreenshots.capture("reader-controls")
                 fun controlsShown() =
                     compose
-                        .onAllNodesWithContentDescription("Reading appearance")
+                        .onAllNodesWithContentDescription("Text settings")
                         .fetchSemanticsNodes()
                         .isNotEmpty()
                 QaScreenshots.tapScreenCentre()
@@ -105,7 +105,7 @@ class ReaderUiTest {
                 QaScreenshots.capture("reader-immersive")
                 QaScreenshots.tapScreenCentre()
                 compose.waitUntil(5000) { controlsShown() }
-                compose.onNodeWithContentDescription("Reading appearance").performClick()
+                compose.onNodeWithContentDescription("Text settings").performClick()
                 compose.waitUntil(5000) {
                     compose
                         .onAllNodesWithText("Only for this book")
@@ -134,7 +134,7 @@ class ReaderUiTest {
                         app.database.library().phoneBookmarks(id, hash).first().isNotEmpty()
                     }
                 }
-                compose.onNodeWithContentDescription("Contents and bookmarks").performClick()
+                compose.onNodeWithContentDescription("Contents").performClick()
                 // The chapter title also shows in the bottom bar; check the contents entry itself.
                 compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()
                 compose.onNodeWithText("Bookmarks · 1").performClick()

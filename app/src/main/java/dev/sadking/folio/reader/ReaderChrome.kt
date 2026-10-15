@@ -1,0 +1,855 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+package dev.sadking.folio.reader
+
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
+import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
+import androidx.compose.material.icons.automirrored.outlined.NavigateNext
+import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.TabletAndroid
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.HazeState
+import dev.sadking.folio.R
+import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.ui.*
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+
+internal const val READER_TOP_BAR_TAG = "reader-top-bar"
+internal const val READER_BOTTOM_BAR_TAG = "reader-bottom-bar"
+internal const val READER_SLIDER_TAG = "reader-slider"
+internal const val READER_PAGE_LABEL_TAG = "reader-page-label"
+internal const val READER_TEXT_SHEET_TAG = "reader-text-sheet"
+internal const val READER_CONTENTS_SHEET_TAG = "reader-contents-sheet"
+internal const val READER_DEVICES_SHEET_TAG = "reader-devices-sheet"
+internal const val READER_LINK_OFFER_TAG = "reader-link-offer"
+internal const val READER_FAILED_TAG = "reader-failed"
+
+/** The test tag of one theme swatch in the Text sheet: `reader-theme-Paper`. */
+internal fun readerThemeTag(theme: String) = "reader-theme-$theme"
+
+/** How long the Folio Link offer stays before it steps aside unanswered. */
+internal const val LINK_OFFER_TIMEOUT_MS = 8_000L
+
+/** The sheets the top bar opens. */
+internal enum class ReaderPanel {
+    CONTENTS,
+    TEXT,
+    DEVICES,
+}
+
+/** The top glass bar: Back, the title on one line, and the three sheets. */
+@Composable
+internal fun ReaderTopBar(
+    hazeState: HazeState?,
+    title: String?,
+    enabled: Boolean,
+    backEnabled: Boolean,
+    insets: WindowInsets,
+    onBack: () -> Unit,
+    onPanel: (ReaderPanel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    GlassBar(
+        hazeState,
+        top = true,
+        insets = insets,
+        modifier = modifier.testTag(READER_TOP_BAR_TAG),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack, enabled = backEnabled) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.reader_back))
+            }
+            Text(
+                title ?: stringResource(R.string.reader_title_fallback),
+                Modifier.weight(1f).padding(horizontal = 4.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            IconButton(onClick = { onPanel(ReaderPanel.CONTENTS) }, enabled = enabled) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.FormatListBulleted,
+                    stringResource(R.string.reader_contents),
+                )
+            }
+            IconButton(onClick = { onPanel(ReaderPanel.TEXT) }, enabled = enabled) {
+                Icon(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance))
+            }
+            IconButton(onClick = { onPanel(ReaderPanel.DEVICES) }, enabled = enabled) {
+                Icon(Icons.Outlined.Devices, stringResource(R.string.reader_devices))
+            }
+        }
+    }
+}
+
+/**
+ * The bottom glass bar: the book as a slider with a tick where each chapter starts, the page label,
+ * and the page and bookmark buttons. Dragging scrubs: the label follows the thumb and names the
+ * chapter under it; letting go jumps there through [onJump], at a 0..1 fraction of the book.
+ */
+@Composable
+internal fun ReaderBottomBar(
+    hazeState: HazeState?,
+    fraction: Float,
+    label: PageLabel,
+    ticks: List<Float>,
+    pageCount: Int,
+    chapterAt: (Float) -> String?,
+    insets: WindowInsets,
+    onJump: (Float) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onBookmark: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val state = remember { SliderState(fraction) }
+    LaunchedEffect(fraction) { if (!state.isDragging) state.value = fraction }
+    val scrubbing = state.isDragging
+    val shown = if (scrubbing) scrubLabel(state.value, pageCount) else label
+    val chapter = if (scrubbing) chapterAt(state.value) else null
+    val sliderName = stringResource(R.string.reader_slider)
+    GlassBar(
+        hazeState,
+        top = false,
+        insets = insets,
+        modifier = modifier.testTag(READER_BOTTOM_BAR_TAG),
+    ) {
+        Box(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            if (chapter != null)
+                Surface(
+                    Modifier.align(Alignment.TopCenter).padding(horizontal = 24.dp),
+                    shape = FolioSpace.tileShape,
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                ) {
+                    Text(
+                        chapter,
+                        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            // The pill's room is kept whether or not it shows, so the slider never shifts.
+            Spacer(Modifier.height(32.dp))
+        }
+        Slider(
+            state = state,
+            onValueChange = { state.value = it },
+            enabled = pageCount > 0,
+            onValueChangeFinished = { onJump(state.value) },
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .semantics { contentDescription = sliderName }
+                    .testTag(READER_SLIDER_TAG),
+            track = { BookTrack(it, ticks) },
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onPrevious) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.NavigateBefore,
+                    stringResource(R.string.reader_previous_page),
+                )
+            }
+            Text(
+                pageLabelText(shown),
+                Modifier.weight(1f).testTag(READER_PAGE_LABEL_TAG),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            IconButton(onClick = onBookmark) {
+                Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.reader_bookmark))
+            }
+            IconButton(onClick = onNext) {
+                Icon(
+                    Icons.AutoMirrored.Outlined.NavigateNext,
+                    stringResource(R.string.reader_next_page),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun pageLabelText(label: PageLabel): String =
+    if (label.page != null)
+        stringResource(R.string.reader_progress_pages, label.page, label.total, label.percent)
+    else stringResource(R.string.reader_progress_percent, label.percent)
+
+/** The slider's track: read part in `primary`, the rest in `secondaryContainer`, chapter ticks. */
+@Composable
+private fun BookTrack(state: SliderState, ticks: List<Float>) {
+    val active = MaterialTheme.colorScheme.primary
+    val inactive = MaterialTheme.colorScheme.secondaryContainer
+    val tickOnActive = MaterialTheme.colorScheme.onPrimary
+    val tickOnInactive = MaterialTheme.colorScheme.onSecondaryContainer
+    Canvas(Modifier.fillMaxWidth().height(16.dp)) {
+        val y = size.height / 2
+        val thumb = state.coercedValueAsFraction * size.width
+        val gap = 6.dp.toPx()
+        val stroke = 8.dp.toPx()
+        if (thumb - gap > 0)
+            drawLine(active, Offset(0f, y), Offset(thumb - gap, y), stroke, StrokeCap.Round)
+        if (thumb + gap < size.width)
+            drawLine(
+                inactive,
+                Offset(thumb + gap, y),
+                Offset(size.width, y),
+                stroke,
+                StrokeCap.Round,
+            )
+        val radius = 2.dp.toPx()
+        ticks.forEach { tick ->
+            val x = tick * size.width
+            if (kotlin.math.abs(x - thumb) > gap)
+                drawCircle(if (x < thumb) tickOnActive else tickOnInactive, radius, Offset(x, y))
+        }
+    }
+}
+
+/** Everything the Text sheet shows. */
+internal data class ReaderTextState(
+    val fontSize: Double = 110.0,
+    val pageTheme: String = "System",
+    val serif: Boolean = true,
+    val scroll: Boolean = false,
+    val lineHeight: Double = 1.5,
+    val margins: Double = 1.0,
+    val publisherStyles: Boolean = false,
+    val bookOnly: Boolean = false,
+)
+
+/** What the Text sheet changes. Each applies at once. */
+internal class ReaderTextActions(
+    val onSize: (Double) -> Unit,
+    val onTheme: (String) -> Unit,
+    val onSerif: (Boolean) -> Unit,
+    val onSpacing: (Double) -> Unit,
+    val onMargins: (Double) -> Unit,
+    val onBookStyles: (Boolean) -> Unit,
+    val onScroll: (Boolean) -> Unit,
+    val onBookOnly: (Boolean) -> Unit,
+)
+
+/**
+ * The Text sheet: the Aa sample with its stepper, theme swatches, Serif or Sans, spacing and margin
+ * sliders, and three switches. No hints: every control shows its state.
+ */
+@Composable
+internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions) {
+    Column(
+        Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 32.dp)
+            .testTag(READER_TEXT_SHEET_TAG),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
+    ) {
+        Text(
+            stringResource(R.string.appearance_title),
+            Modifier.padding(horizontal = FolioSpace.section),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        TextSizeStepper(state.fontSize, state.serif, actions.onSize)
+        ThemeSwatches(state.pageTheme, actions.onTheme)
+        SingleChoiceSegmentedButtonRow(
+            Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section)
+        ) {
+            listOf(R.string.appearance_serif to true, R.string.appearance_sans to false)
+                .forEachIndexed { index, (label, serif) ->
+                    SegmentedButton(
+                        selected = state.serif == serif,
+                        onClick = { actions.onSerif(serif) },
+                        shape = SegmentedButtonDefaults.itemShape(index, 2),
+                        label = { Text(stringResource(label), textAlign = TextAlign.Center) },
+                    )
+                }
+        }
+        ChoiceSlider(
+            stringResource(R.string.appearance_spacing),
+            listOf(
+                stringResource(R.string.appearance_compact),
+                stringResource(R.string.appearance_normal),
+                stringResource(R.string.appearance_relaxed),
+            ),
+            LINE_SPACING_CHOICES,
+            state.lineHeight,
+            enabled = !state.publisherStyles,
+            onSelect = actions.onSpacing,
+        )
+        ChoiceSlider(
+            stringResource(R.string.appearance_margins),
+            listOf(
+                stringResource(R.string.appearance_narrow),
+                stringResource(R.string.appearance_normal),
+                stringResource(R.string.appearance_wide),
+            ),
+            MARGIN_CHOICES,
+            state.margins,
+            enabled = !state.publisherStyles,
+            onSelect = actions.onMargins,
+        )
+        Column {
+            SheetSwitch(
+                stringResource(R.string.appearance_book_styles),
+                state.publisherStyles,
+                actions.onBookStyles,
+            )
+            SheetSwitch(
+                stringResource(R.string.appearance_scrolling),
+                state.scroll,
+                actions.onScroll,
+            )
+            SheetSwitch(
+                stringResource(R.string.appearance_book_only),
+                state.bookOnly,
+                actions.onBookOnly,
+            )
+        }
+    }
+}
+
+/**
+ * Text size in 10% steps between 75% and 200%: A− and A+ around an "Aa" drawn in the chosen font,
+ * which springs to each new size, with the percentage under it.
+ */
+@Composable
+internal fun TextSizeStepper(size: Double, serif: Boolean, onSize: (Double) -> Unit) {
+    val smaller = stringResource(R.string.appearance_smaller)
+    val larger = stringResource(R.string.appearance_larger)
+    val haptics = LocalHapticFeedback.current
+    val scale by
+        animateFloatAsState(
+            (size / 100).toFloat(),
+            spring(stiffness = Spring.StiffnessMedium),
+            label = "textSize",
+        )
+    fun step(up: Boolean) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onSize(steppedTextSize(size, up))
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FilledTonalIconButton(
+            onClick = { step(up = false) },
+            enabled = size > MIN_TEXT,
+            modifier = Modifier.semantics { contentDescription = smaller },
+        ) {
+            Text("A−", style = MaterialTheme.typography.labelLarge)
+        }
+        Column(
+            Modifier.weight(1f).semantics(mergeDescendants = true) {},
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // A fixed-height box keeps the buttons still while the sample grows.
+            Box(Modifier.height(72.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "Aa",
+                    fontSize = (28 * scale).sp,
+                    fontFamily = if (serif) FontFamily.Serif else FontFamily.SansSerif,
+                    modifier = Modifier.clearAndSetSemantics {},
+                )
+            }
+            Text(
+                stringResource(R.string.appearance_text_size, size.toInt()),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        FilledTonalIconButton(
+            onClick = { step(up = true) },
+            enabled = size < MAX_TEXT,
+            modifier = Modifier.semantics { contentDescription = larger },
+        ) {
+            Text("A+", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+private class ThemeSwatch(val name: String, val label: Int, val fill: Color?)
+
+/** The page colour Readium paints for each theme; System shows both halves. */
+private val themeSwatches =
+    listOf(
+        ThemeSwatch("System", R.string.appearance_theme_system, null),
+        ThemeSwatch("Light", R.string.appearance_theme_light, Color.White),
+        ThemeSwatch("Paper", R.string.appearance_theme_paper, Color(0xFFFAF4E8)),
+        ThemeSwatch("Dark", R.string.appearance_theme_dark, Color.Black),
+    )
+
+/** Four page colours as circles with a label; the chosen one carries a check. */
+@Composable
+private fun ThemeSwatches(selected: String, onTheme: (String) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = FolioSpace.item).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        themeSwatches.forEach { swatch ->
+            val chosen = swatch.name == selected
+            Column(
+                Modifier.weight(1f)
+                    .clip(FolioSpace.tileShape)
+                    .selectable(chosen, role = Role.RadioButton) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onTheme(swatch.name)
+                    }
+                    .padding(vertical = FolioSpace.small)
+                    .testTag(readerThemeTag(swatch.name)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val ring =
+                    if (chosen) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outlineVariant
+                Box(
+                    Modifier.size(40.dp)
+                        .clip(CircleShape)
+                        .then(
+                            if (swatch.fill != null) Modifier.background(swatch.fill) else Modifier
+                        )
+                        .border(if (chosen) 2.dp else 1.dp, ring, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (swatch.fill == null)
+                        Canvas(Modifier.fillMaxSize()) {
+                            drawRect(Color.White, size = size.copy(width = size.width / 2))
+                            drawRect(
+                                Color.Black,
+                                topLeft = Offset(size.width / 2, 0f),
+                                size = size.copy(width = size.width / 2),
+                            )
+                        }
+                    if (chosen)
+                        Icon(
+                            Icons.Outlined.Check,
+                            null,
+                            Modifier.size(20.dp),
+                            tint =
+                                if (swatch.fill == null) MaterialTheme.colorScheme.primary
+                                else if (swatch.fill.luminance() < 0.5f) Color.White
+                                else Color.Black,
+                        )
+                }
+                Text(
+                    stringResource(swatch.label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color =
+                        if (chosen) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+/** A three-stop slider for spacing or margins: the label left, the chosen stop's name right. */
+@Composable
+private fun ChoiceSlider(
+    label: String,
+    names: List<String>,
+    values: List<Double>,
+    current: Double,
+    enabled: Boolean,
+    onSelect: (Double) -> Unit,
+) {
+    val index = values.indexOf(nearestChoice(current, values)).coerceAtLeast(0)
+    Column(Modifier.padding(horizontal = FolioSpace.section)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                names.getOrElse(index) { "" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = index.toFloat(),
+            onValueChange = { position ->
+                val chosen = values.getOrNull(position.roundToInt()) ?: return@Slider
+                if (chosen != values[index]) onSelect(chosen)
+            },
+            valueRange = 0f..(values.size - 1).toFloat(),
+            steps = (values.size - 2).coerceAtLeast(0),
+            enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = label },
+        )
+    }
+}
+
+/** A switch row inside a sheet: no icon, the title does the work. */
+@Composable
+private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .toggleable(checked, role = Role.Switch, onValueChange = onChecked)
+            .padding(horizontal = FolioSpace.section, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(checked, null)
+    }
+}
+
+/** One table-of-contents row, flattened: a title and how deep it nests. */
+internal data class ContentsEntry(val title: String?, val depth: Int)
+
+/**
+ * The Contents sheet: a Contents tab with the current chapter in `primary` behind a dot, and a
+ * Bookmarks tab whose rows swipe away to delete.
+ */
+@Composable
+internal fun ReaderContentsSheet(
+    entries: List<ContentsEntry>,
+    current: Int,
+    bookmarks: List<PhoneBookmark>,
+    onEntry: (Int) -> Unit,
+    onBookmark: (PhoneBookmark) -> Unit,
+    onDelete: (PhoneBookmark) -> Unit,
+) {
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val contentsState =
+        rememberLazyListState(initialFirstVisibleItemIndex = current.coerceAtLeast(0))
+    val bookmarksState = rememberLazyListState()
+    val currentLabel = stringResource(R.string.contents_current)
+    Column(Modifier.testTag(READER_CONTENTS_SHEET_TAG)) {
+        PrimaryTabRow(tab, containerColor = Color.Transparent) {
+            Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.contents_tab)) })
+            Tab(
+                tab == 1,
+                { tab = 1 },
+                text = { Text(stringResource(R.string.contents_bookmarks_tab, bookmarks.size)) },
+            )
+        }
+        LazyColumn(
+            Modifier.fillMaxWidth().heightIn(max = 520.dp),
+            state = if (tab == 0) contentsState else bookmarksState,
+            contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
+        ) {
+            if (tab == 0) {
+                if (entries.isEmpty()) item { SheetNote(stringResource(R.string.contents_empty)) }
+                items(entries.size) { index ->
+                    val entry = entries[index]
+                    val isCurrent = index == current
+                    val colour =
+                        if (isCurrent) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(role = Role.Button) { onEntry(index) }
+                            .semantics {
+                                selected = isCurrent
+                                if (isCurrent) stateDescription = currentLabel
+                            }
+                            .padding(
+                                start = FolioSpace.section + (entry.depth * 16).dp,
+                                end = FolioSpace.section,
+                                top = 12.dp,
+                                bottom = 12.dp,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                    ) {
+                        Box(
+                            Modifier.size(8.dp)
+                                .background(
+                                    if (isCurrent) colour else Color.Transparent,
+                                    CircleShape,
+                                )
+                        )
+                        Text(
+                            entry.title ?: stringResource(R.string.contents_chapter_fallback),
+                            Modifier.weight(1f),
+                            color = colour,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else null,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            } else {
+                if (bookmarks.isEmpty())
+                    item { SheetNote(stringResource(R.string.bookmarks_empty)) }
+                items(bookmarks, key = { it.id }) { mark ->
+                    BookmarkRow(mark, { onBookmark(mark) }, { onDelete(mark) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetNote(text: String) {
+    Text(
+        text,
+        Modifier.padding(horizontal = FolioSpace.section, vertical = FolioSpace.item),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** A bookmark: tap to go there, swipe left (or the trash) to delete it. */
+@Composable
+private fun BookmarkRow(mark: PhoneBookmark, onOpen: () -> Unit, onDelete: () -> Unit) {
+    val dismiss = rememberSwipeToDismissBoxState()
+    LaunchedEffect(dismiss.currentValue) {
+        if (dismiss.currentValue == SwipeToDismissBoxValue.EndToStart) onDelete()
+    }
+    SwipeToDismissBox(
+        dismiss,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Outlined.DeleteOutline,
+                    null,
+                    Modifier.padding(horizontal = FolioSpace.section),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false,
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .clickable(role = Role.Button, onClick = onOpen)
+                .padding(start = FolioSpace.section, end = FolioSpace.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                mark.title,
+                Modifier.weight(1f).padding(vertical = 12.dp),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Outlined.DeleteOutline, stringResource(R.string.bookmark_delete))
+            }
+        }
+    }
+}
+
+/** Another device's place in this book. [legacy] rows come over SSH rather than Folio Link. */
+internal data class DeviceRow(
+    val id: String,
+    val name: String,
+    val percent: Int,
+    val time: Long,
+    val legacy: Boolean = false,
+)
+
+/**
+ * The Devices sheet, "Continue elsewhere": each device's place with a Jump button, then the legacy
+ * SSH actions: check the e-reader's saved place, and send the phone's for review.
+ */
+@Composable
+internal fun ReaderDevicesSheet(
+    rows: List<DeviceRow>,
+    busy: Boolean,
+    onJump: (DeviceRow) -> Unit,
+    onCheck: () -> Unit,
+    onSend: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 32.dp).testTag(READER_DEVICES_SHEET_TAG),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
+    ) {
+        Text(
+            stringResource(R.string.devices_title),
+            Modifier.padding(horizontal = FolioSpace.section),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        if (rows.isEmpty()) SheetNote(stringResource(R.string.devices_none))
+        rows.forEach { row ->
+            ListItem(
+                headlineContent = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+                    ) {
+                        Text(
+                            row.name,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        if (row.legacy)
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                            ) {
+                                Text(
+                                    stringResource(R.string.devices_legacy).uppercase(),
+                                    Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                            }
+                    }
+                },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            R.string.devices_row,
+                            row.percent,
+                            relativeTime(row.time),
+                        )
+                    )
+                },
+                leadingContent = {
+                    Icon(
+                        Icons.Outlined.TabletAndroid,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                trailingContent = {
+                    FilledTonalButton(onClick = { onJump(row) }, enabled = !busy) {
+                        Text(stringResource(R.string.devices_jump))
+                    }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier = Modifier.padding(horizontal = FolioSpace.small),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+        ) {
+            OutlinedButton(onClick = onCheck, enabled = !busy, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(FolioSpace.small))
+                Text(stringResource(R.string.devices_retrieve))
+            }
+            Button(onClick = onSend, enabled = !busy, modifier = Modifier.weight(1f)) {
+                Text(stringResource(if (busy) R.string.devices_working else R.string.devices_send))
+            }
+        }
+    }
+}
+
+/**
+ * "Continue from Kobo at 43%?": offered once at the bottom when another device read on. Unanswered,
+ * it steps aside after [LINK_OFFER_TIMEOUT_MS] through [onTimeout].
+ */
+@Composable
+internal fun LinkOfferCard(
+    device: String,
+    percent: Int,
+    modifier: Modifier = Modifier,
+    onContinue: () -> Unit,
+    onStay: () -> Unit,
+    onTimeout: () -> Unit,
+) {
+    LaunchedEffect(Unit) {
+        delay(LINK_OFFER_TIMEOUT_MS)
+        onTimeout()
+    }
+    Surface(
+        modifier
+            .fillMaxWidth()
+            .then(lift(FolioSpace.panelShape))
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag(READER_LINK_OFFER_TAG),
+        shape = FolioSpace.panelShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            Modifier.padding(FolioSpace.item),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+        ) {
+            Text(
+                stringResource(R.string.reader_link_offer, device, percent),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(FolioSpace.small, Alignment.End),
+            ) {
+                TextButton(onClick = onStay) { Text(stringResource(R.string.reader_link_stay)) }
+                FilledTonalButton(onClick = onContinue) {
+                    Text(stringResource(R.string.reader_link_continue))
+                }
+            }
+        }
+    }
+}
+
+/** The book would not open: one title, the reason, and the way back. */
+@Composable
+internal fun ReaderFailed(reason: String, onBack: () -> Unit, backEnabled: Boolean) {
+    Surface(Modifier.fillMaxSize().testTag(READER_FAILED_TAG)) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            EmptyState(
+                stringResource(R.string.reader_open_failed),
+                reason,
+                Icons.Outlined.MenuBook,
+                action = onBack,
+                actionLabel = stringResource(R.string.reader_back),
+                actionEnabled = backEnabled,
+                illustration = FolioIllustration.Books,
+            )
+        }
+    }
+}

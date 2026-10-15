@@ -204,7 +204,10 @@ class ReaderCorpusTest {
         val (id, _) = book(emptyList())
         read(id) {
             compose.waitUntil(30000) {
-                compose.onAllNodesWithText("Unable to open book").fetchSemanticsNodes().isNotEmpty()
+                compose
+                    .onAllNodesWithText("Couldn’t open this book")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
             }
         }
     }

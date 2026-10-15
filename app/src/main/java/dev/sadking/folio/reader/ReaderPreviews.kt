@@ -1,0 +1,202 @@
+package dev.sadking.folio.reader
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.ui.FolioTheme
+
+/**
+ * Previews of the reader's chrome over a stand-in page, since Readium's WebView cannot render in a
+ * preview or on the JVM. The bars, sheets, offer card and failed state are the real composables.
+ */
+private const val SAMPLE_TITLE = "The Orchard"
+
+private val sampleParagraphs =
+    listOf(
+        "The orchard had been planted by someone who expected to be forgotten, and in this at least they had been right. Nobody in the village remembered a name, only that the trees were older than the oldest house.",
+        "In March the pruning began. Ada worked from the east end, where the frost lingered longest, and by the time she reached the walnut at the gate the first blossom had opened behind her.",
+        "She kept no diary, but the trees did. Every cut she made that year would be read, decades on, by whoever came next with a saw and a question.",
+        "The river ran a hundred yards below the lowest terrace. On still evenings its sound climbed the slope and settled among the apples like weather.",
+    )
+
+/** Four paragraphs of serif text on the page colour, where the book would be. */
+@Composable
+internal fun ReaderPagePlaceholder(dark: Boolean) {
+    Column(
+        Modifier.fillMaxSize()
+            .background(if (dark) Color.Black else Color.White)
+            .padding(horizontal = 28.dp, vertical = 72.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        sampleParagraphs.forEach {
+            Text(
+                it,
+                color = if (dark) Color(0xFFE0E0E0) else Color(0xFF202020),
+                fontFamily = FontFamily.Serif,
+                fontSize = 17.sp,
+                lineHeight = 27.sp,
+            )
+        }
+    }
+}
+
+private val sampleTicks = listOf(0.08f, 0.21f, 0.33f, 0.5f, 0.62f, 0.77f, 0.9f)
+
+@Preview(name = "Reader controls · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Reader controls · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun ReaderControlsPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        Box(Modifier.fillMaxSize()) {
+            ReaderPagePlaceholder(dark)
+            ReaderTopBar(
+                null,
+                SAMPLE_TITLE,
+                enabled = true,
+                backEnabled = true,
+                insets = WindowInsets(top = 24.dp),
+                onBack = {},
+                onPanel = {},
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+            ReaderBottomBar(
+                null,
+                fraction = 0.04f,
+                label = PageLabel(12, 340, 4),
+                ticks = sampleTicks,
+                pageCount = 340,
+                chapterAt = { "Chapter one" },
+                insets = WindowInsets(bottom = 24.dp),
+                onJump = {},
+                onPrevious = {},
+                onNext = {},
+                onBookmark = {},
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader text sheet · light", widthDp = 412, heightDp = 760)
+@Composable
+internal fun ReaderTextPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderTextSheet(
+                ReaderTextState(fontSize = 120.0, pageTheme = "Paper"),
+                ReaderTextActions({}, {}, {}, {}, {}, {}, {}, {}),
+            )
+        }
+    }
+}
+
+private val sampleContents =
+    listOf(
+        ContentsEntry("Cover", 0),
+        ContentsEntry("Part one · Spring", 0),
+        ContentsEntry("Chapter one", 1),
+        ContentsEntry("Chapter two", 1),
+        ContentsEntry("Chapter three", 1),
+        ContentsEntry("Part two · The long dry", 0),
+        ContentsEntry("Chapter four", 1),
+        ContentsEntry(null, 1),
+        ContentsEntry("Afterword", 0),
+    )
+
+private val sampleBookmarks =
+    listOf(
+        PhoneBookmark("b1", "sample1", "", "{}", "Chapter one · 4%", 0),
+        PhoneBookmark("b2", "sample1", "", "{}", "Chapter three · 31%", 0),
+    )
+
+@Preview(name = "Reader contents · light", widthDp = 412, heightDp = 560)
+@Composable
+internal fun ReaderContentsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderContentsSheet(sampleContents, 3, sampleBookmarks, {}, {}, {})
+        }
+    }
+}
+
+private val sampleDevices =
+    listOf(
+        DeviceRow("kobo", "Kobo", 41, System.currentTimeMillis() - 2 * 60 * 60 * 1000),
+        DeviceRow("kindle", "Kindle", 38, System.currentTimeMillis() - 26 * 60 * 60 * 1000),
+        DeviceRow(
+            "ssh",
+            "E-reader",
+            36,
+            System.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000,
+            true,
+        ),
+    )
+
+@Preview(name = "Reader devices · light", widthDp = 412, heightDp = 420)
+@Composable
+internal fun ReaderDevicesPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderDevicesSheet(sampleDevices, busy = false, {}, {}, {})
+        }
+    }
+}
+
+@Preview(name = "Reader devices · none", widthDp = 412, heightDp = 260)
+@Composable
+internal fun ReaderDevicesEmptyPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderDevicesSheet(emptyList(), busy = false, {}, {}, {})
+        }
+    }
+}
+
+@Preview(name = "Reader link offer · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderLinkOfferPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        Box(Modifier.fillMaxSize()) {
+            ReaderPagePlaceholder(dark)
+            LinkOfferCard(
+                "Kindle",
+                41,
+                Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                onContinue = {},
+                onStay = {},
+                onTimeout = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader failed · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderFailedPreview() {
+    FolioTheme(dynamic = false) {
+        ReaderFailed(
+            "This EPUB is protected and cannot be opened here.",
+            onBack = {},
+            backEnabled = true,
+        )
+    }
+}

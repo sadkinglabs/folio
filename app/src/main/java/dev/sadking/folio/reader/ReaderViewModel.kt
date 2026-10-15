@@ -15,6 +15,8 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -23,7 +25,6 @@ import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
@@ -94,8 +95,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var publisherStyles by mutableStateOf(settings.getBoolean("publisherStyles", false))
         private set
 
-    var volumeKeys by mutableStateOf(settings.getBoolean("volumeKeys", true))
-        private set
+    /** Set on the Settings tab; the reader only reads it. */
+    val volumeKeys: Boolean
+        get() = settings.getBoolean("volumeKeys", true)
 
     /** True when this book keeps its own text settings instead of the reader defaults. */
     var bookOnly by mutableStateOf(false)
@@ -105,9 +107,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var spine: List<String> = emptyList()
         private set
 
-    /** Total Readium positions ("pages" at the current layout), once computed. */
-    var positionCount by mutableIntStateOf(0)
+    /**
+     * Readium's positions for this book: the slider's pages and chapter ticks. Computed once per
+     * book off the main thread, since a huge book takes seconds; null until then, when the bar
+     * shows the percentage alone.
+     */
+    var positions by mutableStateOf<ReaderPositions?>(null)
         private set
+
+    /** Total Readium positions ("pages" at the current layout), or 0 until computed. */
+    val positionCount: Int
+        get() = positions?.locators?.size ?: 0
 
     var automaticKindleResume = false
         private set
@@ -202,7 +212,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 book = loaded.first
                 publication = opened
                 launch {
-                    positionCount = runCatching { opened.positions().size }.getOrDefault(0)
+                    positions =
+                        withContext(Dispatchers.Default) {
+                            runCatching { ReaderPositions.compute(opened) }.getOrNull()
+                        }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -238,12 +251,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         spacing: Double = lineHeight,
         pageMargins: Double = margins,
         bookStyles: Boolean = publisherStyles,
-        turnWithVolume: Boolean = volumeKeys,
     ) {
         pageTheme = theme
-        volumeKeys = turnWithVolume
         use(ReaderTypography(size, useSerif, scroll, spacing, pageMargins, bookStyles).bounded())
-        val global = settings.edit().putString("theme", theme).putBoolean("volumeKeys", volumeKeys)
+        val global = settings.edit().putString("theme", theme)
         val current = book
         if (bookOnly && current != null)
             bookSettings.edit().putString(current.id, typography().toJson()).apply()
@@ -390,6 +401,25 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         linkOffer = null
     }
 
+    /**
+     * Hides the offer without answering it, when it timed out unanswered. It comes back on the next
+     * open unless the phone has read on since, which makes the report old.
+     */
+    fun hideLinkOffer() {
+        linkOffer = null
+    }
+
+    /** Other devices' latest Folio Link places in this book, newest first; null without a key. */
+    fun linkReports(): Flow<List<KosyncReport>>? {
+        val document = linkDocument ?: return null
+        val phone = app.link.settings.phoneDeviceId
+        return dao.kosyncReportsFlow(document).map { reports ->
+            reports
+                .filter { it.deviceId != phone && it.progress.startsWith("/") }
+                .sortedByDescending { it.timestamp }
+        }
+    }
+
     fun saveOnPause() {
         val locator = lastLocation ?: return
         val pointer =
@@ -466,7 +496,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             message =
                 app.getString(
                     R.string.msg_reader_device_position,
-                    app.getString(R.string.devices_resume),
+                    app.getString(R.string.devices_jump),
                 )
         } catch (cancel: CancellationException) {
             throw cancel

@@ -28,7 +28,7 @@
     <!-- Folio Link: reader -->
     <string name="reader_link_offer">Continue from %1$s at %2$d%%?</string>
     <string name="reader_link_continue">Continue</string>
-    <string name="reader_link_stay">Stay here</string>
+    <string name="reader_link_stay">Stay</string>
     <string name="reader_link_failed">Couldn\'t find that passage in this copy of the book. You\'re still on your page.</string>
 
     <!-- Folio Link: book page -->

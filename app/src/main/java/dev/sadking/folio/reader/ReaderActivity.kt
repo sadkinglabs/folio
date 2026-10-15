@@ -20,39 +20,19 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
-import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
-import androidx.compose.material.icons.automirrored.outlined.NavigateNext
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -60,8 +40,13 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import dev.sadking.folio.R
+import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.ui.FolioMotion
+import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -372,15 +357,29 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Slider release: opens the Readium position nearest [fraction] through the navigator, like any
+     * other navigation, so the usual debounced save runs. Nothing moves until positions are known.
+     */
+    private fun jumpTo(fraction: Float) {
+        val positions = model.positions ?: return
+        val index = positionIndexAt(fraction, positions.locators.size)
+        val target = positions.locators.getOrNull(index) ?: return
+        navigator?.go(target, animated = false)
+    }
+
     @Composable
     private fun ReaderScreen(dark: Boolean) {
         val book = model.book
-        var panel by rememberSaveable { mutableStateOf("") }
+        var panel by rememberSaveable { mutableStateOf<ReaderPanel?>(null) }
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
+        val hazeState = remember { HazeState() }
+        val density = LocalDensity.current
+        var barHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
-        SideEffect { panelOpen = panel.isNotBlank() }
-        BackHandler { if (panel.isNotBlank()) panel = "" else closeReader() }
+        SideEffect { panelOpen = panel != null }
+        BackHandler { if (panel != null) panel = null else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
             if (text != null) {
@@ -412,6 +411,8 @@ class ReaderActivity : FragmentActivity() {
             if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
             else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
+        val fade = FolioMotion.standardSpec<Float>()
+        val showBars = controls && book != null && model.error == null
         // Controls are drawn over the page. The page area itself never changes size when they
         // appear or disappear, so Readium does not re-paginate and the reading position holds.
         Box(Modifier.fillMaxSize().background(Color(model.pageColor(dark)))) {
@@ -422,22 +423,11 @@ class ReaderActivity : FragmentActivity() {
                     )
             ) {
                 if (model.error != null)
-                    Surface(Modifier.fillMaxSize()) {
-                        Column(
-                            Modifier.fillMaxSize().padding(24.dp),
-                            verticalArrangement =
-                                Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-                        ) {
-                            Text(
-                                stringResource(R.string.reader_open_failed),
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                            Text(model.error.orEmpty())
-                            Button(onClick = ::closeReader) {
-                                Text(stringResource(R.string.reader_back_to_details))
-                            }
-                        }
-                    }
+                    ReaderFailed(
+                        model.error.orEmpty(),
+                        onBack = ::closeReader,
+                        backEnabled = !closing,
+                    )
                 else if (model.publication == null)
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
                 else
@@ -452,35 +442,74 @@ class ReaderActivity : FragmentActivity() {
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().hazeSource(hazeState),
                     )
             }
             AnimatedVisibility(
-                visible = controls || model.error != null,
+                visible = showBars,
                 modifier = Modifier.align(Alignment.TopCenter),
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                enter = fadeIn(fade),
+                exit = fadeOut(fade),
             ) {
-                TopBar(book?.title, book?.authorLabel, enabled = book != null) { panel = it }
+                ReaderTopBar(
+                    hazeState,
+                    book?.title,
+                    enabled = book != null,
+                    backEnabled = !closing,
+                    insets =
+                        WindowInsets.statusBarsIgnoringVisibility.union(
+                            WindowInsets.displayCutout.only(WindowInsetsSides.Top)
+                        ),
+                    onBack = ::closeReader,
+                    onPanel = { panel = it },
+                )
             }
             AnimatedVisibility(
-                visible = controls && book != null && model.error == null,
+                visible = showBars,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn() + slideInVertically { it },
-                exit = fadeOut() + slideOutVertically { it },
+                enter = fadeIn(fade),
+                exit = fadeOut(fade),
             ) {
-                BottomBar()
+                val location = model.lastLocation
+                val positions = model.positions
+                val progression = location?.locations?.totalProgression
+                ReaderBottomBar(
+                    hazeState,
+                    fraction = progressFraction(progression),
+                    label =
+                        pageLabel(progression, location?.locations?.position, model.positionCount),
+                    ticks = positions?.ticks.orEmpty(),
+                    pageCount = model.positionCount,
+                    chapterAt = { fraction ->
+                        positions?.let {
+                            chapterTitleAt(fraction, it.chapterStarts, it.chapterTitles)
+                        }
+                    },
+                    insets = WindowInsets.navigationBarsIgnoringVisibility,
+                    onJump = ::jumpTo,
+                    onPrevious = { navigator?.goBackward(animated = false) },
+                    onNext = { navigator?.goForward(animated = false) },
+                    onBookmark = model::bookmark,
+                    modifier =
+                        Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+                )
             }
+            // Above the bottom bar while it shows; otherwise just above the navigation bar.
+            val floating =
+                Modifier.align(Alignment.BottomCenter)
+                    .windowInsetsPadding(
+                        if (showBars) WindowInsets(0) else WindowInsets.navigationBars
+                    )
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = if (showBars) barHeight + 12.dp else 24.dp,
+                    )
             model.linkOffer?.let { offer ->
                 LinkOfferCard(
-                    offer,
-                    Modifier.align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(
-                            start = 16.dp,
-                            end = 16.dp,
-                            bottom = if (controls) 88.dp else 24.dp,
-                        ),
+                    offer.device,
+                    (offer.percentage * 100).toInt(),
+                    floating,
                     onContinue = {
                         scope.launch {
                             try {
@@ -496,207 +525,143 @@ class ReaderActivity : FragmentActivity() {
                         }
                     },
                     onStay = model::settleLinkOffer,
+                    onTimeout = model::hideLinkOffer,
                 )
             }
-            SnackbarHost(
-                snackbar,
-                Modifier.align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = if (controls) 72.dp else 16.dp),
-            )
+            SnackbarHost(snackbar, floating)
         }
-        if (panel.isNotBlank())
-            ModalBottomSheet(onDismissRequest = { panel = "" }) {
-                when (panel) {
-                    "Appearance" -> AppearancePanel(model)
-                    "Contents" -> {
-                        val flow = remember(book?.id) { model.bookmarks() }
-                        val bookmarks by
-                            flow?.collectAsState(initial = emptyList())
-                                ?: remember { mutableStateOf(emptyList<PhoneBookmark>()) }
-                        ContentsPanel(
-                            model.publication?.tableOfContents.orEmpty(),
-                            model.lastLocation?.href?.toString()?.let(::resourcePath),
-                            bookmarks,
-                            onLink = {
-                                navigator?.go(it, animated = false)
-                                panel = ""
-                            },
-                            onBookmark = {
-                                val loc = Locator.fromJSON(JSONObject(it.locator))
-                                if (loc != null) navigator?.go(loc, animated = false)
-                                panel = ""
-                            },
-                            onDelete = { model.deleteBookmark(it.id) },
-                        )
-                    }
-                    "Kindle" -> DevicesPanel(scope) { panel = "" }
+        panel?.let { open ->
+            ModalBottomSheet(
+                onDismissRequest = { panel = null },
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                when (open) {
+                    ReaderPanel.TEXT -> TextPanel()
+                    ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
+                    ReaderPanel.DEVICES -> DevicesPanel(book?.id, scope) { panel = null }
                 }
             }
+        }
     }
 
     @Composable
-    private fun TopBar(
-        title: String?,
-        author: String?,
-        enabled: Boolean,
-        onPanel: (String) -> Unit,
-    ) {
-        TopAppBar(
-            title = {
-                Column {
-                    Text(
-                        title ?: stringResource(R.string.reader_title_fallback),
-                        maxLines = 1,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    author?.let {
-                        Text(it, maxLines = 1, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            },
-            navigationIcon = {
-                IconButton(onClick = ::closeReader, enabled = !closing) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.ArrowBack,
-                        stringResource(R.string.reader_back),
-                    )
-                }
-            },
-            actions = {
-                IconButton(onClick = { onPanel("Contents") }, enabled = enabled) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.FormatListBulleted,
-                        stringResource(R.string.reader_contents),
-                    )
-                }
-                IconButton(onClick = { onPanel("Appearance") }, enabled = enabled) {
-                    Icon(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance))
-                }
-                IconButton(onClick = { onPanel("Kindle") }, enabled = enabled) {
-                    Icon(Icons.Outlined.Devices, stringResource(R.string.reader_devices))
-                }
-            },
+    private fun TextPanel() {
+        val actions = remember {
+            ReaderTextActions(
+                onSize = { model.appearance(size = it) },
+                onTheme = { model.appearance(theme = it) },
+                onSerif = { model.appearance(useSerif = it) },
+                onSpacing = { model.appearance(spacing = it) },
+                onMargins = { model.appearance(pageMargins = it) },
+                onBookStyles = { model.appearance(bookStyles = it) },
+                onScroll = { model.appearance(scroll = it) },
+                onBookOnly = model::keepForThisBook,
+            )
+        }
+        ReaderTextSheet(
+            ReaderTextState(
+                model.fontSize,
+                model.pageTheme,
+                model.serif,
+                model.scrolling,
+                model.lineHeight,
+                model.margins,
+                model.publisherStyles,
+                model.bookOnly,
+            ),
+            actions,
         )
     }
 
     @Composable
-    private fun BottomBar() {
-        val location = model.lastLocation
-        val percent = ((location?.locations?.totalProgression ?: 0.0) * 100).toInt()
-        val page = location?.locations?.position
-        Surface(tonalElevation = 2.dp) {
-            Row(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { navigator?.goBackward(animated = false) }) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.NavigateBefore,
-                        stringResource(R.string.reader_previous_page),
-                    )
-                }
-                Text(
-                    location?.title.orEmpty(),
-                    Modifier.weight(1f),
-                    maxLines = 1,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Text(
-                    if (page != null && model.positionCount > 0)
-                        stringResource(
-                            R.string.reader_progress_pages,
-                            page,
-                            model.positionCount,
-                            percent,
-                        )
-                    else stringResource(R.string.reader_progress_percent, percent),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                IconButton(onClick = model::bookmark) {
-                    Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.reader_bookmark))
-                }
-                IconButton(onClick = { navigator?.goForward(animated = false) }) {
-                    Icon(
-                        Icons.AutoMirrored.Outlined.NavigateNext,
-                        stringResource(R.string.reader_next_page),
-                    )
-                }
+    private fun ContentsPanel(bookId: String?, close: () -> Unit) {
+        val links = model.publication?.tableOfContents.orEmpty()
+        val flat = remember(links) { flattenContents(links) }
+        val entries =
+            remember(flat) { flat.map { (link, depth) -> ContentsEntry(link.title, depth) } }
+        val currentPath = model.lastLocation?.href?.toString()?.let(::resourcePath)
+        val current =
+            remember(flat, currentPath) {
+                flat.indexOfLast { (link, _) -> resourcePath(link.url().toString()) == currentPath }
             }
-        }
+        val flow = remember(bookId) { model.bookmarks() }
+        val bookmarks by
+            flow?.collectAsState(initial = emptyList())
+                ?: remember { mutableStateOf(emptyList<PhoneBookmark>()) }
+        ReaderContentsSheet(
+            entries,
+            current,
+            bookmarks,
+            onEntry = { index ->
+                flat.getOrNull(index)?.let { (link, _) -> navigator?.go(link, animated = false) }
+                close()
+            },
+            onBookmark = {
+                val loc = Locator.fromJSON(JSONObject(it.locator))
+                if (loc != null) navigator?.go(loc, animated = false)
+                close()
+            },
+            onDelete = { model.deleteBookmark(it.id) },
+        )
     }
 
     @Composable
-    private fun DevicesPanel(scope: CoroutineScope, close: () -> Unit) {
-        Column(
-            Modifier.fillMaxWidth().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                stringResource(R.string.devices_title),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(stringResource(R.string.devices_body))
-            model.kindle?.let {
-                Text(
-                    stringResource(
-                        R.string.devices_last_kindle,
-                        ((it.percent ?: 0.0) * 100).toInt(),
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
+    private fun DevicesPanel(bookId: String?, scope: CoroutineScope, close: () -> Unit) {
+        val flow = remember(bookId) { model.linkReports() }
+        val reports by
+            flow?.collectAsState(initial = emptyList())
+                ?: remember { mutableStateOf(emptyList<KosyncReport>()) }
+        val fallbackName = stringResource(R.string.device_ereader_default)
+        val rows =
+            reports.map {
+                DeviceRow(
+                    it.deviceId,
+                    it.device.ifBlank { fallbackName },
+                    (it.percentage * 100).toInt(),
+                    it.timestamp * 1000,
                 )
-            }
-            OutlinedButton(
-                onClick = { scope.launch { model.refreshKindle() } },
-                enabled = !model.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.devices_retrieve))
-            }
-            FilledTonalButton(
-                onClick = {
-                    scope.launch { resumeKindle() }
-                    close()
-                },
-                enabled = !model.busy && model.kindle != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.devices_resume))
-            }
-            HorizontalDivider()
-            Text(
-                stringResource(R.string.devices_phone_to_kindle),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                stringResource(R.string.devices_phone_to_kindle_body),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            val sendFailed = stringResource(R.string.reader_send_failed)
-            Button(
-                onClick = {
-                    scope.launch {
-                        try {
-                            savePosition()
-                            model.sendPosition()
-                        } catch (cancel: CancellationException) {
-                            throw cancel
-                        } catch (_: Exception) {
-                            navigationError = sendFailed
-                        }
+            } +
+                listOfNotNull(
+                    model.kindle?.let {
+                        DeviceRow(
+                            LEGACY_ROW,
+                            fallbackName,
+                            ((it.percent ?: 0.0) * 100).toInt(),
+                            it.fetchedAt,
+                            legacy = true,
+                        )
                     }
-                },
-                enabled = !model.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    stringResource(
-                        if (model.busy) R.string.devices_working else R.string.devices_send
-                    )
                 )
-            }
-            Spacer(Modifier.height(12.dp))
-        }
+        val linkFailed = stringResource(R.string.reader_link_failed)
+        val sendFailed = stringResource(R.string.reader_send_failed)
+        ReaderDevicesSheet(
+            rows,
+            busy = model.busy,
+            onJump = { row ->
+                close()
+                scope.launch {
+                    if (row.legacy) resumeKindle()
+                    else {
+                        val report = reports.firstOrNull { it.deviceId == row.id } ?: return@launch
+                        if (!resumeAt(report.progress)) navigationError = linkFailed
+                    }
+                }
+            },
+            onCheck = { scope.launch { model.refreshKindle() } },
+            onSend = {
+                scope.launch {
+                    try {
+                        savePosition()
+                        model.sendPosition()
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        navigationError = sendFailed
+                    }
+                }
+            },
+        )
     }
 
     companion object {
@@ -704,6 +669,8 @@ class ReaderActivity : FragmentActivity() {
         private const val SAVE_DEBOUNCE_MS = 1000L
         private const val SETTLE_ATTEMPTS = 30
         private const val SETTLE_STEP_MS = 100L
+        /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
+        private const val LEGACY_ROW = "legacy-ssh"
 
         fun open(context: Context, bookId: String) {
             context.startActivity(
@@ -713,292 +680,7 @@ class ReaderActivity : FragmentActivity() {
     }
 }
 
-@Composable
-private fun ChoiceRow(
-    label: String,
-    options: List<Pair<String, Double>>,
-    selected: Double,
-    enabled: Boolean = true,
-    onSelect: (Double) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { (name, value) ->
-                FilterChip(
-                    selected = kotlin.math.abs(selected - value) < 0.01,
-                    onClick = { onSelect(value) },
-                    label = { Text(name) },
-                    enabled = enabled,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppearancePanel(model: ReaderViewModel) {
-    Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            stringResource(R.string.appearance_title),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.appearance_book_only))
-                Text(
-                    stringResource(R.string.appearance_book_only_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(model.bookOnly, model::keepForThisBook)
-        }
-        TextSizeStepper(model)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(
-                    "System" to R.string.appearance_theme_system,
-                    "Light" to R.string.appearance_theme_light,
-                    "Paper" to R.string.appearance_theme_paper,
-                    "Dark" to R.string.appearance_theme_dark,
-                )
-                .forEach { (name, label) ->
-                    FilterChip(
-                        model.pageTheme == name,
-                        { model.appearance(theme = name) },
-                        { Text(stringResource(label)) },
-                    )
-                }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                model.serif,
-                { model.appearance(useSerif = true) },
-                { Text(stringResource(R.string.appearance_serif)) },
-            )
-            FilterChip(
-                !model.serif,
-                { model.appearance(useSerif = false) },
-                { Text(stringResource(R.string.appearance_sans)) },
-            )
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.appearance_book_styles))
-                Text(
-                    stringResource(R.string.appearance_book_styles_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(model.publisherStyles, { model.appearance(bookStyles = it) })
-        }
-        ChoiceRow(
-            stringResource(R.string.appearance_spacing),
-            listOf(
-                stringResource(R.string.appearance_compact) to 1.3,
-                stringResource(R.string.appearance_normal) to 1.5,
-                stringResource(R.string.appearance_relaxed) to 1.8,
-            ),
-            model.lineHeight,
-            enabled = !model.publisherStyles,
-        ) {
-            model.appearance(spacing = it)
-        }
-        ChoiceRow(
-            stringResource(R.string.appearance_margins),
-            listOf(
-                stringResource(R.string.appearance_narrow) to 0.5,
-                stringResource(R.string.appearance_normal) to 1.0,
-                stringResource(R.string.appearance_wide) to 1.6,
-            ),
-            model.margins,
-            enabled = !model.publisherStyles,
-        ) {
-            model.appearance(pageMargins = it)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.appearance_scrolling), Modifier.weight(1f))
-            Switch(model.scrolling, { model.appearance(scroll = it) })
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.appearance_volume_keys), Modifier.weight(1f))
-            Switch(model.volumeKeys, { model.appearance(turnWithVolume = it) })
-        }
-        Text(stringResource(R.string.appearance_hint), style = MaterialTheme.typography.bodySmall)
-    }
-}
-
 private fun flattenContents(links: List<Link>, depth: Int = 0): List<Pair<Link, Int>> =
     links.flatMap {
         listOf(it to depth) + flattenContents(it.children, (depth + 1).coerceAtMost(5))
     }
-
-@Composable
-private fun ContentsPanel(
-    links: List<Link>,
-    currentPath: String?,
-    bookmarks: List<PhoneBookmark>,
-    onLink: (Link) -> Unit,
-    onBookmark: (PhoneBookmark) -> Unit,
-    onDelete: (PhoneBookmark) -> Unit,
-) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    val entries = remember(links) { flattenContents(links) }
-    val current =
-        remember(entries, currentPath) {
-            entries.indexOfLast { (link, _) -> resourcePath(link.url().toString()) == currentPath }
-        }
-    val contentsState =
-        rememberLazyListState(initialFirstVisibleItemIndex = current.coerceAtLeast(0))
-    val bookmarksState = rememberLazyListState()
-    val currentLabel = stringResource(R.string.contents_current)
-    Column {
-        Text(
-            stringResource(R.string.contents_title),
-            Modifier.padding(horizontal = 24.dp),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        PrimaryTabRow(tab) {
-            Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.contents_tab)) })
-            Tab(
-                tab == 1,
-                { tab = 1 },
-                text = { Text(stringResource(R.string.contents_bookmarks_tab, bookmarks.size)) },
-            )
-        }
-        LazyColumn(
-            Modifier.fillMaxWidth().heightIn(max = 500.dp),
-            state = if (tab == 0) contentsState else bookmarksState,
-            contentPadding = PaddingValues(bottom = 24.dp),
-        ) {
-            if (tab == 0) {
-                if (links.isEmpty())
-                    item { Text(stringResource(R.string.contents_empty), Modifier.padding(24.dp)) }
-                items(entries.size) { index ->
-                    val (link, depth) = entries[index]
-                    val isCurrent = index == current
-                    TextButton(
-                        onClick = { onLink(link) },
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(start = (16 + depth * 12).dp, end = 16.dp)
-                                .semantics {
-                                    selected = isCurrent
-                                    if (isCurrent) stateDescription = currentLabel
-                                },
-                    ) {
-                        Text(
-                            link.title ?: stringResource(R.string.contents_chapter_fallback),
-                            Modifier.weight(1f),
-                            fontWeight = if (isCurrent) FontWeight.Bold else null,
-                        )
-                    }
-                }
-            } else {
-                if (bookmarks.isEmpty())
-                    item { Text(stringResource(R.string.bookmarks_empty), Modifier.padding(24.dp)) }
-                items(bookmarks, key = { it.id }) { mark ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = { onBookmark(mark) }, modifier = Modifier.weight(1f)) {
-                            Text(mark.title, Modifier.weight(1f))
-                        }
-                        IconButton(onClick = { onDelete(mark) }) {
-                            Icon(
-                                Icons.Outlined.DeleteOutline,
-                                stringResource(R.string.bookmark_delete),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** "Continue from Kobo at 43%?", offered once when another device read further on or back. */
-@Composable
-private fun LinkOfferCard(
-    offer: dev.sadking.folio.data.KosyncReport,
-    modifier: Modifier,
-    onContinue: () -> Unit,
-    onStay: () -> Unit,
-) {
-    Surface(
-        modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        tonalElevation = 3.dp,
-        shadowElevation = 3.dp,
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                stringResource(
-                    R.string.reader_link_offer,
-                    offer.device,
-                    (offer.percentage * 100).toInt(),
-                ),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            ) {
-                TextButton(onClick = onStay) { Text(stringResource(R.string.reader_link_stay)) }
-                Button(onClick = onContinue) { Text(stringResource(R.string.reader_link_continue)) }
-            }
-        }
-    }
-}
-
-/** Text size in steps, each applied at once, with "Aa" drawn at the chosen size and font. */
-@Composable
-private fun TextSizeStepper(model: ReaderViewModel) {
-    val size = model.fontSize
-    val smaller = stringResource(R.string.appearance_smaller)
-    val larger = stringResource(R.string.appearance_larger)
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        FilledTonalIconButton(
-            onClick = { model.appearance(size = steppedTextSize(size, up = false)) },
-            enabled = size > MIN_TEXT,
-            modifier = Modifier.semantics { contentDescription = smaller },
-        ) {
-            Text("A−", style = MaterialTheme.typography.labelLarge)
-        }
-        Column(
-            Modifier.weight(1f).semantics(mergeDescendants = true) {},
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // A fixed-height box keeps the buttons still while the sample grows.
-            Box(Modifier.height(72.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    "Aa",
-                    fontSize = (22 * size / 100).sp,
-                    fontFamily =
-                        if (model.serif) androidx.compose.ui.text.font.FontFamily.Serif
-                        else androidx.compose.ui.text.font.FontFamily.SansSerif,
-                    modifier = Modifier.clearAndSetSemantics {},
-                )
-            }
-            Text(
-                stringResource(R.string.appearance_text_size, size.toInt()),
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-        FilledTonalIconButton(
-            onClick = { model.appearance(size = steppedTextSize(size, up = true)) },
-            enabled = size < MAX_TEXT,
-            modifier = Modifier.semantics { contentDescription = larger },
-        ) {
-            Text("A+", style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}

@@ -260,7 +260,7 @@
     <string name="msg_reader_no_chapters">This EPUB has no readable chapters. Attach a valid EPUB or try another reader.</string>
     <string name="msg_reader_open_failed">Could not open this book</string>
     <string name="msg_reader_bookmark_saved">Bookmark saved</string>
-    <string name="msg_reader_device_position">E-reader position retrieved. Choose “%1$s” to move there.</string>
+    <string name="msg_reader_device_position">E-reader place found. Choose “%1$s” to move there.</string>
     <string name="msg_reader_device_position_failed">Could not get the position from your e-reader</string>
     <string name="msg_reader_turn_page_first">Turn a page first to save a position</string>
     <string name="msg_reader_position_sent">Position sent. On your e-reader, open this book in KOReader, then choose Folio bridge → Review phone reading position.</string>

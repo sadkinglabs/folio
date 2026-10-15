@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
+import dev.sadking.folio.reader.*
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -85,4 +86,18 @@ class ScreenshotTest {
     @Test fun bar() = shoot("bar") { BarPreview() }
 
     @Test fun lookup() = shoot("lookup") { LookupPreview() }
+
+    @Test fun readerControls() = shoot("reader-controls") { ReaderControlsPreview() }
+
+    @Test fun readerText() = shoot("reader-text") { ReaderTextPreview() }
+
+    @Test fun readerContents() = shoot("reader-contents") { ReaderContentsPreview() }
+
+    @Test fun readerDevices() = shoot("reader-devices") { ReaderDevicesPreview() }
+
+    @Test fun readerDevicesEmpty() = shoot("reader-devices-empty") { ReaderDevicesEmptyPreview() }
+
+    @Test fun readerLinkOffer() = shoot("reader-link-offer") { ReaderLinkOfferPreview() }
+
+    @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
 }

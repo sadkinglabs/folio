@@ -146,11 +146,11 @@ class ReaderLinkTest {
     fun stayingKeepsThePlaceAndTheSameReportIsNotOfferedAgain() {
         open().use {
             compose.waitUntil(30_000) {
-                compose.onAllNodesWithText("Stay here").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("Stay").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Stay here").performClick()
+            compose.onNodeWithText("Stay").performClick()
             compose.waitUntil(10_000) {
-                compose.onAllNodesWithText("Stay here").fetchSemanticsNodes().isEmpty()
+                compose.onAllNodesWithText("Stay").fetchSemanticsNodes().isEmpty()
             }
         }
         open().use {

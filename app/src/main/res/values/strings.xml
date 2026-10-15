@@ -12,17 +12,17 @@
 
     <!-- Reader -->
     <string name="reader_title_fallback">Reader</string>
-    <string name="reader_back">Return to book</string>
-    <string name="reader_contents">Contents and bookmarks</string>
-    <string name="reader_appearance">Reading appearance</string>
-    <string name="reader_devices">Continue between phone and Kindle</string>
+    <string name="reader_back">Back</string>
+    <string name="reader_contents">Contents</string>
+    <string name="reader_appearance">Text settings</string>
+    <string name="reader_devices">Devices</string>
+    <string name="reader_slider">Place in the book</string>
     <string name="reader_previous_page">Previous page</string>
     <string name="reader_next_page">Next page</string>
     <string name="reader_bookmark">Bookmark this page</string>
     <string name="reader_progress_percent">%1$d%%</string>
     <string name="reader_progress_pages">Page %1$d of %2$d · %3$d%%</string>
-    <string name="reader_open_failed">Unable to open book</string>
-    <string name="reader_back_to_details">Back to book details</string>
+    <string name="reader_open_failed">Couldn’t open this book</string>
     <string name="reader_external_link">External links are disabled while reading. Open them separately in your browser.</string>
     <string name="reader_save_failed">Could not save your place. Try again before closing.</string>
     <string name="reader_position_save_failed">Position could not be saved. Check phone storage.</string>
@@ -36,9 +36,8 @@
     <string name="reader_send_failed">Could not prepare this position. Try another text page.</string>
 
     <!-- Reader: appearance panel -->
-    <string name="appearance_title">Make yourself comfortable</string>
+    <string name="appearance_title">Text</string>
     <string name="appearance_book_only">Only for this book</string>
-    <string name="appearance_book_only_hint">Size, font, spacing and margins apply to this book. Turn off to use your usual settings.</string>
     <string name="appearance_text_size">Text size · %1$d%%</string>
     <string name="appearance_smaller">Smaller text</string>
     <string name="appearance_larger">Larger text</string>
@@ -55,31 +54,27 @@
     <string name="appearance_relaxed">Relaxed</string>
     <string name="appearance_narrow">Narrow</string>
     <string name="appearance_wide">Wide</string>
-    <string name="appearance_book_styles">Use the book’s own formatting</string>
-    <string name="appearance_book_styles_hint">Keeps the publisher’s fonts and spacing. Turn off to use your spacing and margins.</string>
-    <string name="appearance_scrolling">Continuous scrolling</string>
+    <string name="appearance_book_styles">Book’s own formatting</string>
+    <string name="appearance_scrolling">Scroll</string>
     <string name="appearance_volume_keys">Turn pages with volume buttons</string>
-    <string name="appearance_hint">Tap the left or right edge to turn pages. Tap the middle to show or hide controls. Your place is saved automatically.</string>
 
     <!-- Reader: contents panel -->
-    <string name="contents_title">Your place in the book</string>
     <string name="contents_tab">Contents</string>
     <string name="contents_bookmarks_tab">Bookmarks · %1$d</string>
     <string name="contents_empty">This EPUB has no table of contents.</string>
     <string name="contents_chapter_fallback">Chapter</string>
     <string name="contents_current">Current chapter</string>
-    <string name="bookmarks_empty">Bookmark a page using the ribbon button while reading.</string>
+    <string name="bookmarks_empty">No bookmarks yet. The ribbon button in the bar adds one.</string>
     <string name="bookmark_delete">Delete bookmark</string>
 
     <!-- Reader: device panel -->
-    <string name="devices_title">Continue on another device</string>
-    <string name="devices_body">Positions are kept separately. Choose when to replace your current place. Both devices must have the same EPUB.</string>
-    <string name="devices_last_kindle">Last retrieved Kindle progress · %1$d%%</string>
-    <string name="devices_retrieve">Retrieve saved Kindle position</string>
-    <string name="devices_resume">Resume from Kindle on phone</string>
-    <string name="devices_phone_to_kindle">Phone → Kindle</string>
-    <string name="devices_phone_to_kindle_body">Needs the Folio plugin in KOReader. Send the book first. The plugin asks before moving your place, and bookmarks and highlights are kept.</string>
-    <string name="devices_send">Send phone position for review</string>
+    <string name="devices_title">Continue elsewhere</string>
+    <string name="devices_none">No other device has a place in this book yet.</string>
+    <string name="devices_row">%1$d%% · %2$s</string>
+    <string name="devices_legacy">SSH</string>
+    <string name="devices_jump">Jump</string>
+    <string name="devices_retrieve">Check e-reader</string>
+    <string name="devices_send">Send my place</string>
     <string name="devices_working">Working…</string>
     <string name="transfer_waiting">Waiting to send to your e-reader</string>
     <string name="transfer_stopping">Stopping after this book…</string>
