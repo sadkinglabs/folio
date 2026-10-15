@@ -235,7 +235,12 @@ fun Cover(book: Book, modifier: Modifier = Modifier) {
                                         else -> MaterialTheme.typography.titleMedium
                                     })
                                     .copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                        // Long words on narrow covers break with a hyphen, not
+                                        // mid-letter ("Else-where", not "Elsewhe re").
+                                        hyphens = androidx.compose.ui.text.style.Hyphens.Auto,
+                                        lineBreak =
+                                            androidx.compose.ui.text.style.LineBreak.Paragraph,
                                     ),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 5,
