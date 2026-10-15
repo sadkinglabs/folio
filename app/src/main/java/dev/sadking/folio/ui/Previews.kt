@@ -590,25 +590,386 @@ internal fun BarPreview() {
 @Composable
 internal fun LookupPreview() {
     FolioTheme(dynamic = false) {
-        Surface {
-            MetadataLookupSheet(
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            MetadataLookupContent(
                 sampleBooks[0],
                 emptyList(),
                 MetadataProposal(
                     sampleBooks[0]
                         .metadata()
                         .copy(
+                            title = "The Orchard: A Year",
                             publisher = "Example Editions",
                             description = "A revised description from the selected edition.",
+                            identifiers = listOf("isbn:9780000000001"),
                         ),
-                    null,
+                    12345L,
                 ),
                 false,
                 {},
                 {},
                 { _, _ -> },
-                {},
             )
+        }
+    }
+}
+
+@Preview(name = "Metadata lookup results · light", widthDp = 412, heightDp = 600)
+@Composable
+internal fun LookupResultsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            MetadataLookupContent(
+                sampleBooks[0],
+                listOf(
+                    MetadataCandidate("/works/OL1W", "The Orchard", listOf("Alex Rowan"), 1L, null),
+                    MetadataCandidate(
+                        "/works/OL2W",
+                        "The Orchard Keeper",
+                        listOf("Alex Rowan"),
+                        2L,
+                        "/books/OL2M",
+                    ),
+                ),
+                null,
+                false,
+                {},
+                {},
+                { _, _ -> },
+            )
+        }
+    }
+}
+
+private val hardcoverEditions =
+    listOf(
+        HardcoverEdition(10, "The Orchard", 320, "Paperback · 2019"),
+        HardcoverEdition(11, "The Orchard", 288, "Hardcover · 2017"),
+    )
+
+@Preview(name = "Hardcover · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Hardcover · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun HardcoverReadingPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverReadingContent(
+                book = sampleBooks[0].copy(currentPath = "orchard.epub", currentHash = "h1"),
+                username = "alex",
+                busy = false,
+                error = null,
+                reading = HardcoverReading(1, 2, 7, 96, 10),
+                editions = hardcoverEditions,
+                matches = emptyList(),
+                snapshot =
+                    ReadingSnapshot(
+                        "sample1",
+                        "kindle",
+                        0.41,
+                        "",
+                        "reading",
+                        0,
+                        1791750000000,
+                        "",
+                        "",
+                        "h1",
+                    ),
+                phonePercent = 0.37,
+                reports = emptyList(),
+                deviceFetch = true,
+                deviceFetchEnabled = true,
+                deviceFetchBusy = false,
+                deviceError = null,
+                onConnect = {},
+                onRefresh = {},
+                onFetchDevice = {},
+                onSearch = {},
+                onLink = {},
+                onMarkReading = {},
+                onSend = { _, _, _ -> },
+            )
+        }
+    }
+}
+
+@Preview(name = "Hardcover link · light", widthDp = 412, heightDp = 600)
+@Composable
+internal fun HardcoverLinkPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverReadingContent(
+                book = sampleBooks[0],
+                username = "alex",
+                busy = false,
+                error = null,
+                reading = null,
+                editions = emptyList(),
+                matches =
+                    listOf(
+                        HardcoverMatch(1, "The Orchard", listOf("Alex Rowan"), "the-orchard"),
+                        HardcoverMatch(2, "Orchard Days", listOf("A. Rowan"), "orchard-days"),
+                    ),
+                snapshot = null,
+                phonePercent = null,
+                reports = emptyList(),
+                deviceFetch = false,
+                deviceFetchEnabled = false,
+                deviceFetchBusy = false,
+                deviceError = null,
+                onConnect = {},
+                onRefresh = {},
+                onFetchDevice = {},
+                onSearch = {},
+                onLink = {},
+                onMarkReading = {},
+                onSend = { _, _, _ -> },
+            )
+        }
+    }
+}
+
+@Preview(name = "Hardcover not connected · light", widthDp = 412, heightDp = 400)
+@Composable
+internal fun HardcoverConnectPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverReadingContent(
+                book = sampleBooks[0],
+                username = "",
+                busy = false,
+                error = null,
+                reading = null,
+                editions = emptyList(),
+                matches = emptyList(),
+                snapshot = null,
+                phonePercent = null,
+                reports = emptyList(),
+                deviceFetch = false,
+                deviceFetchEnabled = false,
+                deviceFetchBusy = false,
+                deviceError = null,
+                onConnect = {},
+                onRefresh = {},
+                onFetchDevice = {},
+                onSearch = {},
+                onLink = {},
+                onMarkReading = {},
+                onSend = { _, _, _ -> },
+            )
+        }
+    }
+}
+
+private val hardcoverLibrary =
+    listOf(
+        HardcoverLibraryBook(
+            1,
+            HardcoverMatch(1, "The Orchard", listOf("Alex Rowan"), "the-orchard"),
+            2,
+            96,
+            10,
+        ),
+        HardcoverLibraryBook(
+            2,
+            HardcoverMatch(2, "Letters from the Coast", listOf("Morgan Wells"), "letters"),
+            3,
+            null,
+            null,
+        ),
+        HardcoverLibraryBook(
+            3,
+            HardcoverMatch(3, "The Lighthouse at the End of the World", listOf("Jules Verne"), "l"),
+            1,
+            null,
+            null,
+        ),
+    )
+
+@Preview(name = "Hardcover import · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Hardcover import · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun HardcoverImportPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverImportContent(
+                rows = hardcoverLibrary,
+                more = false,
+                busy = false,
+                error = null,
+                books = sampleBooks,
+                wishes = emptyList(),
+                selected = setOf(1, 3),
+                targets = mapOf(1 to sampleBooks[0].id),
+                query = "",
+                onQuery = {},
+                onToggle = { _, _ -> },
+                onSelectAll = {},
+                onRefresh = {},
+                onMatch = {},
+                onUnmatch = {},
+                onLoadMore = {},
+                onImport = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Hardcover search · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Hardcover search · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun HardcoverSearchPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HardcoverBookSearchContent(
+                query = "The Orchard",
+                onQuery = {},
+                busy = false,
+                error = null,
+                results = hardcoverLibrary.map { it.book },
+                proposal = sampleBooks[0],
+                onSearch = {},
+                onSelect = {},
+                onAdd = {},
+                onSave = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Scan a cover · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Scan a cover · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun DiscoveryPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            DiscoveryContent(
+                query = "THE ORCHARD\nAlex Rowan",
+                onQuery = {},
+                candidates =
+                    listOf(
+                        MetadataCandidate(
+                            "/works/OL1W",
+                            "The Orchard",
+                            listOf("Alex Rowan"),
+                            1L,
+                            null,
+                        ),
+                        MetadataCandidate(
+                            "/works/OL2W",
+                            "The Orchard Keeper",
+                            listOf("Cormac McCarthy"),
+                            2L,
+                            null,
+                        ),
+                    ),
+                busy = false,
+                error = null,
+                hardcover = true,
+                onBack = {},
+                onCamera = {},
+                onPhoto = {},
+                onFind = {},
+                onHardcover = {},
+                onChoose = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Import results · light", widthDp = 412, heightDp = 480)
+@Preview(
+    name = "Import results · dark",
+    widthDp = 412,
+    heightDp = 480,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun ImportResultsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ImportResultsContent(
+                listOf(
+                    ImportOutcome("content://1", "The Orchard.epub", "Imported", "sample1", null),
+                    ImportOutcome(
+                        "content://2",
+                        "Letters.epub",
+                        "Already in your library, or restored",
+                        "sample2",
+                        null,
+                    ),
+                    ImportOutcome(
+                        "content://3",
+                        "Broken.epub",
+                        "Not imported",
+                        null,
+                        "Not a readable EPUB ZIP archive. Download another copy.",
+                    ),
+                    ImportOutcome(
+                        "content://4",
+                        "Gone.epub",
+                        "Not imported",
+                        null,
+                        "File is missing or unavailable.",
+                    ),
+                ),
+                busy = false,
+                onRetry = {},
+                onOpen = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Recently removed · light", widthDp = 412, heightDp = 400)
+@Preview(
+    name = "Recently removed · dark",
+    widthDp = 412,
+    heightDp = 400,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun RemovedPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            RemovedBooksContent(
+                listOf(
+                    RemovedEntry("r1", "g1", "Letters from the Coast", "EPUB", 1791750000000),
+                    RemovedEntry("r2", "g2", "Winter Light", "Catalogue", 1791740000000),
+                ),
+                busy = false,
+                onRestore = {},
+                onDelete = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Recently removed empty · light", widthDp = 412, heightDp = 480)
+@Composable
+internal fun RemovedEmptyPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            RemovedBooksContent(emptyList(), busy = false, onRestore = {}, onDelete = {})
         }
     }
 }

@@ -14,6 +14,43 @@ data class MetadataCandidate(
 
 data class MetadataProposal(val metadata: Metadata, val coverId: Long?)
 
+/** One field a lookup can replace: its key (stable, in English), what is there, what is offered. */
+data class LookupField(val key: String, val current: String, val suggested: String)
+
+/** The field keys a lookup can replace, in the order the sheet shows them. */
+val lookupFieldKeys =
+    listOf("Title", "Authors", "Description", "Publisher", "Language", "Identifiers")
+
+/** The fields with a suggestion, as rows for the review list. Blank suggestions are left out. */
+fun lookupFields(current: Metadata, proposed: Metadata): List<LookupField> =
+    lookupFieldKeys
+        .map { key ->
+            LookupField(key, lookupValue(current, key), lookupValue(proposed, key))
+        }
+        .filter { it.suggested.isNotBlank() }
+
+private fun lookupValue(metadata: Metadata, key: String): String =
+    when (key) {
+        "Title" -> metadata.title
+        "Authors" -> metadata.authors.joinToString(", ")
+        "Description" -> metadata.description
+        "Publisher" -> metadata.publisher
+        "Language" -> metadata.language
+        "Identifiers" -> metadata.identifiers.joinToString(", ")
+        else -> ""
+    }
+
+/** [current] with only the [selected] fields taken from [proposed]; series and tags never move. */
+fun applyLookup(current: Metadata, proposed: Metadata, selected: Set<String>): Metadata =
+    current.copy(
+        title = if ("Title" in selected) proposed.title else current.title,
+        authors = if ("Authors" in selected) proposed.authors else current.authors,
+        description = if ("Description" in selected) proposed.description else current.description,
+        publisher = if ("Publisher" in selected) proposed.publisher else current.publisher,
+        language = if ("Language" in selected) proposed.language else current.language,
+        identifiers = if ("Identifiers" in selected) proposed.identifiers else current.identifiers,
+    )
+
 /**
  * User-triggered Open Library queries; HTTPS only, bounded responses, no API key or book upload.
  */

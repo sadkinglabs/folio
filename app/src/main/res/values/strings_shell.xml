@@ -9,6 +9,9 @@
     <string name="shell_back">Back</string>
     <string name="shell_cancel">Cancel</string>
     <string name="shell_done">Done</string>
+    <string name="shell_ok">OK</string>
+    <!-- The info icon on sheets that opens a short note. -->
+    <string name="shell_about_this">About this</string>
     <string name="shell_settings">Settings</string>
     <string name="shell_add_books">Add books</string>
 

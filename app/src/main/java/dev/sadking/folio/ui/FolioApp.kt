@@ -73,7 +73,6 @@ fun FolioApp(model: LibraryViewModel) {
     var resumeHardcoverImport by rememberSaveable { mutableStateOf(false) }
     var showAccount by rememberSaveable { mutableStateOf(false) }
     var showHardcover by rememberSaveable { mutableStateOf(false) }
-    var showDiscovery by rememberSaveable { mutableStateOf(false) }
     var showNowReading by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val context = LocalContext.current
@@ -118,16 +117,15 @@ fun FolioApp(model: LibraryViewModel) {
         val catalogue = wishes.firstOrNull { it.id == catalogueId }
         LaunchedEffect(
             discovery,
-            showDiscovery,
             showHardcover,
             showProfileImport,
             showTitleLookup,
             showAccount,
             catalogueId,
         ) {
+            // The scan screen is a route under this scaffold, so its notices show here too.
             if (
-                !showDiscovery &&
-                    !showHardcover &&
+                !showHardcover &&
                     !showProfileImport &&
                     !showTitleLookup &&
                     !showAccount &&
@@ -457,7 +455,7 @@ fun FolioApp(model: LibraryViewModel) {
                     model.managementError.value = null
                     catalogueEditorId = "new"
                 }
-                AddBookAction.DISCOVER -> showDiscovery = true
+                AddBookAction.DISCOVER -> nav.open(Route.Discover)
                 AddBookAction.TITLE -> {
                     titleLookupQuery = ""
                     discovery.clearTitleLookup()
@@ -561,8 +559,9 @@ fun FolioApp(model: LibraryViewModel) {
                     },
                     bottomBar = {
                         // The bar swaps to the selection's actions with a vertical slide, at the
-                        // same height, so the content under it does not move.
-                        if (book == null && catalogue == null)
+                        // same height, so the content under it does not move. The scan screen
+                        // has no bar: it is a full-screen step from the Add sheet.
+                        if (book == null && catalogue == null && !nav.discovering)
                             AnimatedContent(
                                 selection.isNotEmpty(),
                                 transitionSpec = {
@@ -787,6 +786,22 @@ fun FolioApp(model: LibraryViewModel) {
                                         onLists = { listEntryId = catalogue.id },
                                         onStatus = { model.status(catalogue.displayBook(), it) },
                                     )
+                                } else if (nav.discovering) {
+                                    DiscoveryScreen(
+                                        discovery,
+                                        onBack = { nav.back() },
+                                        onHardcoverLookup = { text ->
+                                            nav.back()
+                                            discovery.clearTitleLookup()
+                                            titleLookupQuery = text
+                                            showTitleLookup = true
+                                        },
+                                        onSaved = {
+                                            nav.root(FolioNav.LIBRARY)
+                                            requestedList = ReadingList.WANT_TO_READ.name
+                                        },
+                                        contentPadding = pagePadding,
+                                    )
                                 } else if (openList != null) {
                                     ListDetailScreen(
                                         openList,
@@ -875,7 +890,9 @@ fun FolioApp(model: LibraryViewModel) {
                                                             onFind = {
                                                                 addBook(AddBookAction.TITLE)
                                                             },
-                                                            onScan = { showDiscovery = true },
+                                                            onScan = {
+                                                                nav.open(Route.Discover)
+                                                            },
                                                             requestedTab =
                                                                 if (
                                                                     requestedList ==
@@ -910,7 +927,9 @@ fun FolioApp(model: LibraryViewModel) {
                                                             onDelete = {
                                                                 deletingShelfId = it.id
                                                             },
-                                                            onScan = { showDiscovery = true },
+                                                            onScan = {
+                                                                nav.open(Route.Discover)
+                                                            },
                                                         )
                                                     FolioNav.DEVICE ->
                                                         DeviceTab(
@@ -1226,9 +1245,6 @@ fun FolioApp(model: LibraryViewModel) {
                 importResults,
                 op.busy,
                 model::import,
-                onChooseAgain = {
-                    picker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
-                },
                 onOpen = { id ->
                     model.showImportResults.value = false
                     nav.open(Route.Book(id))
@@ -1509,22 +1525,6 @@ fun FolioApp(model: LibraryViewModel) {
                 showHardcover = false
                 discovery.clearReading()
             }
-        if (showDiscovery)
-            DiscoveryScreen(
-                discovery,
-                onDismiss = { showDiscovery = false },
-                onHardcoverLookup = { text ->
-                    showDiscovery = false
-                    discovery.clearTitleLookup()
-                    titleLookupQuery = text
-                    showTitleLookup = true
-                },
-                onSaved = {
-                    showDiscovery = false
-                    nav.root(FolioNav.LIBRARY)
-                    requestedList = ReadingList.WANT_TO_READ.name
-                },
-            )
         if (showLookup && book != null)
             MetadataLookupSheet(
                 book,

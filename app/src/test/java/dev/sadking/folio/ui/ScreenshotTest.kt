@@ -87,6 +87,26 @@ class ScreenshotTest {
 
     @Test fun lookup() = shoot("lookup") { LookupPreview() }
 
+    @Test fun lookupResults() = shoot("lookup-results") { LookupResultsPreview() }
+
+    @Test fun hardcover() = shoot("hardcover") { HardcoverReadingPreview() }
+
+    @Test fun hardcoverLink() = shoot("hardcover-link") { HardcoverLinkPreview() }
+
+    @Test fun hardcoverConnect() = shoot("hardcover-connect") { HardcoverConnectPreview() }
+
+    @Test fun hardcoverImport() = shoot("hardcover-import") { HardcoverImportPreview() }
+
+    @Test fun hardcoverSearch() = shoot("hardcover-search") { HardcoverSearchPreview() }
+
+    @Test fun discovery() = shoot("discovery") { DiscoveryPreview() }
+
+    @Test fun importResults() = shoot("import-results") { ImportResultsPreview() }
+
+    @Test fun removed() = shoot("removed") { RemovedPreview() }
+
+    @Test fun removedEmpty() = shoot("removed-empty") { RemovedEmptyPreview() }
+
     @Test fun readerControls() = shoot("reader-controls") { ReaderControlsPreview() }
 
     @Test fun readerText() = shoot("reader-text") { ReaderTextPreview() }

@@ -25,6 +25,9 @@ sealed interface Route {
     /** A search source (web view) for a query. */
     data class Search(val query: String) : Route
 
+    /** Scan a cover: camera or photo, recognised text, matches. */
+    data object Discover : Route
+
     fun encode(): String =
         when (this) {
             is Book -> "book:$id"
@@ -32,6 +35,7 @@ sealed interface Route {
             is Edit -> "edit:$id"
             is List -> "list:$id"
             is Search -> "search:$query"
+            Discover -> "discover"
         }
 
     companion object {
@@ -43,6 +47,7 @@ sealed interface Route {
                 "edit" -> Edit(id).takeIf { id.isNotEmpty() }
                 "list" -> List(id).takeIf { id.isNotEmpty() }
                 "search" -> Search(id)
+                "discover" -> Discover
                 // "settings" was a route before Settings became a tab; it is dropped on restore.
                 else -> null
             }
@@ -82,6 +87,10 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
     val editing: Boolean
         get() = top is Route.Edit
 
+    /** The scan-a-cover screen is on top. */
+    val discovering: Boolean
+        get() = top is Route.Discover
+
     /** Opens [route]; opening the screen already on top does nothing. */
     fun open(route: Route) {
         if (top != route) stack.add(route)
@@ -110,6 +119,7 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
                 is Route.Edit -> it.id in ids
                 is Route.List -> it.id in ids
                 is Route.Search -> false
+                Route.Discover -> false
             }
         }
     }

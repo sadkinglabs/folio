@@ -1,27 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Shared by discovery and Hardcover screens -->
-    <string name="discovery_back">Back</string>
-    <string name="discovery_cancel">Cancel</string>
-    <string name="discovery_close">Close</string>
-    <string name="discovery_series">Series</string>
-    <string name="discovery_publisher">Publisher</string>
-    <string name="discovery_language">Language</string>
-
-    <!-- Discover books (photo or text search) -->
-    <string name="discovery_title">Discover books</string>
-    <string name="discovery_heading">A book caught your eye?</string>
-    <string name="discovery_intro">Photograph the cover, check the text Folio reads from it, then pick the matching book. You don’t need an EPUB.</string>
+    <!-- Scan a cover (photo or text search) -->
+    <string name="discovery_title">Scan a cover</string>
     <string name="discovery_no_camera">No camera app found. Choose a photo instead.</string>
     <string name="discovery_take_photo">Take photo</string>
     <string name="discovery_choose_photo">Choose photo</string>
     <string name="discovery_query_label">Title, author or ISBN</string>
     <string name="discovery_find">Find book</string>
-    <string name="discovery_find_on_hardcover">Search on Hardcover</string>
-    <string name="discovery_privacy">Cover text is read on your phone. Find book sends your search to Open Library. Search on Hardcover sends it to Hardcover.</string>
-    <string name="discovery_choose_book">Choose this book</string>
-    <string name="discovery_save_title">Save this book?</string>
-    <string name="discovery_save_body">%1$s\n%2$s\n\nIt’s saved on this phone only. You can link it to Hardcover later.</string>
+    <string name="discovery_find_on_hardcover">On Hardcover</string>
+    <string name="discovery_privacy">Cover text is read on your phone. Find book sends your search to Open Library; On Hardcover sends it to Hardcover.</string>
+    <string name="discovery_save_body">Saved on this phone. You can link it to Hardcover later.</string>
     <string name="discovery_add_want_to_read">Add to Want to Read</string>
 
     <!-- Catalogue book (no EPUB yet) -->
@@ -32,7 +20,6 @@
     <!-- Hardcover account -->
     <string name="hardcover_connect">Connect Hardcover</string>
     <string name="hardcover_account">Hardcover account</string>
-    <string name="hardcover_username">\@%1$s</string>
     <string name="hardcover_connected_as">Connected as @%1$s</string>
     <string name="hardcover_account_body">Paste an API token from Hardcover. Nothing is sent until you confirm.</string>
     <string name="hardcover_no_browser">Install a browser to open Hardcover.</string>
@@ -51,44 +38,31 @@
     <string name="hardcover_status_did_not_finish">Did Not Finish</string>
     <string name="hardcover_status_none">Not in your Hardcover library</string>
 
-    <!-- Hardcover reading sheet -->
-    <string name="hardcover_reading_title">Hardcover reading</string>
-    <string name="hardcover_reading_intro">Nothing is sent to Hardcover until you confirm. Your reading data on this phone and your e-reader isn’t changed.</string>
-    <string name="hardcover_step_manual">1 · Manual progress</string>
-    <string name="hardcover_step_device">1 · E-reader progress</string>
-    <string name="hardcover_step_manual_hint">Track this book on Hardcover now, or add an EPUB to read it on your e-reader.</string>
-    <string name="hardcover_step_device_hint">Close the book on your e-reader so its latest progress is saved.</string>
-    <string name="hardcover_get_from_device">Get latest from e-reader</string>
-    <string name="hardcover_no_device_progress">No e-reader progress yet. Get it from your e-reader, or enter a page or percentage below.</string>
-    <string name="hardcover_step_review">2 · Review and update Hardcover</string>
-    <string name="hardcover_connect_hint">Connect your account to link this book. You review every update before it’s sent.</string>
+    <!-- Hardcover sheet for one book -->
+    <string name="hardcover_title">Hardcover</string>
     <string name="hardcover_reload">Refresh from Hardcover</string>
     <string name="hardcover_title_and_author">Title and author</string>
     <string name="hardcover_find">Find on Hardcover</string>
-    <string name="hardcover_link_match">Link this book</string>
-    <string name="hardcover_status_line">Hardcover status: %1$s</string>
-    <string name="hardcover_last_page">Last saved on Hardcover: page %1$d</string>
+    <string name="hardcover_link_match">Link</string>
     <string name="hardcover_mark_reading">Mark Currently Reading</string>
-    <string name="hardcover_choose_edition">Choose your edition</string>
-    <string name="hardcover_choose_edition_button">Choose an edition with a page count</string>
-    <string name="hardcover_no_page_edition">Hardcover has no edition with a page count for this book. You can still update the status, but progress needs a page count.</string>
+    <string name="hardcover_edition">Edition</string>
+    <string name="hardcover_no_page_edition">No edition has a page count, so progress can’t be sent.</string>
     <string name="hardcover_mode_pages">Pages</string>
-    <string name="hardcover_mode_percent">Percentage</string>
-    <string name="hardcover_percent_label">Percent read</string>
-    <string name="hardcover_page_label">Current page</string>
-    <string name="hardcover_use_phone_position">Use phone position · %1$.1f%%</string>
-    <string name="hardcover_phone_saved">Saved on this phone %1$s. Check it before sending.</string>
-    <string name="hardcover_use_device_position">Use e-reader position · %1$.1f%%</string>
-    <string name="hardcover_device_fetched">Got from your e-reader %1$s. Refresh if you’ve read since.</string>
-    <string name="hardcover_device_fetched_old">Got from your e-reader %1$s, for an earlier version of this EPUB. Refresh if you’ve read since.</string>
-    <string name="hardcover_review_progress">Review progress update</string>
-    <string name="hardcover_choose_edition_title">Choose an edition</string>
+    <string name="hardcover_of_pages">of %1$d</string>
+    <string name="hardcover_about_page">About page %1$d of %2$d. EPUB pages don’t match printed pages exactly.</string>
+    <string name="hardcover_percent_hint">Enter a percentage from 0 to 100.</string>
+    <string name="hardcover_use_phone_position">Use phone · %1$d%%</string>
+    <string name="hardcover_use_device_position">Use e-reader · %1$d%%</string>
+    <string name="hardcover_get_from_device">Get from e-reader</string>
+    <string name="hardcover_device_fetched_old">The e-reader position is for an earlier copy of this EPUB.</string>
+    <string name="hardcover_send_to_hardcover">Send to Hardcover</string>
     <string name="hardcover_mark_reading_title">Mark Currently Reading?</string>
-    <string name="hardcover_mark_reading_body">This updates %1$s on Hardcover. Your earlier reads, ratings, reviews and privacy setting are kept.</string>
-    <string name="hardcover_update">Update Hardcover</string>
-    <string name="hardcover_send_progress_title">Send reading progress?</string>
-    <string name="hardcover_send_progress_body">%1$s\nPage %2$d of %3$d\n%4$s\nThis also marks the book Currently Reading.</string>
-    <string name="hardcover_send_progress_body_estimated">%1$s\nPage %2$d of %3$d (estimated)\n%4$s\nThis also marks the book Currently Reading.</string>
+    <string name="hardcover_mark_reading_body">%1$s is marked Currently Reading on Hardcover. Earlier reads, ratings and reviews are kept.</string>
+    <string name="hardcover_mark">Mark</string>
+    <string name="hardcover_send_title">Send page %1$d of %2$d?</string>
+    <string name="hardcover_send_estimated">Estimated from the percentage</string>
+    <string name="hardcover_send_marks_reading">Marks the book Currently Reading.</string>
+    <string name="hardcover_send">Send</string>
     <string name="hardcover_start_new_read">Start a new read. Earlier finished reads are kept.</string>
     <string name="hardcover_allow_decrease">Allow going back to an earlier page</string>
     <plurals name="hardcover_pages">
@@ -99,56 +73,37 @@
         <item quantity="one">%1$d page · %2$s</item>
         <item quantity="other">%1$d pages · %2$s</item>
     </plurals>
-    <plurals name="hardcover_estimate">
-        <item quantity="one">Based on %1$d page. EPUB pages don’t match printed pages exactly.</item>
-        <item quantity="other">Based on %1$d pages. EPUB pages don’t match printed pages exactly.</item>
-    </plurals>
-    <plurals name="hardcover_estimate_page">
-        <item quantity="one">Based on %1$d page, that’s page %2$d. EPUB pages don’t match printed pages exactly.</item>
-        <item quantity="other">Based on %1$d pages, that’s page %2$d. EPUB pages don’t match printed pages exactly.</item>
-    </plurals>
 
     <!-- Hardcover library import -->
-    <string name="hardcover_import_title">Import Hardcover library</string>
-    <string name="hardcover_import_intro">Choose books to save on this phone. Books you’ve already matched stay matched, and you review any EPUB match yourself. Nothing changes on Hardcover or your e-reader.</string>
-    <string name="hardcover_import_select_loaded">Select all loaded</string>
+    <string name="hardcover_import_title">Import from Hardcover</string>
     <string name="hardcover_import_refresh">Refresh</string>
-    <string name="hardcover_import_search">Search loaded books</string>
-    <string name="hardcover_import_status">%1$s · Hardcover</string>
-    <plurals name="hardcover_import_status_pages">
-        <item quantity="one">%2$s · Hardcover · %1$d page</item>
-        <item quantity="other">%2$s · Hardcover · %1$d pages</item>
-    </plurals>
-    <string name="hardcover_import_duplicate">Saved more than once in Folio. Remove the extra copy before importing.</string>
+    <string name="hardcover_import_search">Search</string>
+    <string name="hardcover_import_duplicate">Saved twice in Folio · remove one first</string>
     <string name="hardcover_import_epub">EPUB: %1$s</string>
-    <string name="hardcover_import_update_existing">Updates the book already in your library</string>
-    <string name="hardcover_import_no_epub">Saves without an EPUB</string>
+    <string name="hardcover_import_update_existing">Already in your library</string>
     <string name="hardcover_import_match_epub">Match an EPUB</string>
     <string name="hardcover_import_keep_without_epub">Keep without EPUB</string>
-    <string name="hardcover_import_load_more">Load next 50 books</string>
-    <string name="hardcover_import_counts">%1$d loaded · %2$d selected</string>
-    <string name="hardcover_import_review">Review import</string>
-    <string name="hardcover_import_match_title">Match %1$s</string>
-    <string name="hardcover_import_match_intro">Choose the matching EPUB. Linking it doesn’t change its book details or reading data.</string>
+    <string name="hardcover_import_all">All</string>
+    <string name="hardcover_import_button">Import %1$d</string>
+    <string name="hardcover_import_button_empty">Import</string>
+    <string name="hardcover_import_match_title">Match an EPUB</string>
     <string name="hardcover_import_match_search">Search your EPUBs</string>
-    <string name="hardcover_import_match_option">Use %1$s · %2$s</string>
     <plurals name="hardcover_import_confirm_title">
         <item quantity="one">Save %1$d book?</item>
         <item quantity="other">Save %1$d books?</item>
     </plurals>
-    <plurals name="hardcover_import_confirm_body">
-        <item quantity="one">You matched an EPUB for %1$d book. The others keep any EPUB they already have, or are saved without one. Status and pages stay labelled as from Hardcover. Book details on this phone and e-reader activity aren’t changed.</item>
-        <item quantity="other">You matched EPUBs for %1$d books. The others keep any EPUB they already have, or are saved without one. Status and pages stay labelled as from Hardcover. Book details on this phone and e-reader activity aren’t changed.</item>
+    <plurals name="hardcover_import_with_epub">
+        <item quantity="one">%1$d with an EPUB you matched.</item>
+        <item quantity="other">%1$d with EPUBs you matched.</item>
     </plurals>
-    <string name="hardcover_import_confirm">Save to phone</string>
-    <string name="hardcover_import_back">Back to review</string>
+    <string name="hardcover_import_confirm_body">Statuses stay labelled as from Hardcover. Nothing changes on Hardcover or your e-reader.</string>
+    <string name="hardcover_import_confirm">Save</string>
 
-    <!-- Look up a book on Hardcover -->
-    <string name="hardcover_lookup_title">Look up on Hardcover</string>
+    <!-- Find a book on Hardcover -->
+    <string name="hardcover_lookup_title">Find on Hardcover</string>
     <string name="hardcover_lookup_query">Title or author</string>
     <string name="hardcover_lookup_search">Search Hardcover</string>
-    <string name="hardcover_lookup_source">Details come from Hardcover’s main ebook or print edition. You can edit them after saving and add your own EPUB.</string>
+    <string name="hardcover_lookup_source">Details come from Hardcover’s main ebook or print edition. You can edit them after saving and add your own EPUB. Nothing is posted to Hardcover.</string>
     <string name="hardcover_lookup_add">Add to library</string>
-    <string name="hardcover_lookup_add_hint">Saved on this phone and linked to Hardcover. Nothing is posted to Hardcover.</string>
-    <string name="hardcover_lookup_details">Show details</string>
+    <string name="hardcover_lookup_add_short">Add</string>
 </resources>

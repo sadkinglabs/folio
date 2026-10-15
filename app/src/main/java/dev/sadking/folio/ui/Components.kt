@@ -814,3 +814,128 @@ internal fun rememberOperationSnackbar(
     }
     return host
 }
+
+/** A sheet's title row: the title on the left, icon actions (refresh, info) on the right. */
+@Composable
+internal fun SheetTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        actions()
+    }
+}
+
+/** An info icon that opens [text] in a small dialog: where a privacy note lives now. */
+@Composable
+internal fun InfoAction(text: String) {
+    var open by remember { mutableStateOf(false) }
+    IconButton(onClick = { open = true }) {
+        Icon(Icons.Outlined.Info, stringResource(R.string.shell_about_this))
+    }
+    if (open)
+        AlertDialog(
+            onDismissRequest = { open = false },
+            text = { Text(text) },
+            confirmButton = {
+                TextButton(onClick = { open = false }) { Text(stringResource(R.string.shell_ok)) }
+            },
+        )
+}
+
+/** A book that exists only to draw a cover: a search result, a removed entry, a saved photo. */
+internal fun coverStub(title: String, authors: String = "", coverPath: String? = null): Book =
+    Book(
+        "cover:$title",
+        title,
+        authors,
+        originalPath = "",
+        currentPath = "",
+        originalHash = "",
+        currentHash = "",
+        coverPath = coverPath,
+    )
+
+/**
+ * A search result or a removed book as a row: a 40 dp cover (generated when the source has none),
+ * title, authors, one optional [detail] line, and a [trailing] control. Tappable when [onClick] is
+ * set.
+ */
+@Composable
+internal fun ResultRow(
+    title: String,
+    authors: String,
+    modifier: Modifier = Modifier,
+    coverPath: String? = null,
+    detail: String? = null,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null)
+                    Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                else Modifier
+            )
+            .padding(vertical = FolioSpace.small),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+    ) {
+        CoverTile(coverStub(title, coverPath = coverPath), Modifier.width(40.dp), lifted = false)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (authors.isNotBlank())
+                Text(
+                    authors,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            if (detail != null)
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+        }
+        trailing?.invoke(this)
+    }
+}
+
+/** A small status pill: "Currently Reading", "Reading · 120 pages". */
+@Composable
+internal fun StatusPill(text: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}

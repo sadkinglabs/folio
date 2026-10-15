@@ -14,19 +14,34 @@ class LibraryBasicsUiTest {
     @Test
     fun recentlyRemovedCanRestoreWithoutDeleting() {
         var restored = ""
+        var purged = ""
         compose.setContent {
             FolioTheme(dynamic = false) {
                 RemovedBooksSheet(
                     listOf(RemovedEntry("id", "group", "Removed book", "EPUB", 1000)),
                     false,
                     { restored = it },
-                    {},
+                    { purged = it },
                     {},
                 )
             }
         }
+        compose.onNodeWithText("Removed book").assertIsDisplayed()
         compose.onNodeWithText("Restore").performClick()
-        compose.runOnIdle { assertEquals("group", restored) }
+        compose.runOnIdle {
+            assertEquals("group", restored)
+            assertEquals("", purged)
+        }
+        // The trash icon only asks; deleting for good is the confirm sheet's red button.
+        compose.onNodeWithContentDescription("Delete for good?").performClick()
+        compose
+            .onNodeWithText("Files and notes on this phone are deleted.", substring = true)
+            .assertIsDisplayed()
+        compose.onNodeWithTag(CONFIRM_SHEET_DISMISS_TAG).performClick()
+        compose.runOnIdle { assertEquals("", purged) }
+        compose.onNodeWithContentDescription("Delete for good?").performClick()
+        compose.onNodeWithTag(CONFIRM_SHEET_CONFIRM_TAG).performClick()
+        compose.runOnIdle { assertEquals("group", purged) }
     }
 
     @Test
@@ -48,13 +63,14 @@ class LibraryBasicsUiTest {
                     { retry = true },
                     {},
                     {},
-                    {},
                 )
             }
         }
         compose.onNodeWithText("Broken.epub").assertIsDisplayed()
         compose.onNodeWithText("Not an EPUB").assertIsDisplayed()
-        compose.onNodeWithText("Retry this file").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Failed").assertIsDisplayed()
+        compose.onNodeWithText("Choose files again").assertDoesNotExist()
+        compose.onNodeWithText("Retry").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(retry) }
     }
 

@@ -1,29 +1,53 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 
 package dev.sadking.folio.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import kotlin.math.roundToInt
 
+internal const val HARDCOVER_SHEET_TAG = "hardcover-sheet"
+internal const val HARDCOVER_CONNECT_TILE_TAG = "hardcover-connect-tile"
+internal const val HARDCOVER_SEND_TAG = "hardcover-send"
+internal const val HARDCOVER_POSITION_TAG = "hardcover-position"
+
+/** A page or percentage as typed in the position field: no trailing zeros, a dot for decimals. */
+internal fun percentInput(percent: Double): String {
+    val text = String.format(java.util.Locale.ROOT, "%.1f", percent)
+    return text.removeSuffix(".0")
+}
+
+/**
+ * The Hardcover sheet for one book: connect, link, then a page slider, the positions other devices
+ * hold, and one Send button. The queries behind it are unchanged; this is only how they are shown.
+ */
 @Composable
 fun HardcoverReadingSheet(
     model: DiscoveryViewModel,
@@ -42,373 +66,61 @@ fun HardcoverReadingSheet(
     val matches by model.matches.collectAsStateWithLifecycle()
     val snackbar = rememberOperationSnackbar(model.notices)
     var account by remember { mutableStateOf(false) }
-    var search by
-        remember(book.id) { mutableStateOf("${book.title} ${book.authorLabel}".take(300)) }
-    var chooseEdition by remember { mutableStateOf(false) }
-    var editionId by remember(book.id) { mutableStateOf<Int?>(null) }
-    var input by remember(book.id) { mutableStateOf("") }
     var requestedDevice by remember(book.id) { mutableStateOf(false) }
-    var useDevice by remember(book.id) { mutableStateOf(true) }
-    var percentage by remember(book.id) { mutableStateOf(false) }
-    var confirm by remember { mutableStateOf(false) }
     var confirmStatus by remember { mutableStateOf(false) }
+    var send by remember { mutableStateOf<Triple<HardcoverEdition, Int, Boolean>?>(null) }
     var allowNew by remember { mutableStateOf(false) }
     var allowDecrease by remember { mutableStateOf(false) }
-    val edition =
-        editions.firstOrNull { it.id == editionId }
-            ?: editions.firstOrNull { it.id == reading?.editionId && it.pages > 0 }
-    val page =
-        if (percentage)
-            input
-                .toDoubleOrNull()
-                ?.takeIf { it.isFinite() && it in 0.0..100.0 }
-                ?.let { p -> edition?.let { estimatedHardcoverPage(p, it.pages) } }
-        else input.toIntOrNull()?.takeIf { it in 0..(edition?.pages ?: -1) }
-    LaunchedEffect(snapshot?.fetchedAt) {
-        if (useDevice && snapshot?.percent != null) {
-            percentage = true
-            input = koreaderPercent(snapshot.percent).toString()
-        }
-    }
-    val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val reports = linkReports(book)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Box {
-            Column(
-                Modifier.fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    stringResource(R.string.hardcover_reading_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(book.title, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    stringResource(R.string.hardcover_reading_intro),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                SectionHeading(
-                    if (book.currentPath.isEmpty()) stringResource(R.string.hardcover_step_manual)
-                    else stringResource(R.string.hardcover_step_device),
-                    if (book.currentPath.isEmpty())
-                        stringResource(R.string.hardcover_step_manual_hint)
-                    else stringResource(R.string.hardcover_step_device_hint),
-                )
-                if (book.currentPath.isNotEmpty()) {
-                    OutlinedButton(
-                        onClick = {
-                            requestedDevice = true
-                            useDevice = true
-                            onRefreshDevice()
-                        },
-                        enabled =
-                            book.currentPath.isNotEmpty() &&
-                                devicePaired &&
-                                !deviceOperation.busy &&
-                                !state.busy,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.hardcover_get_from_device))
-                    }
-                    if (requestedDevice && (deviceOperation.busy || deviceOperation.failed))
-                        StatusSurface(deviceOperation)
-                    if (snapshot == null)
-                        Text(
-                            stringResource(R.string.hardcover_no_device_progress),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                }
-                SectionHeading(stringResource(R.string.hardcover_step_review))
-                if (state.busy) {
-                    Text(state.message)
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                }
-                if (username.isBlank()) {
-                    FeatureRow(
-                        stringResource(R.string.hardcover_connect),
-                        stringResource(R.string.hardcover_connect_hint),
-                        androidx.compose.material.icons.Icons.Outlined.AccountCircle,
-                        onClick = { account = true },
-                    )
-                } else {
-                    Text(
-                        stringResource(R.string.hardcover_connected_as, username),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    OutlinedButton(onClick = { model.openReading(book) }, enabled = !state.busy) {
-                        Text(stringResource(R.string.hardcover_reload))
-                    }
-                    if (reading == null) {
-                        OutlinedTextField(
-                            search,
-                            { search = it.take(300) },
-                            label = { Text(stringResource(R.string.hardcover_title_and_author)) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Button(
-                            onClick = { model.searchHardcoverText(search) },
-                            enabled = !state.busy && search.isNotBlank(),
-                        ) {
-                            Text(stringResource(R.string.hardcover_find))
-                        }
-                        matches.forEach { match ->
-                            OutlinedCard(
-                                onClick = { model.link(match) },
-                                enabled = !state.busy,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Text(match.title, style = MaterialTheme.typography.titleMedium)
-                                    Text(match.authors.joinToString(", "))
-                                    Text(
-                                        stringResource(R.string.hardcover_link_match),
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text(
-                            stringResource(
-                                R.string.hardcover_status_line,
-                                hardcoverStatusLabel(reading?.status),
-                            )
-                        )
-                        reading?.pages?.let {
-                            Text(stringResource(R.string.hardcover_last_page, it))
-                        }
-                        FilledTonalButton(
-                            onClick = { confirmStatus = true },
-                            enabled = !state.busy && reading?.status != 2,
-                        ) {
-                            Text(stringResource(R.string.hardcover_mark_reading))
-                        }
-                        Text(
-                            stringResource(R.string.hardcover_choose_edition),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        OutlinedButton(
-                            onClick = { chooseEdition = true },
-                            enabled = !state.busy && editions.any { it.pages > 0 },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                edition?.let {
-                                    pluralStringResource(
-                                        R.plurals.hardcover_edition_option,
-                                        it.pages,
-                                        it.pages,
-                                        it.label.ifBlank { it.title },
-                                    )
-                                } ?: stringResource(R.string.hardcover_choose_edition_button)
-                            )
-                        }
-                        if (editions.none { it.pages > 0 })
-                            Text(stringResource(R.string.hardcover_no_page_edition))
-                        if (edition != null) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = !percentage,
-                                    onClick = {
-                                        percentage = false
-                                        input = ""
-                                    },
-                                    label = { Text(stringResource(R.string.hardcover_mode_pages)) },
-                                )
-                                FilterChip(
-                                    selected = percentage,
-                                    onClick = {
-                                        percentage = true
-                                        input = ""
-                                    },
-                                    label = {
-                                        Text(stringResource(R.string.hardcover_mode_percent))
-                                    },
-                                )
-                            }
-                            OutlinedTextField(
-                                input,
-                                {
-                                    useDevice = false
-                                    input = it.take(12)
-                                },
-                                label = {
-                                    Text(
-                                        if (percentage)
-                                            stringResource(R.string.hardcover_percent_label)
-                                        else stringResource(R.string.hardcover_page_label)
-                                    )
-                                },
-                                keyboardOptions =
-                                    KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            if (percentage)
-                                Text(
-                                    page?.let {
-                                        pluralStringResource(
-                                            R.plurals.hardcover_estimate_page,
-                                            edition.pages,
-                                            edition.pages,
-                                            it,
-                                        )
-                                    }
-                                        ?: pluralStringResource(
-                                            R.plurals.hardcover_estimate,
-                                            edition.pages,
-                                            edition.pages,
-                                        ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            phoneReading
-                                ?.takeIf { it.revisionHash == book.currentHash }
-                                ?.percent
-                                ?.let { fraction ->
-                                    TextButton(
-                                        onClick = {
-                                            useDevice = false
-                                            percentage = true
-                                            input = koreaderPercent(fraction).toString()
-                                        }
-                                    ) {
-                                        Text(
-                                            stringResource(
-                                                R.string.hardcover_use_phone_position,
-                                                fraction * 100,
-                                            )
-                                        )
-                                    }
-                                    Text(
-                                        stringResource(
-                                            R.string.hardcover_phone_saved,
-                                            observationDate(phoneReading.updatedAt),
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                            snapshot
-                                ?.percent
-                                ?.takeIf { it.isFinite() && it in 0.0..1.0 }
-                                ?.let { fraction ->
-                                    val percent = koreaderPercent(fraction)
-                                    OutlinedButton(
-                                        onClick = {
-                                            percentage = true
-                                            input = percent.toString()
-                                        },
-                                        enabled = !state.busy,
-                                    ) {
-                                        Text(
-                                            stringResource(
-                                                R.string.hardcover_use_device_position,
-                                                percent,
-                                            )
-                                        )
-                                    }
-                                    Text(
-                                        stringResource(
-                                            if (snapshot.documentHash != book.currentHash)
-                                                R.string.hardcover_device_fetched_old
-                                            else R.string.hardcover_device_fetched,
-                                            observationDate(snapshot.fetchedAt),
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                            // Positions e-readers sent through Folio Link for this exact file.
-                            linkReports(book).forEach { report ->
-                                val percent = koreaderPercent(report.percentage)
-                                OutlinedButton(
-                                    onClick = {
-                                        useDevice = false
-                                        percentage = true
-                                        input = percent.toString()
-                                    },
-                                    enabled = !state.busy,
-                                ) {
-                                    Text(
-                                        stringResource(
-                                            R.string.hardcover_use_link_position,
-                                            report.device,
-                                            percent,
-                                        )
-                                    )
-                                }
-                                Text(
-                                    stringResource(
-                                        R.string.progress_link_reported,
-                                        observationDate(report.timestamp * 1000),
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            Button(
-                                onClick = {
-                                    allowNew = false
-                                    allowDecrease = false
-                                    confirm = true
-                                },
-                                enabled = !state.busy && !deviceOperation.busy && page != null,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(stringResource(R.string.hardcover_review_progress))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+            HardcoverReadingContent(
+                book = book,
+                username = username,
+                busy = state.busy,
+                error = state.message.takeIf { state.failed },
+                reading = reading,
+                editions = editions,
+                matches = matches,
+                snapshot = snapshot,
+                phonePercent =
+                    phoneReading?.takeIf { it.revisionHash == book.currentHash }?.percent,
+                reports = reports,
+                deviceFetch = book.currentPath.isNotEmpty(),
+                deviceFetchEnabled = devicePaired && !deviceOperation.busy && !state.busy,
+                deviceFetchBusy = requestedDevice && deviceOperation.busy,
+                deviceError =
+                    deviceOperation.message.takeIf { requestedDevice && deviceOperation.failed },
+                onConnect = { account = true },
+                onRefresh = { model.openReading(book) },
+                onFetchDevice = {
+                    requestedDevice = true
+                    onRefreshDevice()
+                },
+                onSearch = model::searchHardcoverText,
+                onLink = model::link,
+                onMarkReading = { confirmStatus = true },
+                onSend = { edition, page, estimated ->
+                    allowNew = false
+                    allowDecrease = false
+                    send = Triple(edition, page, estimated)
+                },
+            )
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
     }
-    if (account) HardcoverAccountSheet(model) { account = false }
-    if (chooseEdition)
-        AlertDialog(
-            onDismissRequest = { chooseEdition = false },
-            title = { Text(stringResource(R.string.hardcover_choose_edition_title)) },
-            text = {
-                LazyColumn(
-                    Modifier.heightIn(max = 400.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(editions.filter { it.pages > 0 }, key = { it.id }) { item ->
-                        OutlinedCard(
-                            onClick = {
-                                editionId = item.id
-                                chooseEdition = false
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(
-                                    pluralStringResource(
-                                        R.plurals.hardcover_pages,
-                                        item.pages,
-                                        item.pages,
-                                    ),
-                                    style = MaterialTheme.typography.titleSmall,
-                                )
-                                Text(item.label.ifBlank { item.title })
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { chooseEdition = false }) {
-                    Text(stringResource(R.string.discovery_close))
-                }
-            },
-        )
+    if (account)
+        HardcoverAccountSheet(model, onConnected = { model.openReading(book) }) { account = false }
     if (confirmStatus)
         AlertDialog(
             onDismissRequest = { confirmStatus = false },
             title = { Text(stringResource(R.string.hardcover_mark_reading_title)) },
-            text = {
-                Text(stringResource(R.string.hardcover_mark_reading_body, book.title))
-            },
+            text = { Text(stringResource(R.string.hardcover_mark_reading_body, book.title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -417,48 +129,52 @@ fun HardcoverReadingSheet(
                     },
                     enabled = !state.busy,
                 ) {
-                    Text(stringResource(R.string.hardcover_update))
+                    Text(stringResource(R.string.hardcover_mark))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmStatus = false }) {
-                    Text(stringResource(R.string.discovery_cancel))
+                    Text(stringResource(R.string.shell_cancel))
                 }
             },
         )
     val expected = reading
-    if (confirm && expected != null && edition != null && page != null)
+    val pending = send
+    if (pending != null && expected != null) {
+        val (edition, page, estimated) = pending
         AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text(stringResource(R.string.hardcover_send_progress_title)) },
+            onDismissRequest = { send = null },
+            title = {
+                Text(stringResource(R.string.hardcover_send_title, page, edition.pages))
+            },
             text = {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
                     Text(
-                        stringResource(
-                            if (percentage) R.string.hardcover_send_progress_body_estimated
-                            else R.string.hardcover_send_progress_body,
-                            book.title,
-                            page,
-                            edition.pages,
-                            edition.label,
-                        )
+                        listOfNotNull(
+                                edition.label.ifBlank { null },
+                                if (estimated) stringResource(R.string.hardcover_send_estimated)
+                                else null,
+                                stringResource(R.string.hardcover_send_marks_reading),
+                            )
+                            .joinToString(" · ")
                     )
                     if (expected.readId == null)
-                        Row {
-                            Checkbox(allowNew, { allowNew = it })
-                            Text(stringResource(R.string.hardcover_start_new_read))
+                        ConfirmOption(stringResource(R.string.hardcover_start_new_read), allowNew) {
+                            allowNew = it
                         }
                     if (expected.pages != null && page < expected.pages)
-                        Row {
-                            Checkbox(allowDecrease, { allowDecrease = it })
-                            Text(stringResource(R.string.hardcover_allow_decrease))
+                        ConfirmOption(
+                            stringResource(R.string.hardcover_allow_decrease),
+                            allowDecrease,
+                        ) {
+                            allowDecrease = it
                         }
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        confirm = false
+                        send = null
                         model.updateReading(book, edition, page, expected, allowNew, allowDecrease)
                     },
                     enabled =
@@ -466,15 +182,449 @@ fun HardcoverReadingSheet(
                             (expected.readId != null || allowNew) &&
                             (expected.pages == null || page >= expected.pages || allowDecrease),
                 ) {
-                    Text(stringResource(R.string.hardcover_update))
+                    Text(stringResource(R.string.hardcover_send))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirm = false }) {
-                    Text(stringResource(R.string.discovery_cancel))
+                TextButton(onClick = { send = null }) {
+                    Text(stringResource(R.string.shell_cancel))
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun ConfirmOption(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleableCompat(checked, true, onChecked),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked, null)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/**
+ * The sheet's content, free of the view model so it can be previewed in every state: not connected,
+ * not yet linked, and linked with an edition.
+ */
+@Composable
+internal fun HardcoverReadingContent(
+    book: Book,
+    username: String,
+    busy: Boolean,
+    error: String?,
+    reading: HardcoverReading?,
+    editions: List<HardcoverEdition>,
+    matches: List<HardcoverMatch>,
+    snapshot: ReadingSnapshot?,
+    phonePercent: Double?,
+    reports: List<KosyncReport>,
+    deviceFetch: Boolean,
+    deviceFetchEnabled: Boolean,
+    deviceFetchBusy: Boolean,
+    deviceError: String?,
+    onConnect: () -> Unit,
+    onRefresh: () -> Unit,
+    onFetchDevice: () -> Unit,
+    onSearch: (String) -> Unit,
+    onLink: (HardcoverMatch) -> Unit,
+    onMarkReading: () -> Unit,
+    onSend: (HardcoverEdition, Int, Boolean) -> Unit,
+) {
+    val connected = username.isNotBlank()
+    Column(
+        Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(start = FolioSpace.section, end = FolioSpace.section, bottom = 32.dp)
+            .testTag(HARDCOVER_SHEET_TAG),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
+    ) {
+        SheetTitle(stringResource(R.string.hardcover_title)) {
+            if (connected)
+                IconButton(onClick = onRefresh, enabled = !busy) {
+                    Icon(Icons.Outlined.Refresh, stringResource(R.string.hardcover_reload))
+                }
+        }
+        // The status pill sits beside the title, or under it when the text is large.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                book.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (reading != null) StatusPill(hardcoverStatusLabel(reading.status))
+        }
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (error != null)
+            Text(
+                error,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        when {
+            !connected ->
+                TonalTile(
+                    stringResource(R.string.hardcover_connect),
+                    Icons.Outlined.Key,
+                    Modifier.fillMaxWidth().testTag(HARDCOVER_CONNECT_TILE_TAG),
+                    enabled = !busy,
+                    onClick = onConnect,
+                )
+            reading == null -> LinkStep(book, matches, busy, onSearch, onLink)
+            else ->
+                PositionStep(
+                    book,
+                    reading,
+                    editions,
+                    snapshot,
+                    phonePercent,
+                    reports,
+                    busy,
+                    deviceFetch,
+                    deviceFetchEnabled,
+                    deviceFetchBusy,
+                    deviceError,
+                    onFetchDevice,
+                    onMarkReading,
+                    onSend,
+                )
+        }
+    }
+}
+
+/** Not linked yet: a prefilled search and the matches as rows with a Link button. */
+@Composable
+private fun LinkStep(
+    book: Book,
+    matches: List<HardcoverMatch>,
+    busy: Boolean,
+    onSearch: (String) -> Unit,
+    onLink: (HardcoverMatch) -> Unit,
+) {
+    var search by
+        rememberSaveable(book.id) { mutableStateOf("${book.title} ${book.authorLabel}".take(300)) }
+    OutlinedTextField(
+        search,
+        { search = it.take(300) },
+        label = { Text(stringResource(R.string.hardcover_title_and_author)) },
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = { onSearch(search) }, enabled = !busy && search.isNotBlank()) {
+                Icon(Icons.Outlined.Search, stringResource(R.string.hardcover_find))
+            }
+        },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { if (search.isNotBlank()) onSearch(search) }),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    matches.forEach { match ->
+        ResultRow(match.title, match.authors.joinToString(", ")) {
+            FilledTonalButton(onClick = { onLink(match) }, enabled = !busy) {
+                Text(stringResource(R.string.hardcover_link_match))
+            }
+        }
+    }
+}
+
+/** Linked: status, edition, the page slider with the positions other devices hold, and Send. */
+@Composable
+private fun PositionStep(
+    book: Book,
+    reading: HardcoverReading,
+    editions: List<HardcoverEdition>,
+    snapshot: ReadingSnapshot?,
+    phonePercent: Double?,
+    reports: List<KosyncReport>,
+    busy: Boolean,
+    deviceFetch: Boolean,
+    deviceFetchEnabled: Boolean,
+    deviceFetchBusy: Boolean,
+    deviceError: String?,
+    onFetchDevice: () -> Unit,
+    onMarkReading: () -> Unit,
+    onSend: (HardcoverEdition, Int, Boolean) -> Unit,
+) {
+    var editionId by rememberSaveable(book.id) { mutableStateOf<Int?>(null) }
+    var input by rememberSaveable(book.id) { mutableStateOf("") }
+    var percentage by rememberSaveable(book.id) { mutableStateOf(false) }
+    // The e-reader's position fills the field until the reader types something else.
+    var useDevice by rememberSaveable(book.id) { mutableStateOf(true) }
+    val paged = editions.filter { it.pages > 0 }
+    val edition =
+        paged.firstOrNull { it.id == editionId }
+            ?: paged.firstOrNull { it.id == reading.editionId }
+            ?: paged.firstOrNull()
+    val page =
+        if (percentage)
+            input
+                .toDoubleOrNull()
+                ?.takeIf { it.isFinite() && it in 0.0..100.0 }
+                ?.let { p -> edition?.let { estimatedHardcoverPage(p, it.pages) } }
+        else input.toIntOrNull()?.takeIf { it in 0..(edition?.pages ?: -1) }
+    val devicePercent = snapshot?.percent?.takeIf { it.isFinite() && it in 0.0..1.0 }
+    LaunchedEffect(snapshot?.fetchedAt) {
+        if (useDevice && devicePercent != null) {
+            percentage = true
+            input = percentInput(koreaderPercent(devicePercent))
+        }
+    }
+    if (reading.status != 2)
+        AssistChip(
+            onClick = onMarkReading,
+            enabled = !busy,
+            label = { Text(stringResource(R.string.hardcover_mark_reading)) },
+            leadingIcon = { Icon(Icons.Outlined.AutoStories, null, Modifier.size(18.dp)) },
+        )
+    EditionRow(paged, edition, enabled = !busy) { editionId = it.id }
+    if (edition != null) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+        ) {
+            OutlinedTextField(
+                input,
+                {
+                    useDevice = false
+                    input = it.take(12)
+                },
+                textStyle = MaterialTheme.typography.headlineSmall,
+                suffix = {
+                    Text(
+                        if (percentage) "%"
+                        else stringResource(R.string.hardcover_of_pages, edition.pages),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                isError = input.isNotBlank() && page == null,
+                modifier = Modifier.weight(1f).testTag(HARDCOVER_POSITION_TAG),
+            )
+            SingleChoiceSegmentedButtonRow {
+                SegmentedButton(
+                    selected = !percentage,
+                    onClick = {
+                        if (percentage) {
+                            percentage = false
+                            input = page?.toString() ?: ""
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                ) {
+                    Text(stringResource(R.string.hardcover_mode_pages))
+                }
+                SegmentedButton(
+                    selected = percentage,
+                    onClick = {
+                        if (!percentage) {
+                            percentage = true
+                            input = page?.let { percentInput(it * 100.0 / edition.pages) } ?: ""
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                ) {
+                    Text("%")
+                }
+            }
+        }
+        val max = if (percentage) 100f else edition.pages.toFloat()
+        val position =
+            (if (percentage) input.toFloatOrNull() ?: 0f else (page ?: 0).toFloat()).coerceIn(
+                0f,
+                max,
+            )
+        Slider(
+            value = position,
+            onValueChange = {
+                useDevice = false
+                input = it.roundToInt().toString()
+            },
+            valueRange = 0f..max,
+            enabled = !busy,
+        )
+        if (percentage)
+            Text(
+                page?.let { stringResource(R.string.hardcover_about_page, it, edition.pages) }
+                    ?: stringResource(R.string.hardcover_percent_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            phonePercent?.let { fraction ->
+                PositionChip(
+                    stringResource(R.string.hardcover_use_phone_position, (fraction * 100).toInt()),
+                    Icons.Outlined.Smartphone,
+                    enabled = !busy,
+                ) {
+                    useDevice = false
+                    percentage = true
+                    input = percentInput(fraction * 100)
+                }
+            }
+            devicePercent?.let { fraction ->
+                PositionChip(
+                    stringResource(
+                        R.string.hardcover_use_device_position,
+                        koreaderPercent(fraction).toInt(),
+                    ),
+                    Icons.Outlined.TabletAndroid,
+                    enabled = !busy,
+                ) {
+                    percentage = true
+                    input = percentInput(koreaderPercent(fraction))
+                }
+            }
+            // Positions e-readers sent through Folio Link for this exact file.
+            reports.forEach { report ->
+                val percent = koreaderPercent(report.percentage)
+                PositionChip(
+                    stringResource(
+                        R.string.hardcover_use_link_position,
+                        report.device,
+                        percent.toInt(),
+                    ),
+                    Icons.Outlined.TabletAndroid,
+                    enabled = !busy,
+                ) {
+                    useDevice = false
+                    percentage = true
+                    input = percentInput(percent)
+                }
+            }
+            if (deviceFetch)
+                AssistChip(
+                    onClick = {
+                        useDevice = true
+                        onFetchDevice()
+                    },
+                    enabled = deviceFetchEnabled,
+                    label = { Text(stringResource(R.string.hardcover_get_from_device)) },
+                    leadingIcon = {
+                        if (deviceFetchBusy)
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+                    },
+                )
+        }
+        if (snapshot != null && snapshot.documentHash != book.currentHash)
+            Text(
+                stringResource(R.string.hardcover_device_fetched_old),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        if (deviceError != null)
+            Text(
+                deviceError,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        Button(
+            onClick = { page?.let { onSend(edition, it, percentage) } },
+            enabled = !busy && page != null,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(HARDCOVER_SEND_TAG),
+        ) {
+            Text(stringResource(R.string.hardcover_send_to_hardcover))
+        }
+    }
+}
+
+@Composable
+private fun PositionChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    AssistChip(
+        onClick = onClick,
+        enabled = enabled,
+        label = { Text(label) },
+        leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) },
+    )
+}
+
+/** The edition row: the chosen edition's pages and label, a menu of the ones with a page count. */
+@Composable
+private fun EditionRow(
+    editions: List<HardcoverEdition>,
+    edition: HardcoverEdition?,
+    enabled: Boolean,
+    onChoose: (HardcoverEdition) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.hardcover_edition)) },
+            supportingContent = {
+                Text(
+                    edition?.let {
+                        pluralStringResource(
+                            R.plurals.hardcover_edition_option,
+                            it.pages,
+                            it.pages,
+                            it.label.ifBlank { it.title },
+                        )
+                    } ?: stringResource(R.string.hardcover_no_page_edition),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            leadingContent = {
+                Icon(Icons.Outlined.MenuBook, null, tint = MaterialTheme.colorScheme.primary)
+            },
+            trailingContent = {
+                if (editions.size > 1)
+                    Icon(
+                        Icons.Outlined.ExpandMore,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .then(
+                        if (editions.size > 1)
+                            Modifier.clickable(enabled = enabled, role = Role.DropdownList) {
+                                open = true
+                            }
+                        else Modifier
+                    ),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            editions.forEach { item ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            pluralStringResource(
+                                R.plurals.hardcover_edition_option,
+                                item.pages,
+                                item.pages,
+                                item.label.ifBlank { item.title },
+                            )
+                        )
+                    },
+                    onClick = {
+                        onChoose(item)
+                        open = false
+                    },
+                    trailingIcon = { if (item.id == edition?.id) Icon(Icons.Outlined.Check, null) },
+                )
+            }
+        }
+    }
 }
 
 /** Hardcover status ids mapped to the names Hardcover shows. */

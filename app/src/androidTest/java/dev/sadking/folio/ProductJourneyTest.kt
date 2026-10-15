@@ -426,9 +426,11 @@ class ProductJourneyTest {
         tab("Library")
         cover("Hamlet, William Shakespeare").performClick()
         compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).performScrollTo().performClick()
-        waitText("Hardcover reading")
-        compose.onNodeWithText("1 · Manual progress").assertIsDisplayed()
-        compose.onNodeWithText("Get latest from e-reader").assertDoesNotExist()
+        // Not connected in this run: the sheet is the title, the book and one Connect tile. A
+        // record has no EPUB, so there is nothing to fetch from an e-reader.
+        waitTag(HARDCOVER_SHEET_TAG)
+        compose.onNodeWithTag(HARDCOVER_CONNECT_TILE_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Get from e-reader").assertDoesNotExist()
         capture("hardcover-record-dark")
     }
 }

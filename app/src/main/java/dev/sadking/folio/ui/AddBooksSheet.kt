@@ -58,14 +58,14 @@ fun AddBooksSheet(
                 modifier = Modifier.padding(bottom = 4.dp),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
-                AddTile(
+                TonalTile(
                     stringResource(R.string.library_add_epub),
                     Icons.Outlined.FileUpload,
                     Modifier.weight(1f),
                 ) {
                     onAction(AddBookAction.EPUB)
                 }
-                AddTile(
+                TonalTile(
                     stringResource(R.string.library_add_lookup),
                     Icons.Outlined.TravelExplore,
                     Modifier.weight(1f),
@@ -74,14 +74,14 @@ fun AddBooksSheet(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
-                AddTile(
+                TonalTile(
                     stringResource(R.string.library_add_discover),
                     Icons.Outlined.PhotoCamera,
                     Modifier.weight(1f),
                 ) {
                     onAction(AddBookAction.DISCOVER)
                 }
-                AddTile(
+                TonalTile(
                     stringResource(R.string.library_add_manual),
                     Icons.Outlined.Edit,
                     Modifier.weight(1f),
@@ -114,16 +114,21 @@ fun AddBooksSheet(
     }
 }
 
-/** A large tonal tile: icon top-left, the label at the bottom. */
+/**
+ * A large tonal tile: icon top-left, the label at the bottom. The Add sheet, the scan screen and
+ * the Hardcover sheet's connect step all use it.
+ */
 @Composable
-private fun AddTile(
+internal fun TonalTile(
     label: String,
     icon: ImageVector,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = FolioSpace.panelShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

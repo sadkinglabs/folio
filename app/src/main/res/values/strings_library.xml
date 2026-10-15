@@ -92,15 +92,15 @@
 
     <!-- Library: recently removed -->
     <string name="library_removed_title">Recently removed</string>
-    <string name="library_removed_body">Removed books keep their files, notes and links here until you delete them permanently. Restoring an EPUB also restores the book it belongs to.</string>
-    <string name="library_removed_empty">No removed books</string>
-    <string name="library_removed_kind_epub">Book with EPUB</string>
-    <string name="library_removed_kind_catalogue">Book without EPUB</string>
+    <string name="library_removed_empty">Nothing removed</string>
+    <string name="library_removed_empty_body">Removed books wait here, with their files and notes.</string>
+    <string name="library_removed_kind_epub">With EPUB</string>
+    <string name="library_removed_kind_catalogue">No EPUB</string>
     <string name="library_removed_restore">Restore</string>
-    <string name="library_removed_delete">Delete permanently</string>
-    <string name="library_removed_delete_title">Delete %1$s permanently?</string>
-    <string name="library_removed_delete_body">Deletes Folio\'s copy of the files and the reading data saved on this phone. This can\'t be undone. Your Downloads folder, e-reader and Hardcover are not touched.</string>
-    <string name="library_removed_keep">Keep removed book</string>
+    <string name="library_removed_delete">Delete</string>
+    <string name="library_removed_delete_title">Delete for good?</string>
+    <string name="library_removed_delete_body">Files and notes on this phone are deleted. Your Downloads folder, e-reader and Hardcover are not touched.</string>
+    <string name="library_removed_keep">Keep</string>
 
     <!-- Library: the selection's sheets -->
     <plurals name="library_batch_count">
@@ -113,10 +113,11 @@
 
     <!-- Library: import results -->
     <string name="library_import_results_title">Import results</string>
-    <string name="library_import_choose_again">Choose files again</string>
-    <string name="library_import_retry_failed">Retry failed files</string>
-    <string name="library_import_retry_one">Retry this file</string>
-    <string name="library_import_open">Open book</string>
+    <string name="library_import_done">Imported</string>
+    <string name="library_import_failed">Failed</string>
+    <string name="library_import_retry_failed">Retry all failed</string>
+    <string name="library_import_retry_one">Retry</string>
+    <string name="library_import_open">Open</string>
 
     <!-- Library: add books sheet -->
     <string name="library_add_title">Add</string>
@@ -155,25 +156,20 @@
     <string name="library_editor_epub_footer">If this book is already on your e-reader, the copy there isn\'t replaced automatically. Check the Device tab to update it.</string>
 
     <!-- Library: online details lookup -->
-    <string name="library_lookup_title">Find details and covers</string>
+    <string name="library_lookup_title">Find details</string>
     <string name="library_lookup_privacy">Searching sends your search text to Open Library. Your EPUBs and reading data stay on your phone.</string>
     <string name="library_lookup_query">Title, author or ISBN</string>
     <string name="library_lookup_search">Search Open Library</string>
-    <string name="library_lookup_work">General details · no specific edition</string>
     <string name="library_lookup_edition">Edition %1$s</string>
-    <string name="library_lookup_choose">Choose what to replace</string>
     <string name="library_lookup_field_title">Title</string>
     <string name="library_lookup_field_authors">Authors</string>
     <string name="library_lookup_field_description">Description</string>
     <string name="library_lookup_field_publisher">Publisher</string>
     <string name="library_lookup_field_language">Language</string>
     <string name="library_lookup_field_identifiers">Identifiers</string>
-    <string name="library_lookup_current">Current: %1$s</string>
-    <string name="library_lookup_empty">Empty</string>
-    <string name="library_lookup_proposed">Suggested: %1$s</string>
-    <string name="library_lookup_cover">Use the cover from this edition</string>
-    <string name="library_lookup_apply">Apply selected changes</string>
-    <string name="library_lookup_note">Series, tags and anything you didn\'t select stay as they are. Your original EPUB is kept.</string>
+    <string name="library_lookup_cover">Use this cover</string>
+    <string name="library_lookup_apply">Apply</string>
+    <string name="library_lookup_note">Unselected fields and your original EPUB stay as they are.</string>
 
     <!-- Library: book page -->
     <string name="library_book_other_version">Your e-reader’s progress is for another version of this EPUB.</string>

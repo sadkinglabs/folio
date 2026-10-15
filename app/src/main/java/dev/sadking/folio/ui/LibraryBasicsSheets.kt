@@ -12,11 +12,15 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -99,6 +103,19 @@ fun CatalogueEditorDialog(
         )
 }
 
+internal const val REMOVED_SHEET_TAG = "removed-sheet"
+
+/** One row per removed book: the EPUB entry stands for its group when the group has one. */
+internal fun removedGroups(entries: List<RemovedEntry>): List<RemovedEntry> =
+    entries
+        .groupBy { it.groupId }
+        .values
+        .map { values -> values.firstOrNull { it.kind == "EPUB" } ?: values.first() }
+
+/**
+ * Recently removed: rows with a cover, the title, Restore and a trash icon. Deleting for good is a
+ * separate, confirmed step; nothing here is destructive on its own.
+ */
 @Composable
 fun RemovedBooksSheet(
     entries: List<RemovedEntry>,
@@ -108,82 +125,83 @@ fun RemovedBooksSheet(
     onDismiss: () -> Unit,
 ) {
     var purge by remember { mutableStateOf<RemovedEntry?>(null) }
-    val groups =
-        entries
-            .groupBy { it.groupId }
-            .values
-            .map { values -> values.firstOrNull { it.kind == "EPUB" } ?: values.first() }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(
-            Modifier.fillMaxWidth().heightIn(max = 650.dp),
-            contentPadding = PaddingValues(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        RemovedBooksContent(entries, busy, onRestore, onDelete = { purge = it })
+    }
+    purge?.let { entry ->
+        ConfirmSheet(
+            covers = listOf(coverStub(entry.title)),
+            title = stringResource(R.string.library_removed_delete_title),
+            body = stringResource(R.string.library_removed_delete_body),
+            confirmLabel = stringResource(R.string.library_removed_delete),
+            dismissLabel = stringResource(R.string.library_removed_keep),
+            destructive = true,
+            busy = busy,
+            onConfirm = {
+                onPurge(entry.groupId)
+                purge = null
+            },
+            onDismiss = { purge = null },
+        )
+    }
+}
+
+@Composable
+internal fun RemovedBooksContent(
+    entries: List<RemovedEntry>,
+    busy: Boolean,
+    onRestore: (String) -> Unit,
+    onDelete: (RemovedEntry) -> Unit,
+) {
+    val groups = removedGroups(entries)
+    LazyColumn(
+        Modifier.fillMaxWidth().heightIn(max = 650.dp).testTag(REMOVED_SHEET_TAG),
+        contentPadding =
+            PaddingValues(start = FolioSpace.section, end = FolioSpace.section, bottom = 32.dp),
+    ) {
+        item {
+            Text(
+                stringResource(R.string.library_removed_title),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = FolioSpace.small),
+            )
+        }
+        if (groups.isEmpty())
             item {
-                Text(
-                    stringResource(R.string.library_removed_title),
-                    style = MaterialTheme.typography.headlineSmall,
+                EmptyState(
+                    stringResource(R.string.library_removed_empty),
+                    stringResource(R.string.library_removed_empty_body),
+                    Icons.Outlined.DeleteOutline,
+                    illustration = FolioIllustration.Books,
                 )
-                Text(stringResource(R.string.library_removed_body))
             }
-            if (groups.isEmpty()) item { Text(stringResource(R.string.library_removed_empty)) }
-            items(groups, key = { it.groupId }) { entry ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(entry.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            when (entry.kind) {
-                                "EPUB" -> stringResource(R.string.library_removed_kind_epub)
-                                "Catalogue" ->
-                                    stringResource(R.string.library_removed_kind_catalogue)
-                                else -> entry.kind
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Row {
-                            TextButton(onClick = { onRestore(entry.groupId) }, enabled = !busy) {
-                                Text(stringResource(R.string.library_removed_restore))
-                            }
-                            TextButton(
-                                onClick = { purge = entry },
-                                enabled = !busy,
-                                colors =
-                                    ButtonDefaults.textButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.error
-                                    ),
-                            ) {
-                                Text(stringResource(R.string.library_removed_delete))
-                            }
-                        }
-                    }
+        items(groups, key = { it.groupId }) { entry ->
+            ResultRow(
+                entry.title,
+                "",
+                detail =
+                    when (entry.kind) {
+                        "EPUB" -> stringResource(R.string.library_removed_kind_epub)
+                        "Catalogue" -> stringResource(R.string.library_removed_kind_catalogue)
+                        else -> entry.kind
+                    },
+            ) {
+                FilledTonalButton(onClick = { onRestore(entry.groupId) }, enabled = !busy) {
+                    Text(stringResource(R.string.library_removed_restore))
+                }
+                IconButton(onClick = { onDelete(entry) }, enabled = !busy) {
+                    Icon(
+                        Icons.Outlined.DeleteOutline,
+                        stringResource(R.string.library_removed_delete_title),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
-    }
-    purge?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { purge = null },
-            title = {
-                Text(stringResource(R.string.library_removed_delete_title, entry.title))
-            },
-            text = { Text(stringResource(R.string.library_removed_delete_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onPurge(entry.groupId)
-                        purge = null
-                    },
-                    enabled = !busy,
-                ) {
-                    Text(stringResource(R.string.library_removed_delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { purge = null }) {
-                    Text(stringResource(R.string.library_removed_keep))
-                }
-            },
-        )
     }
 }
 
@@ -294,62 +312,111 @@ fun BatchStatusSheet(count: Int, busy: Boolean, onStatus: (String) -> Unit, onDi
     }
 }
 
+internal const val IMPORT_RESULTS_TAG = "import-results"
+
+/**
+ * What happened to each chosen file: a check or an error icon, the file name, one line, and Open or
+ * Retry on the row. Several failures get one "Retry all" at the end.
+ */
 @Composable
 fun ImportResultsSheet(
     results: List<ImportOutcome>,
     busy: Boolean,
     onRetry: (List<Uri>) -> Unit,
-    onChooseAgain: () -> Unit,
     onOpen: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(
-            Modifier.fillMaxWidth().heightIn(max = 650.dp),
-            contentPadding = PaddingValues(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Text(
-                    stringResource(R.string.library_import_results_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                TextButton(onClick = onChooseAgain, enabled = !busy) {
-                    Text(stringResource(R.string.library_import_choose_again))
-                }
-                if (results.any { it.error != null })
-                    TextButton(
-                        onClick = {
-                            onRetry(results.filter { it.error != null }.map { Uri.parse(it.uri) })
-                        },
-                        enabled = !busy,
-                    ) {
-                        Text(stringResource(R.string.library_import_retry_failed))
-                    }
-            }
-            items(results, key = { it.uri }) { result ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(result.name, style = MaterialTheme.typography.titleMedium)
-                        Text(result.result)
-                        result.error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error)
-                            TextButton(
-                                onClick = { onRetry(listOf(Uri.parse(result.uri))) },
-                                enabled = !busy,
-                            ) {
-                                Text(stringResource(R.string.library_import_retry_one))
-                            }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = FolioSpace.sheetShape,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        ImportResultsContent(results, busy, onRetry, onOpen)
+    }
+}
+
+@Composable
+internal fun ImportResultsContent(
+    results: List<ImportOutcome>,
+    busy: Boolean,
+    onRetry: (List<Uri>) -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    val failed = results.filter { it.error != null }
+    LazyColumn(
+        Modifier.fillMaxWidth().heightIn(max = 650.dp).testTag(IMPORT_RESULTS_TAG),
+        contentPadding =
+            PaddingValues(start = FolioSpace.item, end = FolioSpace.item, bottom = 32.dp),
+    ) {
+        item {
+            Text(
+                stringResource(R.string.library_import_results_title),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = FolioSpace.small, vertical = 4.dp),
+            )
+        }
+        items(results, key = { it.uri }) { result ->
+            val error = result.error
+            ListItem(
+                leadingContent = {
+                    if (error != null)
+                        Icon(
+                            Icons.Outlined.ErrorOutline,
+                            stringResource(R.string.library_import_failed),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    else
+                        Icon(
+                            Icons.Outlined.CheckCircle,
+                            stringResource(R.string.library_import_done),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                },
+                headlineContent = {
+                    Text(
+                        result.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        error ?: result.result,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color =
+                            if (error != null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingContent = {
+                    if (error != null)
+                        TextButton(
+                            onClick = { onRetry(listOf(Uri.parse(result.uri))) },
+                            enabled = !busy,
+                        ) {
+                            Text(stringResource(R.string.library_import_retry_one))
                         }
+                    else
                         result.bookId?.let {
                             TextButton(onClick = { onOpen(it) }, enabled = !busy) {
                                 Text(stringResource(R.string.library_import_open))
                             }
                         }
-                    }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+        if (failed.size > 1)
+            item {
+                FilledTonalButton(
+                    onClick = { onRetry(failed.map { Uri.parse(it.uri) }) },
+                    enabled = !busy,
+                    modifier = Modifier.padding(horizontal = FolioSpace.small, vertical = 4.dp),
+                ) {
+                    Text(stringResource(R.string.library_import_retry_failed))
                 }
             }
-        }
     }
 }
 

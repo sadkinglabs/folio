@@ -83,6 +83,21 @@ class FolioNavTest {
     }
 
     @Test
+    fun scanACoverIsARouteThatSurvivesRestoreAndBackLeavesIt() {
+        val nav = FolioNav()
+        nav.open(Route.Discover)
+        assertTrue(nav.discovering)
+        assertNull(nav.bookId)
+        val saved = with(FolioNav.saver) { SaverScope { true }.save(nav) }!!
+        val restored = FolioNav.saver.restore(saved)!!
+        assertTrue(restored.discovering)
+        nav.forget(setOf("anything"))
+        assertTrue(nav.discovering)
+        assertTrue(nav.back())
+        assertFalse(nav.discovering)
+    }
+
+    @Test
     fun choosingATabClearsScreensAndRemovalForgetsDeletedBooks() {
         val nav = FolioNav()
         nav.open(Route.Book("a"))
