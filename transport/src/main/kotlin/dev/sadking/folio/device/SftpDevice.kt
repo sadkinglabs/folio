@@ -212,9 +212,13 @@ class SftpDevice(config: DeviceConfig, credential: DeviceCredential) : DeviceFil
 
     /** Stages a whole companion before directory publication; never modifies other plugins. */
     fun installFolioBridge(files: Map<String, File>) {
-        val names = setOf("main.lua", "bridge.lua", "_meta.lua", "LICENSE")
+        // Plain file names only (no folders), and the two files KOReader needs to load a plugin.
+        val names = files.keys
         require(
-            files.keys == names && files.values.all { it.isFile && it.length() in 1..(512 * 1024) }
+            names.containsAll(setOf("main.lua", "_meta.lua")) &&
+                names.size <= 20 &&
+                names.all { it.matches(Regex("[A-Za-z0-9_][A-Za-z0-9_.-]*")) } &&
+                files.values.all { it.isFile && it.length() in 1..(512 * 1024) }
         )
         val nonce = java.util.UUID.randomUUID().toString()
         val staged = ".folio-install-$nonce"

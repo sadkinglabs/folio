@@ -15,14 +15,19 @@ class BridgeInstaller(private val app: FolioApplication) {
             }
             val local = File(app.cacheDir, "bridge-${UUID.randomUUID()}").apply { mkdirs() }
             try {
-                val files =
-                    listOf("main.lua", "bridge.lua", "_meta.lua", "LICENSE").associateWith { name ->
-                        File(local, name).also { destination ->
-                            app.assets.open("folio.koplugin/$name").use { input ->
-                                destination.outputStream().use(input::copyTo)
-                            }
+                // Every top-level file the app bundles, so new plugin files are never left out.
+                val names =
+                    app.assets.list("folio.koplugin").orEmpty().filter {
+                        it.endsWith(".lua") || it == "LICENSE"
+                    }
+                require("main.lua" in names && "link.lua" in names)
+                val files = names.associateWith { name ->
+                    File(local, name).also { destination ->
+                        app.assets.open("folio.koplugin/$name").use { input ->
+                            destination.outputStream().use(input::copyTo)
                         }
                     }
+                }
                 val config = app.deviceSettings.load().copy(directory = pluginFolder)
                 SftpDevice(config, app.deviceSettings.credential()).use {
                     it.installFolioBridge(files)

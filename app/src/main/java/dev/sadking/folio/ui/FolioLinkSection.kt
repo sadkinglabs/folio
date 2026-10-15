@@ -2,6 +2,8 @@ package dev.sadking.folio.ui
 
 import android.text.format.DateFormat
 import android.text.format.DateUtils
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
@@ -19,7 +21,11 @@ import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.link.FolioLink
 import dev.sadking.folio.link.LinkLog
+import dev.sadking.folio.link.PluginExport
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Settings for Folio Link: on or off, what to type into KOReader, and what it has heard. */
 @Composable
@@ -119,6 +125,7 @@ internal fun FolioLinkSection() {
             }
         }
         Text(stringResource(R.string.link_steps), style = MaterialTheme.typography.bodySmall)
+        PluginInstall()
 
         val heard = entries.firstOrNull { it.kind == LinkLog.Kind.REQUEST && it.status in 200..299 }
         Text(
@@ -233,6 +240,59 @@ internal fun HardcoverAutomaticRow() {
                 outbox.automatic = it
             },
             Modifier.semantics { contentDescription = label },
+        )
+    }
+}
+
+/** Saves the KOReader plugin as a zip and says where it goes on each kind of e-reader. */
+@Composable
+private fun PluginInstall() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saved by remember { mutableStateOf<Boolean?>(null) }
+    val save =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/zip")
+        ) { uri ->
+            if (uri != null)
+                scope.launch {
+                    saved =
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                    context.contentResolver.openOutputStream(uri, "wt")!!.use {
+                                        PluginExport.write(context, it)
+                                    }
+                                }
+                                .isSuccess
+                        }
+                }
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            stringResource(R.string.link_plugin_title),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Text(stringResource(R.string.link_plugin_hint), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = { save.launch("folio.koplugin.zip") }) {
+            Text(stringResource(R.string.link_plugin_save))
+        }
+        when (saved) {
+            true ->
+                Text(
+                    stringResource(R.string.link_plugin_saved),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            false ->
+                Text(
+                    stringResource(R.string.link_plugin_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            null -> Unit
+        }
+        Text(
+            stringResource(R.string.link_plugin_folders),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
         )
     }
 }

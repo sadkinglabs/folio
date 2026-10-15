@@ -37,7 +37,9 @@ class SftpIntegrationTest {
             File.createTempFile("folio-bridge", ".lua").apply { writeText("new plugin bytes") }
         try {
             val files =
-                listOf("main.lua", "bridge.lua", "_meta.lua", "LICENSE").associateWith { source }
+                listOf("main.lua", "bridge.lua", "link.lua", "_meta.lua", "LICENSE").associateWith {
+                    source
+                }
             SftpDevice(cfg.copy(directory = pluginRoot.path), credentials()).use {
                 it.installFolioBridge(files)
             }
