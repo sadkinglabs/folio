@@ -8,6 +8,10 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
+/** A chip in the Filter sheet, not the quick filter with the same label on the page. */
+internal fun inFilterSheet(label: String) =
+    hasText(label) and hasAnyAncestor(hasTestTag(LIBRARY_FILTER_SHEET_TAG))
+
 class LibrarySpaceUiTest {
     @get:Rule val compose = createComposeRule()
     private val book =
@@ -29,10 +33,11 @@ class LibrarySpaceUiTest {
                 LibraryScreen(listOf(book), emptySet(), onOpen = {}, onSelect = {})
             }
         }
-        // Search is an icon until asked for; the field, chips and Add routes stay out of the way.
+        // Search is an icon until asked for and the Add routes stay out of the way. The only chips
+        // are the quick filters in the Sort and Filter row.
         compose.onNodeWithContentDescription("Search library").assertDoesNotExist()
         compose.onNodeWithContentDescription("Search").assertIsDisplayed()
-        compose.onNodeWithText("Needs EPUB").assertDoesNotExist()
+        compose.onNodeWithTag(LIBRARY_QUICK_FILTERS_TAG).assertIsDisplayed()
         compose.onNodeWithText("Type it in").assertDoesNotExist()
         compose.onNodeWithText("Import your Hardcover library").assertDoesNotExist()
         compose.onNodeWithContentDescription("Filter").assertIsDisplayed()
@@ -54,7 +59,7 @@ class LibrarySpaceUiTest {
         compose.onNodeWithText("Sort").assertDoesNotExist()
         compose.onNodeWithText("History").performClick()
         compose.onNodeWithText("Show 1 book").assertIsDisplayed()
-        compose.onNodeWithText("Reading").performClick()
+        compose.onNode(inFilterSheet("Reading")).performClick()
         compose.onNodeWithText("Show 0 books").assertIsDisplayed()
         compose.onNodeWithText("Reset").performClick()
         compose.onNodeWithText("Show 1 book").performClick()

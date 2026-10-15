@@ -39,7 +39,7 @@ class UnifiedLibraryUiTest {
             }
         }
         compose.onNodeWithContentDescription("Filter").performClick()
-        compose.onNodeWithText("Needs EPUB").performClick()
+        compose.onNode(inFilterSheet("Needs EPUB")).performClick()
         compose.onNodeWithText("Show 1 book").performClick()
         compose.onNode(hasContentDescription("Owned book", substring = true)).assertDoesNotExist()
         // The record is on the Reading shelf and in the grid; either opens it.
