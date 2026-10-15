@@ -191,4 +191,7 @@
     <string name="library_book_bookmark">Bookmark</string>
     <string name="library_book_highlight">Highlight</string>
     <string name="library_book_notes_limited">Showing the first 100. The export has them all.</string>
+    <string name="library_clear_recent">Clear recent</string>
+    <!-- Shown when a search matches nothing in the library. %1$s is the search. -->
+    <string name="library_search_hardcover">Search Hardcover for “%1$s”</string>
 </resources>

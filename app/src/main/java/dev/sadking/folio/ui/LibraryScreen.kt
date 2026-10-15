@@ -16,12 +16,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
@@ -32,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import dev.sadking.folio.R
@@ -87,6 +86,8 @@ fun LibraryScreen(
     onContext: ((Book) -> Unit)? = null,
     onClearSelection: () -> Unit = {},
     onFind: (() -> Unit)? = null,
+    /** Looks a search with no match up on Hardcover. */
+    onSearchHardcover: ((String) -> Unit)? = null,
     onScan: (() -> Unit)? = null,
     requestedTab: LibraryTab? = null,
     onRequestHandled: () -> Unit = {},
@@ -197,6 +198,11 @@ fun LibraryScreen(
     // Grid or list changes how the whole page shows, so it sits with the page's actions, not with
     // Sort and Filter, which change what is shown.
     val viewToggle: @Composable () -> Unit = { ViewToggle(grid, ::switchGrid) }
+    // Opening a book from a search keeps the search for next time.
+    fun open(book: Book) {
+        if (query.isNotBlank()) view.searched(query)
+        onOpen(book)
+    }
 
     Column(modifier.fillMaxWidth()) {
         if (selection.isNotEmpty()) SelectionHeader(selection.size, onClearSelection)
@@ -234,7 +240,14 @@ fun LibraryScreen(
             }
         if (pickingFor != null) PickingBanner(pickingFor, onCancelPicking)
         AnimatedVisibility(searching || query.isNotEmpty()) {
-            SearchField(query, onQuery = { query = it }, onClear = { query = "" })
+            SearchField(
+                query,
+                onQuery = { query = it },
+                onClear = { query = "" },
+                recent = view.recent.value,
+                onSearched = view::searched,
+                onClearRecent = view::clearRecent,
+            )
         }
         LibraryToolbar(
             sort = if (wanted) null else sort,
@@ -264,6 +277,13 @@ fun LibraryScreen(
                             { clearFilters() },
                             actionEnabled = !busy,
                             actionLabel = stringResource(R.string.library_no_match_action),
+                            // Not in the library: look the words up on Hardcover instead.
+                            secondaryAction =
+                                onSearchHardcover
+                                    ?.takeIf { query.isNotBlank() }
+                                    ?.let { { it(query.trim()) } },
+                            secondaryLabel =
+                                stringResource(R.string.library_search_hardcover, query.trim()),
                         )
                     wanted ->
                         EmptyState(
@@ -311,7 +331,7 @@ fun LibraryScreen(
                             noEpub = book.id !in fileIds,
                             label = label,
                             onClick = {
-                                if (selection.isEmpty() && pickingFor == null) onOpen(book)
+                                if (selection.isEmpty() && pickingFor == null) open(book)
                                 else onSelect(book.id)
                             },
                             onSelect = { onSelect(book.id) },
@@ -369,7 +389,7 @@ fun LibraryScreen(
                                 progress = progress[book.id],
                                 noEpub = book.id !in fileIds,
                                 onClick = {
-                                    if (selection.isEmpty()) onOpen(book) else onSelect(book.id)
+                                    if (selection.isEmpty()) open(book) else onSelect(book.id)
                                 },
                                 onSelect = { onSelect(book.id) },
                                 onContext = onContext?.let { { it(book) } },
@@ -517,33 +537,92 @@ private fun SelectionHeader(count: Int, onClear: () -> Unit) {
     }
 }
 
+internal const val LIBRARY_SEARCH_BAR_TAG = "library-search-bar"
+
+/**
+ * Material's search bar. The library below filters as you type; while the field is empty, recent
+ * searches show under it as chips.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () -> Unit) {
+private fun SearchField(
+    query: String,
+    onQuery: (String) -> Unit,
+    onClear: () -> Unit,
+    recent: List<String>,
+    onSearched: (String) -> Unit,
+    onClearRecent: () -> Unit,
+) {
     val keyboard = LocalSoftwareKeyboardController.current
     val hint = stringResource(R.string.library_search_hint)
     val focus = remember { FocusRequester() }
+    var focused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQuery,
-        placeholder = { Text(hint) },
-        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = {
-            if (query.isNotEmpty())
-                IconButton(onClick = onClear) {
-                    Icon(Icons.Outlined.Close, stringResource(R.string.library_clear_search))
+    Column {
+        DockedSearchBar(
+            inputField = {
+                SearchBarDefaults.InputField(
+                    query = query,
+                    onQueryChange = onQuery,
+                    onSearch = {
+                        onSearched(it)
+                        keyboard?.hide()
+                    },
+                    expanded = false,
+                    onExpandedChange = {},
+                    placeholder = { Text(hint) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty())
+                            IconButton(onClick = onClear) {
+                                Icon(
+                                    Icons.Outlined.Close,
+                                    stringResource(R.string.library_clear_search),
+                                )
+                            }
+                    },
+                    modifier =
+                        Modifier.focusRequester(focus)
+                            .onFocusChanged { focused = it.isFocused }
+                            .semantics { contentDescription = hint },
+                )
+            },
+            expanded = false,
+            onExpandedChange = {},
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small)
+                    .testTag(LIBRARY_SEARCH_BAR_TAG),
+        ) {}
+        // Recent searches as chips while the field is empty: a short row, so the books stay in
+        // view.
+        AnimatedVisibility(focused && query.isBlank() && recent.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = FolioSpace.item),
+                horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                recent.forEach { past ->
+                    SuggestionChip(
+                        onClick = { onQuery(past) },
+                        label = { Text(past, maxLines = 1) },
+                        icon = {
+                            Icon(
+                                Icons.Outlined.History,
+                                null,
+                                Modifier.size(SuggestionChipDefaults.IconSize),
+                            )
+                        },
+                    )
                 }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(28.dp),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small)
-                .focusRequester(focus)
-                .semantics { contentDescription = hint },
-    )
+                TextButton(onClick = onClearRecent) {
+                    Text(stringResource(R.string.library_clear_recent))
+                }
+            }
+        }
+    }
 }
 
 internal const val LIBRARY_QUICK_FILTERS_TAG = "library-quick-filters"

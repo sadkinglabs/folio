@@ -931,6 +931,10 @@ fun FolioApp(model: LibraryViewModel) {
                                                             onFind = {
                                                                 addBook(AddBookAction.TITLE)
                                                             },
+                                                            onSearchHardcover = { words ->
+                                                                addBook(AddBookAction.TITLE)
+                                                                titleLookupQuery = words
+                                                            },
                                                             onScan = {
                                                                 nav.open(Route.Discover)
                                                             },
