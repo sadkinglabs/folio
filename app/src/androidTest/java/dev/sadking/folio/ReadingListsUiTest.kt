@@ -61,7 +61,14 @@ class ReadingListsUiTest {
         compose.setContent {
             FolioTheme(dynamic = false) {
                 ListsScreen(
-                    listCards(listOf(shelf), library(listOf(book("a", "Unread")))),
+                    // Send is only offered for a list with books in it.
+                    listCards(
+                        listOf(shelf),
+                        library(
+                            listOf(book("a", "Unread")),
+                            mapOf(shelf.id to listOf(book("a", "Unread"))),
+                        ),
+                    ),
                     busy = false,
                     onOpen = {},
                     onNew = {},
