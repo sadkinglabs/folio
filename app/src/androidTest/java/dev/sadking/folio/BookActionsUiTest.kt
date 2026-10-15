@@ -24,7 +24,11 @@ class BookActionsUiTest {
 
     // The library sorts and indexes off the main thread, which Compose tests do not wait for.
     private fun cover(): SemanticsNodeInteraction {
-        val matcher = hasContentDescription(book.title, substring = true) and hasClickAction()
+        // Grid tiles carry the title as a description, list rows as text; the layout choice is
+        // remembered across tests on a device.
+        val matcher =
+            (hasContentDescription(book.title, substring = true) or
+                hasText(book.title, substring = true)) and hasClickAction()
         compose.waitUntil(10_000) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
         return compose.onAllNodes(matcher).onFirst()
     }
