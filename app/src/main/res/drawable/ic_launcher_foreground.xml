@@ -1,0 +1,108 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shadow under the book, two offsets for a soft edge. -->
+    <path
+        android:fillColor="#14000000"
+        android:pathData="M36,34 L76,34 Q80,34 80,38 L80,80 Q80,84 76,84 L36,84 Q33,84 33,81 L33,37 Q33,34 36,34 Z"/>
+    <path
+        android:fillColor="#26000000"
+        android:pathData="M35,32.5 L75,32.5 Q78.5,32.5 78.5,36 L78.5,78 Q78.5,81.5 75,81.5 L35,81.5 Q32.5,81.5 32.5,79 L32.5,35 Q32.5,32.5 35,32.5 Z"/>
+    <!-- Page block, set back to the bottom right so its edges show. -->
+    <path android:pathData="M37,32 L74,32 Q76,32 76,34 L76,76 Q76,78 74,78 L37,78 L37,32 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="37"
+                android:startY="32"
+                android:endX="76"
+                android:endY="78">
+                <item android:offset="0" android:color="#EFE8D3"/>
+                <item android:offset="1" android:color="#D9CFB0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Page edge hairlines. -->
+    <path
+        android:fillColor="#3D6B5B36"
+        android:pathData="M73.4,33 L74,33 L74,77 L73.4,77 Z M74.8,33 L75.4,33 L75.4,77 L74.8,77 Z M40,76.4 L75,76.4 L75,77 L40,77 Z"/>
+    <!-- Cover, warm paper lit from the top left. -->
+    <path android:pathData="M33,30 L70,30 Q73,30 73,33 L73,72 Q73,75 70,75 L33,75 L33,30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33"
+                android:startY="30"
+                android:endX="73"
+                android:endY="75">
+                <item android:offset="0" android:color="#FAF7EE"/>
+                <item android:offset="1" android:color="#E7E1CC"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Spine in bronze leather. -->
+    <path android:pathData="M35.5,30 L41,30 L41,75 L35.5,75 Q33,75 33,72.5 L33,32.5 Q33,30 35.5,30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33"
+                android:startY="30"
+                android:endX="41"
+                android:endY="75">
+                <item android:offset="0" android:color="#8F6F42"/>
+                <item android:offset="1" android:color="#5A4225"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Spine highlight and the darker band under it. -->
+    <path
+        android:fillColor="#4DFFFFFF"
+        android:pathData="M35.5,30.5 L36.5,30.5 L36.5,74.5 L35.5,74.5 Z"/>
+    <path
+        android:fillColor="#24000000"
+        android:pathData="M36.5,30 L38.5,30 L38.5,75 L36.5,75 Z"/>
+    <!-- Hinge shadow where the cover meets the spine. -->
+    <path
+        android:fillColor="#1A000000"
+        android:pathData="M41,30 L43,30 L43,75 L41,75 Z"/>
+    <!-- Serif F, letterpressed: light edge below, olive letter on top. -->
+    <path
+        android:fillColor="#99FFFFFF"
+        android:pathData="M46,42.8 L62,42.8 L62,48.8 L59,48.8 L59,46.3 L52.5,46.3 L52.5,53.8 L58.5,53.8 L58.5,57.8 L52.5,57.8 L52.5,64.3 L56.5,64.3 L56.5,67.3 L46,67.3 L46,64.3 L49,64.3 L49,46.3 L46,46.3 Z"/>
+    <path android:pathData="M46,42 L62,42 L62,48 L59,48 L59,45.5 L52.5,45.5 L52.5,53 L58.5,53 L58.5,57 L52.5,57 L52.5,63.5 L56.5,63.5 L56.5,66.5 L46,66.5 L46,63.5 L49,63.5 L49,45.5 L46,45.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="46"
+                android:startY="42"
+                android:endX="62"
+                android:endY="66.5">
+                <item android:offset="0" android:color="#4B6530"/>
+                <item android:offset="1" android:color="#35491F"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Bookmark ribbon, with its shadow on the cover. -->
+    <path
+        android:fillColor="#1F000000"
+        android:pathData="M65,30 L70.5,30 L70.5,60.5 L68.2,58.2 L66,60.5 Z"/>
+    <path android:pathData="M64,30 L69,30 L69,59 L66.5,56.5 L64,59 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="64"
+                android:startY="30"
+                android:endX="69"
+                android:endY="59">
+                <item android:offset="0" android:color="#6B8A47"/>
+                <item android:offset="1" android:color="#4B6530"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#40FFFFFF"
+        android:pathData="M64.4,30 L65.2,30 L65.2,57.8 L64.4,58.6 Z"/>
+</vector>
