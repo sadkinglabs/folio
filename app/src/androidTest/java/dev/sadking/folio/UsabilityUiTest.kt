@@ -96,15 +96,89 @@ class UsabilityUiTest {
     }
 
     @Test
-    fun phoneCurrentlyReadingAppearsWithoutKindleSnapshot() {
+    fun nowReadingSheetShowsThePhonePositionWithoutAnEreader() {
+        var continued = false
+        var action: NowReadingAction? = null
         compose.setContent {
             FolioTheme(dynamic = false) {
-                ReadingScreen(listOf(book), emptyList(), emptyList(), false, {}, {}, paired = false)
+                NowReadingSheet(
+                    CurrentBook(book, 0.37, 1L),
+                    recent = emptyList(),
+                    busy = false,
+                    onContinue = { continued = true },
+                    onAction = { action = it },
+                    onPick = {},
+                    onLibrary = {},
+                    onDismiss = {},
+                )
             }
         }
-        compose.onNodeWithText("The Orchard").assertIsDisplayed()
-        compose.onNodeWithText("Phone · Reading").assertIsDisplayed()
-        compose.onNodeWithText("Connect your e-reader").assertHasClickAction()
+        // The title shows twice: as the sheet's heading and on the generated cover.
+        compose.onAllNodesWithText("The Orchard").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("37%").assertIsDisplayed()
+        compose.onNodeWithText("Continue · 37%").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Send").assertHasClickAction()
+        compose.onNodeWithText("Open book page").performClick()
+        compose.runOnIdle {
+            assertTrue(continued)
+            assertEquals(NowReadingAction.OPEN, action)
+        }
+    }
+
+    @Test
+    fun nowReadingSheetWithoutABookOffersRecentReadingAndTheLibrary() {
+        var picked: Book? = null
+        var library = false
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                NowReadingSheet(
+                    null,
+                    recent = listOf(book),
+                    busy = false,
+                    onContinue = {},
+                    onAction = {},
+                    onPick = { picked = it },
+                    onLibrary = { library = true },
+                    onDismiss = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Pick a book to read").assertIsDisplayed()
+        compose.onNodeWithText("Continue").assertDoesNotExist()
+        compose.onNode(hasText("The Orchard") and hasClickAction()).performClick()
+        compose.onNodeWithText("Go to Library").performClick()
+        compose.runOnIdle {
+            assertEquals(book, picked)
+            assertTrue(library)
+        }
+    }
+
+    @Test
+    fun centreTileTapsContinueAndLongPressOpensOptions() {
+        var continued = false
+        var options = 0
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                FolioBar(
+                    tab = 0,
+                    onTab = {},
+                    current = CurrentBook(book, 0.37, 1L),
+                    onContinue = { continued = true },
+                    onOptions = { options++ },
+                    transferActive = false,
+                    hazeState = null,
+                )
+            }
+        }
+        val tile = compose.onNodeWithContentDescription("Continue reading The Orchard, 37%")
+        tile.performClick()
+        tile.performTouchInput { longClick() }
+        compose.runOnIdle {
+            assertTrue(continued)
+            assertEquals(1, options)
+        }
+        compose.onNodeWithText("Settings").assertHasClickAction()
+        compose.onNodeWithText("Reading").assertDoesNotExist()
     }
 
     @Test

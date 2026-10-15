@@ -19,14 +19,19 @@ sealed interface Route {
     /** The metadata editor for a book with an EPUB. */
     data class Edit(val id: String) : Route
 
-    data object Settings : Route
+    /** One list's books. */
+    data class List(val id: String) : Route
+
+    /** A search source (web view) for a query. */
+    data class Search(val query: String) : Route
 
     fun encode(): String =
         when (this) {
             is Book -> "book:$id"
             is Record -> "record:$id"
             is Edit -> "edit:$id"
-            Settings -> "settings"
+            is List -> "list:$id"
+            is Search -> "search:$query"
         }
 
     companion object {
@@ -36,7 +41,9 @@ sealed interface Route {
                 "book" -> Book(id).takeIf { id.isNotEmpty() }
                 "record" -> Record(id).takeIf { id.isNotEmpty() }
                 "edit" -> Edit(id).takeIf { id.isNotEmpty() }
-                "settings" -> Settings
+                "list" -> List(id).takeIf { id.isNotEmpty() }
+                "search" -> Search(id)
+                // "settings" was a route before Settings became a tab; it is dropped on restore.
                 else -> null
             }
         }
@@ -90,20 +97,28 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
         this.tab = tab.coerceIn(0, TABS - 1)
     }
 
-    /** Drops every screen for books that no longer exist. */
+    /** Drops every screen for books or lists that no longer exist. */
     fun forget(ids: Set<String>) {
         stack.removeAll {
             when (it) {
                 is Route.Book -> it.id in ids
                 is Route.Record -> it.id in ids
                 is Route.Edit -> it.id in ids
-                Route.Settings -> false
+                is Route.List -> it.id in ids
+                is Route.Search -> false
             }
         }
     }
 
     companion object {
+        /**
+         * Four tabs in the bar; the centre item between Lists and Device is an action, not a tab.
+         */
         const val TABS = 4
+        const val LIBRARY = 0
+        const val LISTS = 1
+        const val DEVICE = 2
+        const val SETTINGS = 3
 
         val saver: Saver<FolioNav, List<String>> =
             Saver(

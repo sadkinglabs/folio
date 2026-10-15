@@ -1,10 +1,13 @@
 package dev.sadking.folio.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceConfig
 
@@ -175,58 +178,37 @@ private fun PairingPreview() {
     FolioTheme(dynamic = false) { Surface { ConnectionForm(DeviceConfig(), false) { _, _, _ -> } } }
 }
 
-@Preview(name = "Reading · light", widthDp = 412, heightDp = 892)
+@Preview(name = "Bottom bar · light", widthDp = 412, heightDp = 240)
 @Preview(
-    name = "Reading · dark",
+    name = "Bottom bar · dark",
     widthDp = 412,
-    heightDp = 892,
+    heightDp = 240,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun ReadingPreview() {
+private fun BarPreview() {
     FolioTheme(dynamic = false) {
         Surface {
-            ReadingScreen(
-                sampleBooks,
-                listOf(
-                    ReadingSnapshot(
-                        "sample1",
-                        "device",
-                        0.42,
-                        "/body/p[7]",
-                        "reading",
-                        4,
-                        1791750000000,
-                        "book.sdr/metadata.epub.lua",
-                        "sidecar-hash",
-                        "document-hash",
-                    )
-                ),
-                listOf(
-                    BookAnnotation(
-                        "sample-note",
-                        "sample1",
-                        "device",
-                        "The season had changed.",
-                        "A lovely image.",
-                        "Autumn",
-                        "2026-10-11",
-                        "x",
-                        "y",
-                        "highlight",
-                    )
-                ),
-                false,
-                {},
-                {},
-                DeviceStatistics(
-                    "device",
-                    86400,
-                    1791750000,
-                    1791750000000,
-                    "[{\"date\":\"2026-10-11\",\"seconds\":1800},{\"date\":\"2026-10-10\",\"seconds\":2400}]",
-                ),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                FolioBar(
+                    tab = 0,
+                    onTab = {},
+                    current = CurrentBook(sampleBooks[0], 0.37, 1791750000000),
+                    onContinue = {},
+                    onOptions = {},
+                    transferActive = false,
+                    hazeState = null,
+                )
+                FolioBar(
+                    tab = 2,
+                    onTab = {},
+                    current = null,
+                    onContinue = {},
+                    onOptions = {},
+                    transferActive = true,
+                    hazeState = null,
+                )
+            }
         }
     }
 }

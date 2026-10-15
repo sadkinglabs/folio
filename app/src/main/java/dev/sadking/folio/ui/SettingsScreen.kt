@@ -47,6 +47,9 @@ internal fun SettingsScreen(
     onRefreshFolder: () -> Unit = {},
     onForgetFolder: () -> Unit = {},
     onInstallCompanion: () -> Unit = {},
+    statistics: DeviceStatistics? = null,
+    onStatistics: () -> Unit = {},
+    onRefreshReading: () -> Unit = {},
 ) {
     var confirmForget by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -90,6 +93,19 @@ internal fun SettingsScreen(
                     Modifier.semantics { contentDescription = wallpaper },
                 )
             }
+            HorizontalDivider()
+            Text(
+                stringResource(R.string.rd_settings_reading),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            OutlinedButton(
+                onClick = onRefreshReading,
+                enabled = !busy && paired,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.reading_refresh))
+            }
+            ReadingTimeSection(statistics, onStatistics, enabled = !busy && paired)
             HorizontalDivider()
             Text(
                 stringResource(R.string.settings_folder_title),
@@ -256,4 +272,52 @@ internal fun SettingsScreen(
                 }
             },
         )
+}
+
+/**
+ * KOReader reading statistics, fetched over the e-reader connection. Moved from the Reading tab.
+ */
+@Composable
+private fun ReadingTimeSection(
+    statistics: DeviceStatistics?,
+    onStatistics: () -> Unit,
+    enabled: Boolean,
+) {
+    ExpandableSection(
+        stringResource(R.string.reading_time_title),
+        statistics?.let {
+            stringResource(
+                R.string.reading_time_total,
+                it.totalSeconds / 3600,
+                (it.totalSeconds % 3600) / 60,
+            )
+        } ?: stringResource(R.string.reading_time_none),
+    ) {
+        Text(stringResource(R.string.reading_time_hint), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(
+            onClick = onStatistics,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.reading_time_get))
+        }
+        statistics?.let { stats ->
+            Text(
+                stringResource(
+                    R.string.reading_time_exported,
+                    java.text.DateFormat.getDateTimeInstance()
+                        .format(java.util.Date(stats.exportedAt * 1000)),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val days = org.json.JSONArray(stats.days)
+            repeat(minOf(days.length(), 30)) { index ->
+                val day = days.getJSONObject(index)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(day.getString("date"))
+                    Text(stringResource(R.string.reading_time_minutes, day.getLong("seconds") / 60))
+                }
+            }
+        }
+    }
 }

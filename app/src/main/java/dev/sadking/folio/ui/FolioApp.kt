@@ -1,6 +1,7 @@
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class,
 )
 
 package dev.sadking.folio.ui
@@ -8,6 +9,13 @@ package dev.sadking.folio.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,28 +28,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.*
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import dev.sadking.folio.*
 import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
 import kotlinx.coroutines.flow.collectLatest
-
-private data class Destination(@androidx.annotation.StringRes val title: Int, val icon: ImageVector)
-
-private val destinations =
-    listOf(
-        Destination(R.string.shell_tab_library, Icons.Outlined.AutoStories),
-        Destination(R.string.shell_tab_lists, Icons.Outlined.CollectionsBookmark),
-        Destination(R.string.shell_tab_device, Icons.Outlined.TabletMac),
-        Destination(R.string.shell_tab_reading, Icons.Outlined.MenuBook),
-    )
 
 @Composable
 fun FolioApp(model: LibraryViewModel) {
@@ -73,6 +72,8 @@ fun FolioApp(model: LibraryViewModel) {
     var showAccount by rememberSaveable { mutableStateOf(false) }
     var showHardcover by rememberSaveable { mutableStateOf(false) }
     var showDiscovery by rememberSaveable { mutableStateOf(false) }
+    var showNowReading by rememberSaveable { mutableStateOf(false) }
+    val hazeState = rememberHazeState()
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("appearance", 0) }
     var appearance by rememberSaveable {
@@ -188,6 +189,29 @@ fun FolioApp(model: LibraryViewModel) {
             }
         val catalogueBooks = library.entries
         val signals = library.signals
+        val latestRead by model.currentBook.collectAsStateWithLifecycle()
+        // A book attached to a record may keep its cover on the record.
+        val currentBook =
+            remember(latestRead, wishes) {
+                latestRead?.let { current ->
+                    val b = current.book
+                    current.copy(
+                        book =
+                            b.copy(
+                                coverPath =
+                                    b.coverPath
+                                        ?: wishes.firstOrNull { it.linkedBookId == b.id }?.coverPath
+                            )
+                    )
+                }
+            }
+        val recentReading =
+            remember(books, signals) {
+                books
+                    .filter { ReadingList.READING.contains(it, signals[it.id]) }
+                    .sortedByDescending { it.addedAt }
+                    .take(3)
+            }
         val statistics by model.statistics.collectAsStateWithLifecycle()
         val annotations by model.annotations.collectAsStateWithLifecycle()
         val lookupResults by model.lookupResults.collectAsStateWithLifecycle()
@@ -294,6 +318,7 @@ fun FolioApp(model: LibraryViewModel) {
             } else performRequestedSync()
         }
         val tab = nav.tab
+        val density = androidx.compose.ui.platform.LocalDensity.current
         val detailId = nav.bookId
         var editorDirty by rememberSaveable { mutableStateOf(false) }
         var confirmDiscard by rememberSaveable { mutableStateOf(false) }
@@ -316,9 +341,19 @@ fun FolioApp(model: LibraryViewModel) {
             when {
                 devices.sendsThroughLink -> send()
                 device.host.isBlank() -> showConnection = true
-                syncJob?.state in listOf("FAILED", "PAUSED") -> nav.root(2)
+                syncJob?.state in listOf("FAILED", "PAUSED") -> nav.root(FolioNav.DEVICE)
                 else -> send()
             }
+        }
+        /** Sends one book, pairing first when needed and surfacing a stuck transfer. */
+        fun actionsSend(id: String) {
+            if (devices.sendsThroughLink) requestSync("book", id)
+            else if (device.host.isBlank()) {
+                pairingSendId = id
+                showConnection = true
+            } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
+                nav.root(FolioNav.DEVICE)
+            } else requestSync("book", id)
         }
         val picker =
             rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
@@ -380,7 +415,7 @@ fun FolioApp(model: LibraryViewModel) {
                 nav.back()
             }
         }
-        // Settings handles its own back as a dialog window; this covers book screens and selection.
+        // Back pops a book screen, then clears a selection; a root tab leaves the app.
         BackHandler(nav.stack.isNotEmpty() || selection.isNotEmpty()) {
             if (editing && op.busy) return@BackHandler
             if (nav.stack.isNotEmpty()) leaveBook() else selection = emptySet()
@@ -393,394 +428,450 @@ fun FolioApp(model: LibraryViewModel) {
                 catalogueProgress = progress
             }
         }
-        CompositionLocalProvider(LocalRouteHeading provides (book == null && catalogue == null)) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(snackbar) },
-                topBar = {
-                    if (book != null || catalogue != null)
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    stringResource(
-                                        if (editing) R.string.shell_edit_book
-                                        else R.string.shell_book_details
-                                    )
-                                )
-                            },
-                            navigationIcon = {
-                                IconButton(
-                                    onClick = { leaveBook() },
-                                    enabled = !editing || !op.busy,
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        stringResource(R.string.shell_back),
-                                    )
-                                }
-                            },
-                            actions = {
-                                if (!editing)
-                                    IconButton(
-                                        onClick = {
-                                            if (book != null) {
-                                                editorDirty = false
-                                                nav.open(Route.Edit(book.id))
-                                            } else catalogueEditorId = catalogue?.id
-                                        }
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.Edit,
-                                            stringResource(R.string.shell_edit_metadata),
-                                        )
-                                    }
-                                if (!editing)
-                                    IconButton(
-                                        onClick = { actionsId = book?.id ?: catalogue?.id }
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.MoreVert,
-                                            stringResource(R.string.shell_book_actions),
-                                        )
-                                    }
-                            },
-                        )
-                    else if (tab != 0)
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    stringResource(
-                                        destinations.getOrNull(tab)?.title
-                                            ?: R.string.shell_tab_library
-                                    )
-                                )
-                            },
-                            actions = {
-                                IconButton(onClick = { nav.open(Route.Settings) }) {
-                                    Icon(
-                                        Icons.Outlined.Settings,
-                                        stringResource(R.string.shell_settings),
-                                    )
-                                }
-                            },
-                        )
-                },
-                bottomBar = {
-                    if (book == null && catalogue == null)
-                        NavigationBar {
-                            destinations.forEachIndexed { i, d ->
-                                NavigationBarItem(
-                                    selected = tab == i,
-                                    onClick = {
-                                        nav.root(i)
-                                        selection = emptySet()
-                                    },
-                                    icon = {
-                                        BadgedBox(
-                                            badge = {
-                                                if (i == 2 && syncJob?.active == true) Badge()
-                                            }
-                                        ) {
-                                            Icon(d.icon, null)
-                                        }
-                                    },
-                                    label = { Text(stringResource(d.title)) },
-                                )
-                            }
-                        }
-                },
-                floatingActionButton = {
-                    if (book == null && catalogue == null && tab == 0 && selection.isEmpty())
-                        FloatingActionButton(onClick = { showAddBooks = true }) {
-                            Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
-                        }
-                },
-            ) { padding ->
-                Column(Modifier.fillMaxSize().padding(padding)) {
-                    if (foregroundOp.busy) StatusSurface(foregroundOp)
-                    // The device tab shows the full transfer; everywhere else gets a compact
-                    // banner.
-                    if (syncJob?.active == true && !(tab == 2 && nav.stack.isEmpty()))
-                        TransferBanner(
-                            syncJob,
-                            onOpen = { nav.root(2) },
-                            onCancel = { devices.cancelSync(syncJob.id) },
-                        )
-                    if (book != null) {
-                        if (editing)
-                            MetadataEditor(book, op.busy, onDirtyChange = { editorDirty = it }) {
-                                metadata,
-                                cover ->
-                                model.edit(book, metadata, cover) {
-                                    editorDirty = false
-                                    if (nav.editing) nav.back()
-                                }
-                            }
-                        else
-                            BookDetails(
-                                book,
-                                shelves.filter { it.ruleField == "Manual" },
-                                memberships
-                                    .filter { it.bookId == book.id }
-                                    .map { it.shelfId }
-                                    .toSet(),
-                                transfers.any {
-                                    it.bookId == book.id &&
-                                        it.deviceId == device.id &&
-                                        it.hash == book.currentHash
-                                },
-                                onRead = {
-                                    dev.sadking.folio.reader.ReaderActivity.open(context, book.id)
-                                },
-                                phoneReading =
-                                    phoneReading.firstOrNull {
-                                        it.bookId == book.id && it.revisionHash == book.currentHash
-                                    },
-                                onShelf = { id, checked -> model.membership(book.id, id, checked) },
-                                onStatus = { model.status(book, it) },
-                                onSync = {
-                                    if (devices.sendsThroughLink) requestSync("book", book.id)
-                                    else if (device.host.isBlank()) {
-                                        pairingSendId = book.id
-                                        showConnection = true
-                                    } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
-                                        nav.root(2)
-                                    } else requestSync("book", book.id)
-                                },
-                                signals = signals[book.id],
-                                onRemove = { removalIds = setOf(book.id) },
-                                onCollections = { listEntryId = book.id },
-                                onRefreshReading = {
-                                    if (device.host.isBlank()) showConnection = true
-                                    else devices.refreshBookReading(book.id)
-                                },
-                                onReading = { nav.root(3) },
-                                busy = op.busy,
-                                deviceBusy = deviceBusy,
-                                reading =
-                                    reading
-                                        .filter { it.bookId == book.id && it.deviceId == device.id }
-                                        .maxByOrNull { it.fetchedAt },
-                                annotations = annotations.filter { it.bookId == book.id },
-                                onLookup = {
-                                    model.clearLookup()
-                                    showLookup = true
-                                },
-                                onExport = {
-                                    exportBookId = book.id
-                                    markdownPicker.launch("Folio-${book.id}.md")
-                                },
-                                nextInSeries = nextBook,
-                                nextOnDevice =
-                                    nextBook?.let { next ->
-                                        transfers.any {
-                                            it.bookId == next.id &&
-                                                it.deviceId == device.id &&
-                                                it.hash == next.currentHash
-                                        }
-                                    } == true,
-                                onNext = { nav.open(Route.Book(it.id)) },
-                                onHardcover = {
-                                    showHardcover = true
-                                    discovery.openReading(book)
-                                },
-                            )
-                    } else if (catalogue != null) {
-                        CatalogueBookDetails(
-                            discovery,
-                            catalogue,
-                            books,
-                            shelves,
-                            onProgress = {
-                                catalogueProgress = true
-                                discovery.openReading(catalogue.displayBook())
-                            },
-                            onRemove = { removalIds = setOf(catalogue.id) },
-                            onActions = {
-                                actionsId = catalogue.id
-                            },
-                            onDismiss = { leaveBook() },
-                            onLists = { listEntryId = catalogue.id },
-                        )
-                    } else
-                        stateHolder.SaveableStateProvider("tab-$tab") {
-                            when (tab) {
-                                0,
-                                1 ->
-                                    LibraryArea(
-                                        lists = tab == 1,
-                                        library = library,
-                                        shelves = shelves,
-                                        selection = selection,
-                                        busy = op.busy,
-                                        onSelection = { selection = it },
-                                        onOpen = { entry -> openEntry(entry.id) },
-                                        onContext = { actionsId = it.id },
-                                        onAdd = { showAddBooks = true },
-                                        onCreate = { name, field, value ->
-                                            model.createShelf(name, field, value)
-                                        },
-                                        onManageShelf = {
-                                            model.managementError.value = null
-                                            editingShelfId = it.id
-                                        },
-                                        onPolicy = devices::shelfPolicy,
-                                        onSendShelf = { shelf ->
-                                            sendOrPair { requestSync("shelf", shelf.id) }
-                                        },
-                                        onSend = { ids ->
-                                            sendOrPair {
-                                                requestSync("books", ids.joinToString(","))
-                                                selection = emptySet()
-                                            }
-                                        },
-                                        onRemove = { removalIds = it },
-                                        onBatch = { showBatchManage = true },
-                                        onAssign = { id ->
-                                            model.manageBatch(selection, shelf = id) {
-                                                selection = emptySet()
-                                            }
-                                        },
-                                        onDiscover = { showDiscovery = true },
-                                        onSettings = { nav.open(Route.Settings) },
-                                        onFolderSync = {
-                                            if (phoneFolder.isBlank()) nav.open(Route.Settings)
-                                            else if (device.host.isBlank()) showConnection = true
-                                            else devices.syncPairedFolder()
-                                        },
-                                        requestedList = if (tab == 1) requestedList else null,
-                                        onRequestHandled = { requestedList = null },
-                                    )
-                                2 ->
-                                    KindleScreen(
-                                        device,
-                                        inventory,
-                                        plan,
-                                        history,
-                                        deviceBusy,
-                                        inventoryCheckedAt = inventoryCheckedAt,
-                                        localBookCount = books.size,
-                                        onLibrary = { nav.root(0) },
-                                        onConfigure = { showConnection = true },
-                                        onPreview = { devices.preview() },
-                                        onSync = { requestSync("preview") },
-                                        onSyncMissing = { requestSync("missing") },
-                                        onCollections = devices::sendCollections,
-                                        syncJob = syncJob,
-                                        onCancelJob = devices::cancelSync,
-                                        onResumeJob = devices::resumeSync,
-                                        bookTitles = books.associate { it.id to it.title },
-                                        remoteBooks =
-                                            transfers
-                                                .filter { it.deviceId == device.id }
-                                                .mapNotNull { t ->
-                                                    books
-                                                        .firstOrNull { it.id == t.bookId }
-                                                        ?.let { t.remotePath to it }
-                                                }
-                                                .toMap(),
-                                        onOpenBook = { nav.open(Route.Book(it.id)) },
-                                        syncScope =
-                                            if (shelves.any { it.syncEnabled })
-                                                stringResource(
-                                                    R.string.shell_sync_scope_lists,
-                                                    shelves
-                                                        .filter { it.syncEnabled }
-                                                        .joinToString { it.name },
-                                                )
-                                            else stringResource(R.string.shell_sync_scope_all),
-                                    )
-                                3 ->
-                                    ReadingScreen(
-                                        library.entries,
-                                        reading,
-                                        annotations,
-                                        deviceBusy,
-                                        devices::refreshReading,
-                                        onOpen = { entry -> openEntry(entry.id) },
-                                        statistics =
-                                            statistics.firstOrNull { it.deviceId == device.id },
-                                        onStatistics = devices::refreshStatistics,
-                                        paired = device.host.isNotBlank(),
-                                        onConnect = { showConnection = true },
-                                        onLibrary = { nav.root(0) },
-                                        signals = library.signals,
-                                        onHardcover = { tracked ->
-                                            openEntry(tracked.id, progress = true)
-                                            if (tracked.id in library.fileIds) showHardcover = true
-                                            discovery.openReading(tracked)
-                                        },
-                                    )
-                            }
-                        }
-                }
-            }
-        }
-        if (nav.top == Route.Settings)
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { nav.back() },
-                properties =
-                    androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-            ) {
-                CompositionLocalProvider(LocalRouteHeading provides true) {
-                    Scaffold(
-                        topBar = {
+        SharedTransitionLayout {
+            CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+                Scaffold(
+                    snackbarHost = { SnackbarHost(snackbar) },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    topBar = {
+                        if (book != null || catalogue != null)
                             TopAppBar(
-                                title = { Text(stringResource(R.string.shell_settings)) },
+                                title = {
+                                    Text(
+                                        stringResource(
+                                            if (editing) R.string.shell_edit_book
+                                            else R.string.shell_book_details
+                                        )
+                                    )
+                                },
                                 navigationIcon = {
-                                    IconButton(onClick = { nav.back() }) {
+                                    IconButton(
+                                        onClick = { leaveBook() },
+                                        enabled = !editing || !op.busy,
+                                    ) {
                                         Icon(
                                             Icons.AutoMirrored.Filled.ArrowBack,
                                             stringResource(R.string.shell_back),
                                         )
                                     }
                                 },
-                            )
-                        },
-                        snackbarHost = { SnackbarHost(snackbar) },
-                    ) { padding ->
-                        Box(Modifier.fillMaxSize().padding(padding)) {
-                            SettingsScreen(
-                                appearance,
-                                dynamic,
-                                books.size,
-                                onTheme = {
-                                    appearance = it
-                                    prefs.edit().putString("theme", it).apply()
-                                },
-                                onDynamic = {
-                                    dynamic = it
-                                    prefs.edit().putBoolean("dynamic", it).apply()
-                                },
-                                onConnection = { showConnection = true },
-                                onForget = devices::forgetDevice,
-                                paired = device.host.isNotBlank(),
-                                onRemoved = { showRemoved = true },
-                                removedCount = removed.map { it.groupId }.distinct().size,
-                                recordCount = library.entries.size,
-                                phoneFolder = phoneFolder,
-                                onPhoneFolder = { phoneFolderPicker.launch(null) },
-                                onRefreshFolder = devices::refreshPhoneFolder,
-                                onForgetFolder = devices::forgetPhoneFolder,
-                                onInstallCompanion = { installCompanion = true },
-                                onImports = { model.showImportResults.value = true },
-                                hardcoverUsername = hardcoverUsername,
-                                onHardcover = { showAccount = true },
-                                busy = deviceBusy,
-                                onBackup = {
-                                    backupPicker.launch(
-                                        "Folio-backup-${java.time.LocalDate.now()}.zip"
-                                    )
-                                },
-                                onRestore = {
-                                    restorePicker.launch(
-                                        arrayOf("application/zip", "application/octet-stream")
-                                    )
+                                actions = {
+                                    if (!editing)
+                                        IconButton(
+                                            onClick = {
+                                                if (book != null) {
+                                                    editorDirty = false
+                                                    nav.open(Route.Edit(book.id))
+                                                } else catalogueEditorId = catalogue?.id
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.Edit,
+                                                stringResource(R.string.shell_edit_metadata),
+                                            )
+                                        }
+                                    if (!editing)
+                                        IconButton(
+                                            onClick = { actionsId = book?.id ?: catalogue?.id }
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.MoreVert,
+                                                stringResource(R.string.shell_book_actions),
+                                            )
+                                        }
                                 },
                             )
+                    },
+                    bottomBar = {
+                        if (book == null && catalogue == null)
+                            FolioBar(
+                                tab = tab,
+                                onTab = { i ->
+                                    nav.root(i)
+                                    selection = emptySet()
+                                },
+                                current = currentBook,
+                                onContinue = {
+                                    currentBook?.let {
+                                        dev.sadking.folio.reader.ReaderActivity.open(
+                                            context,
+                                            it.book.id,
+                                        )
+                                    }
+                                },
+                                onOptions = { showNowReading = true },
+                                transferActive = syncJob?.active == true,
+                                hazeState = hazeState,
+                            )
+                    },
+                    floatingActionButton = {
+                        if (
+                            book == null &&
+                                catalogue == null &&
+                                tab == FolioNav.LIBRARY &&
+                                selection.isEmpty()
+                        )
+                            FloatingActionButton(onClick = { showAddBooks = true }) {
+                                Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
+                            }
+                    },
+                ) { padding ->
+                    // The whole content is the glass bar's backdrop: the bar blurs whatever
+                    // scrolls under it once screens extend beneath it.
+                    Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
+                        Column(Modifier.fillMaxSize().padding(padding)) {
+                            if (foregroundOp.busy) StatusSurface(foregroundOp)
+                            // The device tab shows the full transfer; everywhere else gets a
+                            // compact
+                            // banner.
+                            if (
+                                syncJob?.active == true &&
+                                    !(tab == FolioNav.DEVICE && nav.stack.isEmpty())
+                            )
+                                TransferBanner(
+                                    syncJob,
+                                    onOpen = { nav.root(FolioNav.DEVICE) },
+                                    onCancel = { devices.cancelSync(syncJob.id) },
+                                )
+                            if (book != null) {
+                                if (editing)
+                                    MetadataEditor(
+                                        book,
+                                        op.busy,
+                                        onDirtyChange = { editorDirty = it },
+                                    ) { metadata, cover ->
+                                        model.edit(book, metadata, cover) {
+                                            editorDirty = false
+                                            if (nav.editing) nav.back()
+                                        }
+                                    }
+                                else
+                                    BookDetails(
+                                        book,
+                                        shelves.filter { it.ruleField == "Manual" },
+                                        memberships
+                                            .filter { it.bookId == book.id }
+                                            .map { it.shelfId }
+                                            .toSet(),
+                                        transfers.any {
+                                            it.bookId == book.id &&
+                                                it.deviceId == device.id &&
+                                                it.hash == book.currentHash
+                                        },
+                                        onRead = {
+                                            dev.sadking.folio.reader.ReaderActivity.open(
+                                                context,
+                                                book.id,
+                                            )
+                                        },
+                                        phoneReading =
+                                            phoneReading.firstOrNull {
+                                                it.bookId == book.id &&
+                                                    it.revisionHash == book.currentHash
+                                            },
+                                        onShelf = { id, checked ->
+                                            model.membership(book.id, id, checked)
+                                        },
+                                        onStatus = { model.status(book, it) },
+                                        onSync = {
+                                            if (devices.sendsThroughLink)
+                                                requestSync("book", book.id)
+                                            else if (device.host.isBlank()) {
+                                                pairingSendId = book.id
+                                                showConnection = true
+                                            } else if (
+                                                syncJob?.state in listOf("FAILED", "PAUSED")
+                                            ) {
+                                                nav.root(FolioNav.DEVICE)
+                                            } else requestSync("book", book.id)
+                                        },
+                                        signals = signals[book.id],
+                                        onRemove = { removalIds = setOf(book.id) },
+                                        onCollections = { listEntryId = book.id },
+                                        onRefreshReading = {
+                                            if (device.host.isBlank()) showConnection = true
+                                            else devices.refreshBookReading(book.id)
+                                        },
+                                        onReading = { nav.root(FolioNav.LIBRARY) },
+                                        busy = op.busy,
+                                        deviceBusy = deviceBusy,
+                                        reading =
+                                            reading
+                                                .filter {
+                                                    it.bookId == book.id && it.deviceId == device.id
+                                                }
+                                                .maxByOrNull { it.fetchedAt },
+                                        annotations = annotations.filter { it.bookId == book.id },
+                                        onLookup = {
+                                            model.clearLookup()
+                                            showLookup = true
+                                        },
+                                        onExport = {
+                                            exportBookId = book.id
+                                            markdownPicker.launch("Folio-${book.id}.md")
+                                        },
+                                        nextInSeries = nextBook,
+                                        nextOnDevice =
+                                            nextBook?.let { next ->
+                                                transfers.any {
+                                                    it.bookId == next.id &&
+                                                        it.deviceId == device.id &&
+                                                        it.hash == next.currentHash
+                                                }
+                                            } == true,
+                                        onNext = { nav.open(Route.Book(it.id)) },
+                                        onHardcover = {
+                                            showHardcover = true
+                                            discovery.openReading(book)
+                                        },
+                                    )
+                            } else if (catalogue != null) {
+                                CatalogueBookDetails(
+                                    discovery,
+                                    catalogue,
+                                    books,
+                                    shelves,
+                                    onProgress = {
+                                        catalogueProgress = true
+                                        discovery.openReading(catalogue.displayBook())
+                                    },
+                                    onRemove = { removalIds = setOf(catalogue.id) },
+                                    onActions = {
+                                        actionsId = catalogue.id
+                                    },
+                                    onDismiss = { leaveBook() },
+                                    onLists = { listEntryId = catalogue.id },
+                                )
+                            } else
+                                AnimatedContent(
+                                    tab,
+                                    modifier = Modifier.fillMaxSize(),
+                                    transitionSpec = {
+                                        val offset = with(density) { 8.dp.roundToPx() }
+                                        (fadeIn(FolioMotion.standardSpec()) +
+                                                slideInVertically(FolioMotion.standardSpec()) {
+                                                    offset
+                                                })
+                                            .togetherWith(
+                                                fadeOut(FolioMotion.standardSpec()) +
+                                                    slideOutVertically(FolioMotion.standardSpec()) {
+                                                        -offset
+                                                    }
+                                            )
+                                    },
+                                    label = "Tab",
+                                ) { shownTab ->
+                                    stateHolder.SaveableStateProvider("tab-$shownTab") {
+                                        when (shownTab) {
+                                            FolioNav.LIBRARY,
+                                            FolioNav.LISTS ->
+                                                LibraryArea(
+                                                    lists = shownTab == FolioNav.LISTS,
+                                                    library = library,
+                                                    shelves = shelves,
+                                                    selection = selection,
+                                                    busy = op.busy,
+                                                    onSelection = { selection = it },
+                                                    onOpen = { entry -> openEntry(entry.id) },
+                                                    onContext = { actionsId = it.id },
+                                                    onAdd = { showAddBooks = true },
+                                                    onCreate = { name, field, value ->
+                                                        model.createShelf(name, field, value)
+                                                    },
+                                                    onManageShelf = {
+                                                        model.managementError.value = null
+                                                        editingShelfId = it.id
+                                                    },
+                                                    onPolicy = devices::shelfPolicy,
+                                                    onSendShelf = { shelf ->
+                                                        sendOrPair {
+                                                            requestSync("shelf", shelf.id)
+                                                        }
+                                                    },
+                                                    onSend = { ids ->
+                                                        sendOrPair {
+                                                            requestSync(
+                                                                "books",
+                                                                ids.joinToString(","),
+                                                            )
+                                                            selection = emptySet()
+                                                        }
+                                                    },
+                                                    onRemove = { removalIds = it },
+                                                    onBatch = { showBatchManage = true },
+                                                    onAssign = { id ->
+                                                        model.manageBatch(selection, shelf = id) {
+                                                            selection = emptySet()
+                                                        }
+                                                    },
+                                                    onDiscover = { showDiscovery = true },
+                                                    onSettings = { nav.root(FolioNav.SETTINGS) },
+                                                    onFolderSync = {
+                                                        if (phoneFolder.isBlank())
+                                                            nav.root(FolioNav.SETTINGS)
+                                                        else if (device.host.isBlank())
+                                                            showConnection = true
+                                                        else devices.syncPairedFolder()
+                                                    },
+                                                    requestedList =
+                                                        if (shownTab == FolioNav.LISTS)
+                                                            requestedList
+                                                        else null,
+                                                    onRequestHandled = { requestedList = null },
+                                                )
+                                            FolioNav.DEVICE ->
+                                                KindleScreen(
+                                                    device,
+                                                    inventory,
+                                                    plan,
+                                                    history,
+                                                    deviceBusy,
+                                                    inventoryCheckedAt = inventoryCheckedAt,
+                                                    localBookCount = books.size,
+                                                    onLibrary = { nav.root(FolioNav.LIBRARY) },
+                                                    onConfigure = { showConnection = true },
+                                                    onPreview = { devices.preview() },
+                                                    onSync = { requestSync("preview") },
+                                                    onSyncMissing = { requestSync("missing") },
+                                                    onCollections = devices::sendCollections,
+                                                    syncJob = syncJob,
+                                                    onCancelJob = devices::cancelSync,
+                                                    onResumeJob = devices::resumeSync,
+                                                    bookTitles =
+                                                        books.associate { it.id to it.title },
+                                                    remoteBooks =
+                                                        transfers
+                                                            .filter { it.deviceId == device.id }
+                                                            .mapNotNull { t ->
+                                                                books
+                                                                    .firstOrNull {
+                                                                        it.id == t.bookId
+                                                                    }
+                                                                    ?.let { t.remotePath to it }
+                                                            }
+                                                            .toMap(),
+                                                    onOpenBook = { nav.open(Route.Book(it.id)) },
+                                                    syncScope =
+                                                        if (shelves.any { it.syncEnabled })
+                                                            stringResource(
+                                                                R.string.shell_sync_scope_lists,
+                                                                shelves
+                                                                    .filter { it.syncEnabled }
+                                                                    .joinToString { it.name },
+                                                            )
+                                                        else
+                                                            stringResource(
+                                                                R.string.shell_sync_scope_all
+                                                            ),
+                                                )
+                                            FolioNav.SETTINGS ->
+                                                SettingsScreen(
+                                                    appearance,
+                                                    dynamic,
+                                                    books.size,
+                                                    onTheme = {
+                                                        appearance = it
+                                                        prefs.edit().putString("theme", it).apply()
+                                                    },
+                                                    onDynamic = {
+                                                        dynamic = it
+                                                        prefs
+                                                            .edit()
+                                                            .putBoolean("dynamic", it)
+                                                            .apply()
+                                                    },
+                                                    onConnection = { showConnection = true },
+                                                    onForget = devices::forgetDevice,
+                                                    paired = device.host.isNotBlank(),
+                                                    onRemoved = { showRemoved = true },
+                                                    removedCount =
+                                                        removed.map { it.groupId }.distinct().size,
+                                                    recordCount = library.entries.size,
+                                                    phoneFolder = phoneFolder,
+                                                    onPhoneFolder = {
+                                                        phoneFolderPicker.launch(null)
+                                                    },
+                                                    onRefreshFolder = devices::refreshPhoneFolder,
+                                                    onForgetFolder = devices::forgetPhoneFolder,
+                                                    onInstallCompanion = {
+                                                        installCompanion = true
+                                                    },
+                                                    onImports = {
+                                                        model.showImportResults.value = true
+                                                    },
+                                                    hardcoverUsername = hardcoverUsername,
+                                                    onHardcover = { showAccount = true },
+                                                    busy = deviceBusy,
+                                                    onBackup = {
+                                                        backupPicker.launch(
+                                                            "Folio-backup-${java.time.LocalDate.now()}.zip"
+                                                        )
+                                                    },
+                                                    onRestore = {
+                                                        restorePicker.launch(
+                                                            arrayOf(
+                                                                "application/zip",
+                                                                "application/octet-stream",
+                                                            )
+                                                        )
+                                                    },
+                                                    statistics =
+                                                        statistics.firstOrNull {
+                                                            it.deviceId == device.id
+                                                        },
+                                                    onStatistics = devices::refreshStatistics,
+                                                    onRefreshReading = devices::refreshReading,
+                                                )
+                                        }
+                                    }
+                                }
                         }
                     }
                 }
             }
+        }
+        if (showNowReading)
+            NowReadingSheet(
+                currentBook,
+                recentReading,
+                busy = op.busy || discoveryState.busy,
+                onContinue = {
+                    showNowReading = false
+                    currentBook?.let {
+                        dev.sadking.folio.reader.ReaderActivity.open(context, it.book.id)
+                    }
+                },
+                onAction = { action ->
+                    showNowReading = false
+                    val id = currentBook?.book?.id ?: return@NowReadingSheet
+                    when (action) {
+                        NowReadingAction.SEND -> actionsSend(id)
+                        NowReadingAction.EDIT -> {
+                            nav.open(Route.Book(id))
+                            editorDirty = false
+                            nav.open(Route.Edit(id))
+                        }
+                        NowReadingAction.PROGRESS -> statusEntryId = id
+                        NowReadingAction.HARDCOVER -> {
+                            openEntry(id, progress = true)
+                            showHardcover = true
+                            currentBook?.let { discovery.openReading(it.book) }
+                        }
+                        NowReadingAction.SHARE -> currentBook?.let { model.openEpub(it.book, true) }
+                        NowReadingAction.REMOVE -> removalIds = setOf(id)
+                        NowReadingAction.OPEN -> openEntry(id)
+                    }
+                },
+                onPick = { picked ->
+                    showNowReading = false
+                    dev.sadking.folio.reader.ReaderActivity.open(context, picked.id)
+                },
+                onLibrary = {
+                    showNowReading = false
+                    nav.root(FolioNav.LIBRARY)
+                },
+                onDismiss = { showNowReading = false },
+            )
         if (confirmDiscard)
             AlertDialog(
                 onDismissRequest = { confirmDiscard = false },
@@ -968,18 +1059,10 @@ fun FolioApp(model: LibraryViewModel) {
                     when (action) {
                         BookAction.OPEN -> openEntry(actionBook.id)
                         BookAction.SELECT -> {
-                            nav.root(0)
+                            nav.root(FolioNav.LIBRARY)
                             selection = selection + actionBook.id
                         }
-                        BookAction.SEND -> {
-                            if (devices.sendsThroughLink) requestSync("book", actionBook.id)
-                            else if (device.host.isBlank()) {
-                                pairingSendId = actionBook.id
-                                showConnection = true
-                            } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
-                                nav.root(2)
-                            } else requestSync("book", actionBook.id)
-                        }
+                        BookAction.SEND -> actionsSend(actionBook.id)
                         BookAction.PROGRESS -> {
                             openEntry(actionBook.id, progress = true)
                             if (books.any { it.id == actionBook.id }) showHardcover = true
@@ -1076,7 +1159,7 @@ fun FolioApp(model: LibraryViewModel) {
                         TextButton(
                             onClick = {
                                 listEntryId = null
-                                nav.root(1)
+                                nav.root(FolioNav.LISTS)
                             }
                         ) {
                             Text(stringResource(R.string.shell_create_list))
@@ -1250,7 +1333,7 @@ fun FolioApp(model: LibraryViewModel) {
                 },
                 onSaved = {
                     showDiscovery = false
-                    nav.root(1)
+                    nav.root(FolioNav.LISTS)
                     requestedList = ReadingList.WANT_TO_READ.name
                 },
             )

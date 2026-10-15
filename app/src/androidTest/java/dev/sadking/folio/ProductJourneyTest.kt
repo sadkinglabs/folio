@@ -150,6 +150,18 @@ class ProductJourneyTest {
             val p = epub("Pride and Prejudice", "Jane Austen", Color.rgb(233, 215, 181))
             pride = app.repository.import(Uri.fromFile(p)).first
             app.repository.manageBatch(setOf(pride.id), status = "Reading")
+            app.database
+                .library()
+                .savePhoneReading(
+                    PhoneReading(
+                        pride.id,
+                        pride.currentHash,
+                        "{}",
+                        "/body/DocFragment[1]/body/p[3]",
+                        0.37,
+                        System.currentTimeMillis() - 300000,
+                    )
+                )
             val f =
                 app.repository
                     .import(
@@ -217,7 +229,7 @@ class ProductJourneyTest {
                 )
         }
         waitText("A Room of One’s Own")
-        compose.onNodeWithContentDescription("Settings").performClick()
+        tab("Settings")
         compose.onNodeWithText("Light").performClick()
         val wallpaper = compose.onNodeWithContentDescription("Use wallpaper colours")
         if (
@@ -225,7 +237,8 @@ class ProductJourneyTest {
                 ToggleableState.On
         )
             wallpaper.performClick()
-        compose.onNodeWithContentDescription("Back").performClick()
+        capture("settings-light")
+        tab("Library")
         capture("library-light")
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
         waitText("Pride and Prejudice")
@@ -308,10 +321,9 @@ class ProductJourneyTest {
         compose.onNodeWithText("Add EPUB").assertDoesNotExist()
         app.contentResolver.delete(uri, null, null)
         compose.onNodeWithContentDescription("Back").performClick()
-        tab("Library")
-        compose.onNodeWithContentDescription("Settings").performClick()
+        tab("Settings")
         compose.onNodeWithText("Dark").performClick()
-        compose.onNodeWithContentDescription("Back").performClick()
+        tab("Library")
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         capture("library-dark")
         compose.onNodeWithContentDescription("Show list").performClick()
@@ -320,12 +332,25 @@ class ProductJourneyTest {
         compose.onNodeWithContentDescription("Show grid").performClick()
         tab("Device")
         capture("kindle-dark")
-        tab("Reading")
-        capture("reading-dark")
-        compose
-            .onNode(hasText("Update Hardcover") and hasAnyAncestor(hasText("Hamlet")))
-            .performScrollTo()
-            .performClick()
+        // The centre tile: Pride and Prejudice was read last on the phone (37%). Long-press opens
+        // the Now Reading sheet; its "Open book page" row leads to the book.
+        val tile =
+            compose.onNodeWithContentDescription(
+                "Continue reading Pride and Prejudice · Edited, 37%"
+            )
+        tile.assertHasClickAction()
+        tile.performTouchInput { longClick() }
+        waitText("Continue · 37%")
+        capture("now-reading-dark")
+        compose.onNodeWithText("Open book page").performClick()
+        waitText("Send to device")
+        compose.onNodeWithContentDescription("Back").performClick()
+        // Hamlet is read without an EPUB; its progress lives on the Currently Reading list.
+        tab("Lists")
+        compose.onNodeWithText("Currently Reading").performClick()
+        waitText("Hamlet")
+        compose.onNode(hasText("Hamlet") and hasClickAction()).performClick()
+        compose.onNodeWithText("Update progress").performScrollTo().performClick()
         waitText("Hardcover reading")
         compose.onNodeWithText("1 · Manual progress").assertIsDisplayed()
         compose.onNodeWithText("Get latest from e-reader").assertDoesNotExist()

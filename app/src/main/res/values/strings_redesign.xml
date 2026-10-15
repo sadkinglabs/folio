@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Redesign: the bottom bar's centre item -->
+    <!-- TalkBack: the centre item with a book and a saved place. -->
+    <string name="rd_continue_reading_progress">Continue reading %1$s, %2$d%%</string>
+    <!-- TalkBack: the centre item with a book but no saved place yet. -->
+    <string name="rd_continue_reading">Continue reading %1$s</string>
+    <!-- TalkBack custom action and the long-press result. -->
+    <string name="rd_book_options">Book options</string>
+    <string name="rd_percent">%1$d%%</string>
+
+    <!-- Redesign: Now Reading sheet -->
+    <string name="rd_continue">Continue</string>
+    <string name="rd_continue_percent">Continue · %1$d%%</string>
+    <string name="rd_action_send">Send</string>
+    <string name="rd_action_edit">Edit</string>
+    <string name="rd_action_progress">Progress</string>
+    <string name="rd_action_hardcover">Hardcover</string>
+    <string name="rd_action_share">Share</string>
+    <string name="rd_action_remove">Remove</string>
+    <string name="rd_open_book_page">Open book page</string>
+    <string name="rd_pick_a_book">Pick a book to read</string>
+    <string name="rd_pick_a_book_body">The book you open last shows here.</string>
+    <string name="rd_go_to_library">Go to Library</string>
+
+    <!-- Redesign: Settings, reading section (moved from the Reading tab) -->
+    <string name="rd_settings_reading">Reading</string>
+</resources>

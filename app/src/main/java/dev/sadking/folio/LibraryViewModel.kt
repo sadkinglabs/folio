@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.koreaderDigest
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -46,6 +47,31 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         dao.annotations().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val statistics =
         dao.statistics().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** KOReader document digests by revision hash, so each file is sampled once. */
+    private val digests = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * The book behind the bar's centre item: last read anywhere, phone or e-reader through Folio
+     * Link. Computed off the main thread whenever books, positions or link reports change.
+     */
+    val currentBook: StateFlow<CurrentBook?> =
+        combine(books, phoneReading, dao.kosyncFlow()) { books, phone, reports ->
+                dev.sadking.folio.data.currentBook(
+                    books,
+                    phone,
+                    reports,
+                    app.link.settings.phoneDeviceId,
+                ) { book ->
+                    digests[book.currentHash]
+                        ?: File(book.currentPath)
+                            .takeIf { book.currentPath.isNotBlank() && it.isFile }
+                            ?.let { runCatching { koreaderDigest(it) }.getOrNull() }
+                            ?.also { digests[book.currentHash] = it }
+                }
+            }
+            .flowOn(Dispatchers.IO)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val lookupResults = MutableStateFlow<List<MetadataCandidate>>(emptyList())
     val lookupCover = MutableStateFlow<String?>(null)
     val lookupProposal = MutableStateFlow<MetadataProposal?>(null)

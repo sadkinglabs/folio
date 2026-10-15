@@ -159,30 +159,8 @@
     <string name="settings_forget_confirm">Forget</string>
     <string name="settings_cancel">Cancel</string>
 
-    <!-- Reading (ReadingScreen.kt) -->
-    <string name="reading_title">Reading</string>
-    <string name="reading_subtitle">Your reading, with saved progress and notes</string>
+    <!-- Reading: refresh and reading time (Settings, moved from the old Reading tab) -->
     <string name="reading_refresh">Refresh progress and notes</string>
-    <string name="reading_connect">Connect your e-reader</string>
-    <string name="reading_connect_summary">Bring in KOReader progress and notes over Wi-Fi</string>
-    <string name="reading_filter_reading">Reading</string>
-    <string name="reading_filter_finished">Finished</string>
-    <string name="reading_filter_all">All activity</string>
-    <string name="reading_empty_reading">Choose your next read</string>
-    <string name="reading_empty_other">No activity here yet</string>
-    <string name="reading_empty_body">Set a book\'s status in its details, or refresh to get your progress from your e-reader.</string>
-    <string name="reading_browse_library">Browse library</string>
-    <string name="reading_phone_status">Phone · %1$s</string>
-    <string name="reading_device_percent">E-reader · %1$d%%</string>
-    <string name="reading_checked">Checked %1$s</string>
-    <plurals name="reading_notes">
-        <item quantity="one">%1$d saved note</item>
-        <item quantity="other">%1$d saved notes</item>
-    </plurals>
-    <string name="reading_update_hardcover">Update Hardcover</string>
-    <string name="reading_about_title">About reading updates</string>
-    <string name="reading_about_summary">Close the book in KOReader before refreshing</string>
-    <string name="reading_about_body">KOReader saves progress and notes when you close a book. Refreshing reads them without changing anything on your e-reader. The status you set on the phone stays separate, and nothing is sent to Hardcover until you review it.</string>
     <string name="reading_time_title">Reading time</string>
     <string name="reading_time_total">%1$d h %2$d min · from your last export</string>
     <string name="reading_time_none">Optional · reading statistics from KOReader</string>
