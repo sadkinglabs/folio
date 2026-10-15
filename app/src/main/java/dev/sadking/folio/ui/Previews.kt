@@ -73,14 +73,22 @@ internal fun LibraryPreview() {
                     "[\"Ursula K. Le Guin\"]",
                     hardcoverId = 1,
                 )
+            // Enough books in progress for the Reading carousel to scroll.
+            val reading =
+                listOf("The Long Winter", "Salt and Iron", "Night Trains").mapIndexed { i, title ->
+                    sampleBooks[1].copy(id = "reading$i", title = title, status = "Reading")
+                }
+            val books = sampleBooks + reading
             LibraryScreen(
-                unifiedLibrary(sampleBooks, listOf(wish)),
+                unifiedLibrary(books, listOf(wish)),
                 emptySet(),
                 onOpen = {},
                 onSelect = {},
-                fileIds = sampleBooks.map { it.id }.toSet(),
+                fileIds = books.map { it.id }.toSet(),
                 signals = mapOf(wish.id to catalogueSignals(wish, null)),
-                progress = mapOf(sampleBooks.first().id to 0.37),
+                progress =
+                    mapOf(sampleBooks.first().id to 0.37) +
+                        reading.mapIndexed { i, book -> book.id to 0.2 * (i + 1) },
                 currentId = sampleBooks.first().id,
             )
         }

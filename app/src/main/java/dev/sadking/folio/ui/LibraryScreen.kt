@@ -11,7 +11,6 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -24,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.*
+import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -717,6 +719,7 @@ private fun LoadingGrid(columns: GridCells, modifier: Modifier) {
 }
 
 /** The "Reading" shelf: a row of 112 dp covers with their progress, the current book first. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReadingShelf(
     books: List<Book>,
@@ -731,20 +734,23 @@ private fun ReadingShelf(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = FolioSpace.small),
         )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+        // Material's carousel: covers keep their size and the one leaving the edge narrows under
+        // a mask, so the row reads as more to scroll. Covers keep their captions below.
+        HorizontalUncontainedCarousel(
+            state = rememberCarouselState { books.size },
+            itemWidth = 112.dp,
+            itemSpacing = FolioSpace.gap,
             contentPadding = PaddingValues(bottom = FolioSpace.small),
-            modifier = Modifier.testTag(LIBRARY_SHELF_TAG),
-        ) {
-            items(books, key = { "shelf-${it.id}" }) { book ->
-                val percent = progress[book.id]?.let { (it * 100).toInt() }
-                tile(
-                    book,
-                    Modifier.width(112.dp),
-                    CoverVariant.Shelf,
-                    percent?.let { stringResource(R.string.rd_percent, it) },
-                )
-            }
+            modifier = Modifier.fillMaxWidth().testTag(LIBRARY_SHELF_TAG),
+        ) { i ->
+            val book = books[i]
+            val percent = progress[book.id]?.let { (it * 100).toInt() }
+            tile(
+                book,
+                Modifier.width(112.dp).maskClip(RectangleShape),
+                CoverVariant.Shelf,
+                percent?.let { stringResource(R.string.rd_percent, it) },
+            )
         }
     }
 }
