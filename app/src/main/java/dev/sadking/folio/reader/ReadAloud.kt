@@ -71,6 +71,17 @@ internal fun sortVoices(voices: List<ListenVoice>): List<ListenVoice> =
             .thenBy { it.id }
     )
 
+/**
+ * Whether a language as books write it is English: `en`, `en-GB`, `en_US`, `EN`, `eng` or even
+ * `English`. Kokoro, the natural voice, speaks English only.
+ */
+internal fun isEnglish(code: String): Boolean =
+    code.trim().lowercase().replace('_', '-').substringBefore('-') in setOf("en", "eng", "english")
+
+/** A book with no language given is taken as English; otherwise any English entry counts. */
+internal fun englishBook(languages: List<String>): Boolean =
+    languages.none { it.isNotBlank() } || languages.any(::isEnglish)
+
 internal enum class ListenState {
     OFF,
     STARTING,
@@ -166,8 +177,7 @@ internal class ReadAloud(
         if (state != ListenState.OFF) return true
         state = ListenState.STARTING
         reading = Reading(bookId, publication, onFailure)
-        val bookLanguage = publication.metadata.languages.firstOrNull()
-        naturalFits = bookLanguage == null || Language(bookLanguage).removeRegion().code == "en"
+        naturalFits = englishBook(publication.metadata.languages)
         val wantsNatural =
             naturalFits &&
                 KokoroModel.ready(app) &&
@@ -214,6 +224,8 @@ internal class ReadAloud(
         kokoro = null
         natural = false
         val spoken = created.settings.value.language
+        // Readium's own reading of the book's language counts too.
+        if (isEnglish(spoken.code)) naturalFits = true
         language = spoken
         voices =
             sortVoices(

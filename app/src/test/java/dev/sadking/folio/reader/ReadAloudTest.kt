@@ -40,4 +40,16 @@ class ReadAloudTest {
             )
         assertEquals(listOf("local-high", "local-low", "net-high"), sorted.map { it.id })
     }
+
+    @Test
+    fun englishIsRecognisedHoweverTheBookWritesIt() {
+        listOf("en", "en-GB", "en_US", "EN", "eng", "English", " en-gb ").forEach {
+            assertEquals(it, true, isEnglish(it))
+        }
+        listOf("fr", "es-ES", "deu", "zh-Hans").forEach { assertEquals(it, false, isEnglish(it)) }
+        assertEquals(true, englishBook(emptyList()))
+        assertEquals(true, englishBook(listOf("")))
+        assertEquals(true, englishBook(listOf("fr", "eng")))
+        assertEquals(false, englishBook(listOf("fr")))
+    }
 }
