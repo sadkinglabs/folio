@@ -379,19 +379,32 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                 )
         }
 
+    /** With Folio Link on, sending queues books for Link e-readers instead of copying over SSH. */
+    val sendsThroughLink: Boolean
+        get() = app.link.settings.enabled
+
+    private fun queueForLink(ids: Set<String>): String {
+        require(ids.isNotEmpty()) { app.getString(R.string.msg_device_book_unavailable) }
+        app.linkQueue.add(ids)
+        return app.resources.getQuantityString(R.plurals.link_queued, ids.size, ids.size)
+    }
+
     fun sendBook(book: Book) =
-        runOnDevice(app.getString(R.string.msg_device_sending_book, book.title)) {
-            check(device.value.host.isNotBlank()) { app.getString(R.string.send_pair_first) }
-            prepare(setOf(book.id))
-            val item =
-                plan.value.singleOrNull()
-                    ?: error(app.getString(R.string.msg_device_book_unavailable))
-            when (item.action) {
-                Action.UPLOAD -> performSync()
-                Action.PRESENT -> app.getString(R.string.msg_device_book_present)
-                Action.CONFLICT -> error(app.getString(R.string.msg_device_book_differs))
+        if (sendsThroughLink)
+            run(app.getString(R.string.link_queueing)) { queueForLink(setOf(book.id)) }
+        else
+            runOnDevice(app.getString(R.string.msg_device_sending_book, book.title)) {
+                check(device.value.host.isNotBlank()) { app.getString(R.string.send_pair_first) }
+                prepare(setOf(book.id))
+                val item =
+                    plan.value.singleOrNull()
+                        ?: error(app.getString(R.string.msg_device_book_unavailable))
+                when (item.action) {
+                    Action.UPLOAD -> performSync()
+                    Action.PRESENT -> app.getString(R.string.msg_device_book_present)
+                    Action.CONFLICT -> error(app.getString(R.string.msg_device_book_differs))
+                }
             }
-        }
 
     private suspend fun performSync(): String {
         check(planDevice == device.value.id) {
@@ -458,19 +471,29 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Compares the chosen books with the e-reader and queues the ones it is missing. */
     fun sendBooks(ids: Set<String>) =
-        runOnDevice(app.getString(R.string.send_comparing)) { send(ids) }
+        if (sendsThroughLink) run(app.getString(R.string.link_queueing)) { queueForLink(ids) }
+        else runOnDevice(app.getString(R.string.send_comparing)) { send(ids) }
 
     fun sendShelf(shelf: Shelf) =
-        runOnDevice(app.getString(R.string.send_comparing)) {
-            val verified = dao.transfers(device.value.id).associateBy { it.bookId }
-            val ids =
-                collectionBooks(shelf, dao.allBooks(), dao.allMemberships()) {
-                        verified[it.id]?.hash == it.currentHash
-                    }
-                    .map { it.id }
-                    .toSet()
-            send(ids)
-        }
+        if (sendsThroughLink)
+            run(app.getString(R.string.link_queueing)) {
+                queueForLink(
+                    collectionBooks(shelf, dao.allBooks(), dao.allMemberships()) { false }
+                        .map { it.id }
+                        .toSet()
+                )
+            }
+        else
+            runOnDevice(app.getString(R.string.send_comparing)) {
+                val verified = dao.transfers(device.value.id).associateBy { it.bookId }
+                val ids =
+                    collectionBooks(shelf, dao.allBooks(), dao.allMemberships()) {
+                            verified[it.id]?.hash == it.currentHash
+                        }
+                        .map { it.id }
+                        .toSet()
+                send(ids)
+            }
 
     /**
      * Uploads only what is missing. Books that differ on the e-reader are never overwritten; they

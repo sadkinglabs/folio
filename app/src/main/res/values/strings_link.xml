@@ -46,6 +46,16 @@
     <string name="hardcover_automatic">Update Hardcover automatically</string>
     <string name="hardcover_automatic_hint">Sends your reading position from this phone and from your e-reader about a minute after you stop reading. Only moves forward, and only for books already marked Currently Reading on Hardcover.</string>
 
+    <!-- Folio Link: sending books -->
+    <string name="link_queueing">Adding to the e-reader queue…</string>
+    <plurals name="link_queued">
+        <item quantity="one">%d book will download to your e-reader the next time it connects to Folio Link</item>
+        <item quantity="other">%d books will download to your e-reader the next time it connects to Folio Link</item>
+    </plurals>
+    <string name="link_catalogue">Folio</string>
+    <string name="link_catalogue_recent">Recently added</string>
+    <string name="link_catalogue_lists">Lists</string>
+
     <!-- Folio Link: notification -->
     <string name="link_channel">Folio Link</string>
     <string name="link_notification_title">Folio Link is on</string>

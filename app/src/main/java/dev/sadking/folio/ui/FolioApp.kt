@@ -315,6 +315,7 @@ fun FolioApp(model: LibraryViewModel) {
         /** Sends from where you are; only pairing or a stuck transfer takes you elsewhere. */
         fun sendOrPair(send: () -> Unit) {
             when {
+                devices.sendsThroughLink -> send()
                 device.host.isBlank() -> showConnection = true
                 syncJob?.state in listOf("FAILED", "PAUSED") -> nav.root(2)
                 else -> send()
@@ -538,7 +539,8 @@ fun FolioApp(model: LibraryViewModel) {
                                 onShelf = { id, checked -> model.membership(book.id, id, checked) },
                                 onStatus = { model.status(book, it) },
                                 onSync = {
-                                    if (device.host.isBlank()) {
+                                    if (devices.sendsThroughLink) requestSync("book", book.id)
+                                    else if (device.host.isBlank()) {
                                         pairingSendId = book.id
                                         showConnection = true
                                     } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {
@@ -971,7 +973,8 @@ fun FolioApp(model: LibraryViewModel) {
                             selection = selection + actionBook.id
                         }
                         BookAction.SEND -> {
-                            if (device.host.isBlank()) {
+                            if (devices.sendsThroughLink) requestSync("book", actionBook.id)
+                            else if (device.host.isBlank()) {
                                 pairingSendId = actionBook.id
                                 showConnection = true
                             } else if (syncJob?.state in listOf("FAILED", "PAUSED")) {

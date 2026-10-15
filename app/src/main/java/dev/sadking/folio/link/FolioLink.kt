@@ -60,6 +60,21 @@ class FolioLink(context: Context, dao: LibraryDao) {
             { settings.account() },
         )
 
+    /** Progress sync, the OPDS catalogue and the plugin's queue, behind one login. */
+    val routes =
+        LinkRoutes(
+            kosync,
+            RoomLinkLibrary(dao, (app as dev.sadking.folio.FolioApplication).linkQueue),
+            { settings.account() },
+            {
+                LinkLabels(
+                    app.getString(dev.sadking.folio.R.string.link_catalogue),
+                    app.getString(dev.sadking.folio.R.string.link_catalogue_recent),
+                    app.getString(dev.sadking.folio.R.string.link_catalogue_lists),
+                )
+            },
+        )
+
     internal val _port = MutableStateFlow<Int?>(null)
     /** The port Link is listening on, or null when it is off. */
     val port: StateFlow<Int?> = _port

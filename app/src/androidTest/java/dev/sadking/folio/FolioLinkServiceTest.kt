@@ -35,6 +35,7 @@ class FolioLinkServiceTest {
         path: String,
         body: String? = null,
         key: String = app.link.settings.account().key,
+        extra: Map<String, String> = emptyMap(),
     ): Pair<Int, String> {
         val bytes = body?.toByteArray() ?: ByteArray(0)
         java.net.Socket("127.0.0.1", port).use { socket ->
@@ -45,6 +46,7 @@ class FolioLinkServiceTest {
                 append("Accept: application/vnd.koreader.v1+json\r\n")
                 append("x-auth-user: folio\r\n")
                 append("x-auth-key: $key\r\n")
+                extra.forEach { (name, value) -> append("$name: $value\r\n") }
                 if (body != null) append("Content-Type: application/json\r\n")
                 append("Content-Length: ${bytes.size}\r\n")
                 append("Connection: close\r\n\r\n")
@@ -99,6 +101,76 @@ class FolioLinkServiceTest {
             app.link.start()
             val port = runBlocking { withTimeout(15_000) { app.link.port.first { it != null }!! } }
             assertEquals(401, call(port, "GET", "/users/auth", key = "not-the-key").first)
+        }
+    }
+
+    @Test
+    fun anEreaderFetchesQueuedBooksAndConfirmsThem() {
+        val id = java.util.UUID.randomUUID().toString()
+        val dir = java.io.File(app.repository.root, id).apply { mkdirs() }
+        val file =
+            java.io.File(dir, "original.epub").apply { writeText("not really an epub, only bytes") }
+        val hash = dev.sadking.folio.core.Epub.sha256(file)
+        runBlocking {
+            app.database
+                .library()
+                .insert(
+                    dev.sadking.folio.data.Book(
+                        id,
+                        "Queued Fixture",
+                        "[\"QA Author\"]",
+                        originalPath = file.path,
+                        currentPath = file.path,
+                        originalHash = hash,
+                        currentHash = hash,
+                    )
+                )
+        }
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                app.linkQueue.add(listOf(id))
+                app.link.start()
+                val port = runBlocking {
+                    withTimeout(15_000) { app.link.port.first { it != null }!! }
+                }
+                val device = mapOf("x-folio-device" to "emulated-kobo")
+
+                val queue = JSONObject(call(port, "GET", "/folio/v1/queue", extra = device).second)
+                val entry =
+                    (0 until queue.getJSONArray("books").length())
+                        .map { queue.getJSONArray("books").getJSONObject(it) }
+                        .single { it.getString("id") == id }
+                assertEquals("QA Author - Queued Fixture.epub", entry.getString("filename"))
+                assertEquals(hash, entry.getString("sha256"))
+
+                val (status, body) = call(port, "GET", "/folio/v1/books/$id.epub", extra = device)
+                assertEquals(200, status)
+                assertEquals(file.readText(), body)
+
+                val ack =
+                    JSONObject()
+                        .put("id", id)
+                        .put("sha256", hash)
+                        .put("path", "/mnt/onboard/Folio/x.epub")
+                assertEquals(
+                    200,
+                    call(port, "POST", "/folio/v1/ack", ack.toString(), extra = device).first,
+                )
+                val after = JSONObject(call(port, "GET", "/folio/v1/queue", extra = device).second)
+                assertTrue(after.toString(), !after.toString().contains(id))
+                // Another e-reader still gets it.
+                val other =
+                    call(
+                        port,
+                        "GET",
+                        "/folio/v1/queue",
+                        extra = mapOf("x-folio-device" to "kindle"),
+                    )
+                assertTrue(other.second.contains(id))
+            }
+        } finally {
+            runBlocking { app.database.library().deleteLocalBook(id) }
+            dir.deleteRecursively()
         }
     }
 }

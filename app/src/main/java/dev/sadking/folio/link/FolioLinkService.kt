@@ -90,7 +90,7 @@ class FolioLinkService : Service() {
         )
         holdLocks()
         if (server == null) {
-            val created = FolioLinkServer(link.kosync) { link.log.request(it) }
+            val created = FolioLinkServer(link.routes) { link.log.request(it) }
             server = created
             scope.launch {
                 try {
