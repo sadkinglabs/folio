@@ -12,6 +12,7 @@ local lfs = require("libs/libkoreader-lfs")
 local ffiUtil = require("ffi/util")
 local Event = require("ui/event")
 local Bridge
+local Link
 local Folio = WidgetContainer:extend { name = "folio", }
 local function message(text) UIManager:show(InfoMessage:new { text = text }) end
 local function bounded_read(path)
@@ -23,10 +24,20 @@ local function bounded_read(path)
 end
 function Folio:init()
     Bridge = dofile(self.path .. "/bridge.lua")
+    Link = dofile(self.path .. "/link.lua")
     self.ui.menu:registerToMainMenu(self)
 end
+-- The folder Folio's books go to: the one set here, else the Kindle default if it exists,
+-- else "Folio" in KOReader's home folder (any device).
+function Folio:defaultFolder()
+    local saved = G_reader_settings:readSetting("folio_folder")
+    if saved then return saved end
+    if lfs.attributes("/mnt/us/Books/Folio", "mode") == "directory" then return "/mnt/us/Books/Folio" end
+    local home = G_reader_settings:readSetting("home_dir") or DataStorage:getDataDir()
+    return home:gsub("/$", "") .. "/Folio"
+end
 function Folio:root()
-    local path = G_reader_settings:readSetting("folio_folder", "/mnt/us/Books/Folio")
+    local path = self:defaultFolder()
     local root = ffiUtil.realpath(path)
     assert(root and lfs.attributes(root, "mode") == "directory", "Configure an existing Folio book folder first")
     return root:gsub("/$", "")
@@ -139,6 +150,86 @@ function Folio:reading(automatic)
         })
     end
 end
+-- Folio Link: the server, username and key come from KOReader's Progress sync settings.
+function Folio:linkConfig()
+    local kosync = G_reader_settings:readSetting("kosync") or {}
+    local folder = self:defaultFolder()
+    if lfs.attributes(folder, "mode") ~= "directory" then lfs.mkdir(folder) end
+    return {
+        server = kosync.custom_server, username = kosync.username, key = kosync.userkey,
+        device = G_reader_settings:readSetting("device_id") or "koreader", folder = self:root(),
+    }
+end
+local function sha256_file(path)
+    local loaded, sha2 = pcall(require, "ffi/sha2")
+    if not loaded or type(sha2.sha256) ~= "function" then return nil end
+    local file = io.open(path, "rb")
+    if not file then return nil end
+    -- Streams the file; if this KOReader cannot, the caller checks the size instead.
+    local ok, digest = pcall(function()
+        local append = sha2.sha256()
+        while true do
+            local chunk = file:read(65536)
+            if not chunk then break end
+            append(chunk)
+        end
+        return append()
+    end)
+    file:close()
+    return ok and type(digest) == "string" and digest:lower() or nil
+end
+local function link_deps()
+    local http = require("socket.http")
+    local ltn12 = require("ltn12")
+    local socket = require("socket")
+    local socketutil = require("socketutil")
+    local function call(method, url, headers, body, sink)
+        local all, chunks, source = {}, {}, nil
+        for k, v in pairs(headers) do all[k] = v end
+        if body then
+            all["Content-Type"] = "application/json"; all["Content-Length"] = tostring(#body)
+            source = ltn12.source.string(body)
+        end
+        socketutil:set_timeout(socketutil.LARGE_BLOCK_TIMEOUT, socketutil.LARGE_TOTAL_TIMEOUT)
+        local code = socket.skip(1, http.request { url = url, method = method, headers = all, source = source,
+            sink = sink or ltn12.sink.table(chunks) })
+        socketutil:reset_timeout()
+        return tonumber(code), table.concat(chunks)
+    end
+    return {
+        request = function(method, url, headers, body) return call(method, url, headers, body) end,
+        download = function(url, headers, path)
+            return (call("GET", url, headers, nil, ltn12.sink.file(assert(io.open(path, "wb")))))
+        end,
+        exists = function(path) return lfs.attributes(path, "mode") == "file" end,
+        size = function(path) return lfs.attributes(path, "size") end,
+        sha256 = sha256_file,
+        rename = function(from, to) return os.rename(from, to) end,
+        remove = function(path) os.remove(path) end,
+        decode = function(text) return JSON.decode(text) end,
+        encode = function(value) return JSON.encode(value) end,
+    }
+end
+function Folio:fetchBooks(automatic)
+    local NetworkMgr = require("ui/network/manager")
+    NetworkMgr:runWhenOnline(function()
+        local ok, result = pcall(function() return Link.fetch(self:linkConfig(), link_deps()) end)
+        if not ok then
+            if not automatic then message(tostring(result):gsub("^.-:%d+: ", "")) end
+            return
+        end
+        if automatic and result.fetched == 0 and result.failed == 0 then return end
+        local text = string.format("Folio: %d new %s.", result.fetched, result.fetched == 1 and "book" or "books")
+        if result.already > 0 then text = text .. string.format(" %d already here.", result.already) end
+        if result.failed > 0 then text = text .. string.format(" %d could not be fetched; they will be tried again.", result.failed) end
+        message(text)
+    end)
+end
+function Folio:onNetworkConnected()
+    if G_reader_settings:readSetting("folio_auto_fetch", false) then
+        UIManager:scheduleIn(2, function() self:fetchBooks(true) end)
+    end
+end
 function Folio:onReaderReady()
     if G_reader_settings:readSetting("folio_auto_positions", false) then
         UIManager:nextTick(function() self:reading(true) end)
@@ -147,7 +238,7 @@ end
 function Folio:configure()
     local dialog
     dialog = InputDialog:new {
-        title = "Folio book folder", input = G_reader_settings:readSetting("folio_folder", "/mnt/us/Books/Folio"),
+        title = "Folio book folder", input = self:defaultFolder(),
         buttons = {{ { text = "Cancel", callback = function() UIManager:close(dialog) end },
             { text = "Save", callback = function()
                 local path = ffiUtil.realpath(dialog:getInputText())
@@ -160,8 +251,11 @@ function Folio:configure()
     dialog:onShowKeyboard()
 end
 function Folio:addToMainMenu(items)
-    items.folio_bridge = { text = "Folio bridge", sub_item_table = {
-        { text = "Configure Folio book folder", callback = function() self:configure() end },
+    items.folio_bridge = { text = "Folio", sub_item_table = {
+        { text = "Get books from Folio", callback = function() self:fetchBooks(false) end },
+        { text = "Get books when Wi-Fi connects", checked_func = function() return G_reader_settings:readSetting("folio_auto_fetch", false) end,
+            callback = function() G_reader_settings:saveSetting("folio_auto_fetch", not G_reader_settings:readSetting("folio_auto_fetch", false)) end },
+        { text = "Folio book folder", callback = function() self:configure() end },
         { text = "Continue from Folio automatically", checked_func = function() return G_reader_settings:readSetting("folio_auto_positions", false) end,
             callback = function() G_reader_settings:saveSetting("folio_auto_positions", not G_reader_settings:readSetting("folio_auto_positions", false)) end },
         { text = "Review phone reading position", callback = function() self:reading() end },

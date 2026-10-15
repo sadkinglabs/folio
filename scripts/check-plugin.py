@@ -38,6 +38,75 @@ rejects({format="folio-collections",version=1,shelves={{name="Travel",paths={}},
 ''')
 print('Plugin Lua syntax and 9 bridge scenarios passed; KOReader runtime remains untested.')
 
+# Folio Link fetch: the real link.lua against an in-memory phone and folder.
+link=lua.execute((root/'koreader/folio.koplugin/link.lua').read_text())
+lua.globals().Link=link
+lua.execute(r"""
+local H = {} for i = 1, 64 do H[i] = "a" end
+local SHA_A = table.concat(H)
+local function sha(c) return (c:rep(64)) end
+local files = {
+  ["/books/Old - B.epub"] = { content = "B", sha = sha("b") },
+  ["/books/Clash - C.epub"] = { content = "mine", sha = sha("x") },
+}
+local served = { a = "A", b = "B", c = "C", e = "E-corrupt" }
+local acks = {}
+local queue = {
+  { id = "a", filename = "New - A.epub", sha256 = sha("a"), size = 1 },
+  { id = "b", filename = "Old - B.epub", sha256 = sha("b"), size = 1 },
+  { id = "c", filename = "Clash - C.epub", sha256 = sha("c"), size = 1 },
+  { id = "d", filename = "../escape.epub", sha256 = sha("d"), size = 1 },
+  { id = "e", filename = "Bad - E.epub", sha256 = sha("e"), size = 1 },
+  { id = "f", filename = "Unacked - F.epub", sha256 = sha("f"), size = 1 },
+}
+served.f = "F"
+local api = 1
+local deps = {
+  request = function(method, url, headers)
+    assert(headers["x-auth-user"] == "folio" and headers["x-auth-key"] == "k" and headers["x-folio-device"] == "kobo")
+    if url:match("/hello$") then return 200, { api = api } end
+    if url:match("/queue$") then return 200, { books = queue } end
+    if url:match("/ack$") then return (acks.next == "f" and 500 or 200) end
+    return 404
+  end,
+  download = function(url, headers, path)
+    local id = url:match("/books/(%w+)%.epub$")
+    files[path] = { content = served[id], sha = (id == "e") and sha("z") or sha(id) }
+    return 200
+  end,
+  exists = function(path) return files[path] ~= nil end,
+  size = function(path) return files[path] and #files[path].content end,
+  sha256 = function(path) return files[path] and files[path].sha end,
+  rename = function(from, to) files[to] = files[from]; files[from] = nil; return true end,
+  remove = function(path) files[path] = nil end,
+  decode = function(value) return value end,
+  encode = function(value) acks[#acks + 1] = value.id .. "@" .. value.path; acks.next = queue[#acks + 1] and queue[#acks + 1].id; return value end,
+}
+-- Ack the next book in line; "f" is refused by the phone and must count as failed.
+local real_request = deps.request
+deps.request = function(method, url, headers, body)
+  if url:match("/ack$") then return (body and body.id == "f") and 500 or 200 end
+  return real_request(method, url, headers, body)
+end
+local cfg = { server = "http://phone:8765/", username = "folio", key = "k", device = "kobo", folder = "/books" }
+local result = Link.fetch(cfg, deps)
+assert(result.fetched == 2, "fetched " .. result.fetched)       -- a, c (beside the clash)
+assert(result.already == 1, "already " .. result.already)       -- b
+assert(result.failed == 3, "failed " .. result.failed)          -- d (bad name), e (corrupt), f (no ack)
+assert(files["/books/New - A.epub"].content == "A")
+assert(files["/books/Clash - C.epub"].content == "mine", "never overwrite")
+assert(files["/books/Clash - C (2).epub"].content == "C")
+assert(not files["/books/Bad - E.epub"] and not files["/books/Bad - E.epub.part"], "corrupt download removed")
+assert(not files["/escape.epub"] and not files["/books/../escape.epub"])
+assert(Link.url("http://phone:8765/", "/folio/v1/hello") == "http://phone:8765/folio/v1/hello")
+-- A different API version stops before anything is touched.
+api = 2
+assert(not pcall(Link.fetch, cfg, deps))
+-- Without Progress sync set up there is nothing to call.
+assert(not pcall(Link.fetch, { folder = "/books" }, deps))
+""")
+print('Folio Link fetch: 9 scenarios passed (new, already there, name clash, bad name, corrupt download, refused ack, URL, version mismatch, not set up).')
+
 # Exercise the plugin's actual statistics SQL against a real WAL-enabled SQLite fixture.
 import json,sqlite3,tempfile,hashlib
 with tempfile.TemporaryDirectory(prefix='folio-plugin-sql-') as tmp:

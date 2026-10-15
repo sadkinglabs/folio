@@ -1,2 +1,2 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
-return { fullname = "Folio companion", description = "Apply reviewed collection additions, safe phone reading-position requests and export reading statistics." }
+return { fullname = "Folio", description = "Get books from Folio on your phone, apply reviewed collection additions and reading positions, and export reading statistics." }
