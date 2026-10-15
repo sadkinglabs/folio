@@ -94,17 +94,17 @@ class ReaderUiTest {
                 compose.waitUntil(30000) {
                     runBlocking { app.database.library().phoneReading(id, hash) } != null
                 }
-                QaScreenshots.capture("reader-controls")
                 fun controlsShown() =
                     compose
                         .onAllNodesWithContentDescription("Text settings")
                         .fetchSemanticsNodes()
                         .isNotEmpty()
-                QaScreenshots.tapScreenCentre()
+                // The reader opens immersive: no controls until the centre is tapped.
                 compose.waitUntil(5000) { !controlsShown() }
                 QaScreenshots.capture("reader-immersive")
                 QaScreenshots.tapScreenCentre()
                 compose.waitUntil(5000) { controlsShown() }
+                QaScreenshots.capture("reader-controls")
                 compose.onNodeWithContentDescription("Text settings").performClick()
                 compose.waitUntil(5000) {
                     compose

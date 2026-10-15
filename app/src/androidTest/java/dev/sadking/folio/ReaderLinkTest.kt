@@ -1,10 +1,12 @@
 package dev.sadking.folio
 
 import android.content.Intent
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import dev.sadking.folio.data.Book
@@ -125,8 +127,18 @@ class ReaderLinkTest {
                     .isNotEmpty()
             }
             compose.onNodeWithText("Continue").performClick()
-            compose.waitUntil(30_000) {
-                saved()?.xpointer?.startsWith("/body/DocFragment[2]/") == true
+            try {
+                compose.waitUntil(30_000) {
+                    saved()?.xpointer?.startsWith("/body/DocFragment[2]/") == true
+                }
+            } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+                // Say where the phone ended up and what was on screen, not just that it timed out.
+                throw AssertionError(
+                    "Continue did not move to the e-reader's passage. Saved: " +
+                        "${saved()?.xpointer} ${saved()?.locator}\nScreen:\n" +
+                        compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE),
+                    timeout,
+                )
             }
             assertTrue(saved()!!.locator, saved()!!.locator.contains("two.xhtml"))
             compose.waitUntil(10_000) {
