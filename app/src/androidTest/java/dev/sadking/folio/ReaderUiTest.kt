@@ -113,6 +113,10 @@ class ReaderUiTest {
                         .isNotEmpty()
                 }
                 QaScreenshots.capture("reader-appearance")
+                // Text size: three steps up from the 110% default, applied at once.
+                repeat(3) { compose.onNodeWithContentDescription("Larger text").performClick() }
+                compose.onNodeWithText("Text size · 140%").assertExists()
+                QaScreenshots.capture("reader-appearance-larger")
                 // Close through the scrim's own action: a tap at its centre would land on the tall
                 // sheet.
                 compose
@@ -121,6 +125,9 @@ class ReaderUiTest {
                 compose.waitUntil(5000) {
                     compose.onAllNodesWithText("Only for this book").fetchSemanticsNodes().isEmpty()
                 }
+                // Let Readium lay the page out again at the larger size before capturing it.
+                Thread.sleep(1500)
+                QaScreenshots.capture("reader-text-larger")
                 compose.onNodeWithContentDescription("Bookmark this page").performClick()
                 compose.waitUntil(10000) {
                     runBlocking {
@@ -137,6 +144,7 @@ class ReaderUiTest {
             assertNotNull(saved)
             assertTrue(saved!!.locator.contains("chapter.xhtml"))
         } finally {
+            app.getSharedPreferences("reader", 0).edit().remove("fontSize").commit()
             runBlocking { app.database.library().deleteLocalBook(id) }
             dir.deleteRecursively()
         }
