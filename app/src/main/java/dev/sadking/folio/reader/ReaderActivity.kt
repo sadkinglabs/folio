@@ -8,6 +8,7 @@ package dev.sadking.folio.reader
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -122,9 +123,13 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /** Volume keys turn pages when set, except over a sheet or while reading aloud. */
+    private fun volumeTurnsPages() =
+        model.volumeKeys && !panelOpen && model.listen.state == ListenState.OFF
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         val nav = navigator
-        if (nav != null && model.volumeKeys && !panelOpen) {
+        if (nav != null && volumeTurnsPages()) {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
                     nav.goForward(animated = false)
@@ -143,8 +148,7 @@ class ReaderActivity : FragmentActivity() {
         // Swallow the matching key-up so the system volume panel does not appear.
         if (
             navigator != null &&
-                model.volumeKeys &&
-                !panelOpen &&
+                volumeTurnsPages() &&
                 keyCode in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
         )
             return true
@@ -463,7 +467,14 @@ class ReaderActivity : FragmentActivity() {
         }
         val listen = model.listen
         val highlight = MaterialTheme.colorScheme.primary.toArgb()
-        SideEffect { listenTint = highlight }
+        SideEffect {
+            listenTint = highlight
+            // While listening, volume keys set the speech volume, even in the pause between
+            // sentences when nothing is playing and Android would otherwise pick the ringer.
+            volumeControlStream =
+                if (listen.state == ListenState.OFF) AudioManager.USE_DEFAULT_STREAM_TYPE
+                else AudioManager.STREAM_MUSIC
+        }
         val fade = FolioMotion.standardSpec<Float>()
         val showBars = controls && book != null && model.error == null
         LaunchedEffect(showBars) { if (showBars) model.loadPositions() }
