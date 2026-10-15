@@ -73,4 +73,10 @@
     <string name="rd_list_empty_title">No books yet</string>
     <string name="rd_list_empty_body">Pick books in the Library, or add one from its page.</string>
     <string name="rd_list_empty_action">Add from Library</string>
+    <!-- The Library while picking books for a list, and the bar that adds them. -->
+    <string name="rd_picking_for_list">Choose books for %1$s</string>
+    <plurals name="rd_add_count_to_list">
+        <item quantity="one">Add %1$d book to %2$s</item>
+        <item quantity="other">Add %1$d books to %2$s</item>
+    </plurals>
 </resources>

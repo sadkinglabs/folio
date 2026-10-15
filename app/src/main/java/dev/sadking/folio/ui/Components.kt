@@ -238,16 +238,15 @@ internal fun SettingsSwitchRow(
     value: String? = null,
     enabled: Boolean = true,
 ) {
+    val haptics = rememberHaptics()
     SettingsRow(
         icon,
         title,
         value,
-        modifier.toggleable(
-            checked,
-            enabled = enabled,
-            role = Role.Switch,
-            onValueChange = onChecked,
-        ),
+        modifier.toggleable(checked, enabled = enabled, role = Role.Switch) {
+            haptics.toggle(it)
+            onChecked(it)
+        },
         enabled = enabled,
         trailing = { Switch(checked, null, enabled = enabled) },
     )
@@ -674,17 +673,26 @@ internal fun EmptyState(
     }
 }
 
+/** A row that toggles a switch or checkbox, with the toggle haptic on each change. */
+@Composable
 internal fun Modifier.toggleableCompat(
     value: Boolean,
     enabled: Boolean,
     onValue: (Boolean) -> Unit,
-): Modifier =
-    this.then(Modifier.clickable(enabled = enabled, role = Role.Checkbox) { onValue(!value) })
+): Modifier {
+    val haptics = rememberHaptics()
+    return this.then(
+            Modifier.clickable(enabled = enabled, role = Role.Checkbox) {
+                haptics.toggle(!value)
+                onValue(!value)
+            }
+        )
         .semantics {
             toggleableState =
                 if (value) androidx.compose.ui.state.ToggleableState.On
                 else androidx.compose.ui.state.ToggleableState.Off
         }
+}
 
 @Composable
 internal fun DetailLine(label: String, value: String) {
@@ -802,8 +810,10 @@ internal fun rememberOperationSnackbar(
     notices: kotlinx.coroutines.flow.Flow<Operation>
 ): SnackbarHostState {
     val host = remember { SnackbarHostState() }
+    val haptics = rememberHaptics()
     LaunchedEffect(notices) {
         notices.collectLatest { notice ->
+            if (notice.failed) haptics.reject()
             host.currentSnackbarData?.dismiss()
             host.showSnackbar(
                 notice.message,
@@ -918,7 +928,10 @@ internal fun ResultRow(
                     detail,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    // Two lines at large text, so "96 pages" is not cut to "96 pag…".
+                    maxLines =
+                        if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 2
+                        else 1,
                     overflow = TextOverflow.Ellipsis,
                 )
         }

@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
@@ -59,7 +60,8 @@ fun BookActionsSheet(
                 horizontalArrangement = Arrangement.spacedBy(FolioSpace.item),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverTile(book, Modifier.width(72.dp), lifted = false)
+                // Decoration: the title beside it carries the meaning.
+                CoverTile(book, Modifier.width(72.dp).clearAndSetSemantics {}, lifted = false)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         book.title,

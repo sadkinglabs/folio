@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -273,10 +274,16 @@ fun BookDetails(
 internal fun CoverHero(book: Book, modifier: Modifier = Modifier) {
     val glow by
         animateColorAsState(coverGlowColor(book), FolioMotion.standardSpec(), label = "Glow")
+    // Reduced motion keeps the fade and drops the scale.
+    val reduced = FolioMotion.reduced
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val settle by
-        animateFloatAsState(if (shown) 1f else 0.94f, FolioMotion.enterSpec(), label = "S")
+        animateFloatAsState(
+            if (shown || reduced) 1f else 0.94f,
+            FolioMotion.enterSpec(),
+            label = "S",
+        )
     val fade by animateFloatAsState(if (shown) 1f else 0f, FolioMotion.enterSpec(), label = "A")
     val large = LocalDensity.current.fontScale > 1.3f
     val coverWidth = if (large) 132.dp else 160.dp
@@ -295,13 +302,16 @@ internal fun CoverHero(book: Book, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(FolioSpace.section))
+        // Decoration for TalkBack: the title under it says the same thing.
         CoverTile(
             book,
-            Modifier.width(coverWidth).graphicsLayer {
-                scaleX = settle
-                scaleY = settle
-                alpha = fade
-            },
+            Modifier.width(coverWidth)
+                .graphicsLayer {
+                    scaleX = settle
+                    scaleY = settle
+                    alpha = fade
+                }
+                .clearAndSetSemantics {},
         )
         Spacer(Modifier.height(FolioSpace.section))
         Column(
@@ -369,10 +379,10 @@ internal fun StatusStrip(
             shape = FolioSpace.panelShape,
             color = MaterialTheme.colorScheme.surfaceContainer,
         ) {
+            // Snug to its two or three lines: no minimum height, so nothing sits under the value.
             Column(
-                Modifier.padding(horizontal = FolioSpace.gap, vertical = FolioSpace.gap)
-                    .heightIn(min = 72.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier.padding(horizontal = FolioSpace.gap, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -418,11 +428,12 @@ internal fun StatusStrip(
             tiles.forEach { Tile(it, Modifier.fillMaxWidth()) }
         }
     else
-        Row(
-            modifier.fillMaxWidth().testTag(BOOK_STATUS_STRIP_TAG),
+    // Equal heights: a tile with a "2 hours ago" line sets the row's height for the others.
+    Row(
+            modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag(BOOK_STATUS_STRIP_TAG),
             horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
         ) {
-            tiles.forEach { Tile(it, Modifier.weight(1f)) }
+            tiles.forEach { Tile(it, Modifier.weight(1f).fillMaxHeight()) }
         }
 }
 

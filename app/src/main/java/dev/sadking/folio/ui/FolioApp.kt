@@ -290,9 +290,12 @@ fun FolioApp(model: LibraryViewModel) {
         var pairingSendId by rememberSaveable { mutableStateOf<String?>(null) }
         var pendingSync by rememberSaveable { mutableStateOf<String?>(null) }
         val notificationPrefs = remember { context.getSharedPreferences("sync-ui", 0) }
+        val haptics = rememberHaptics()
         fun performRequestedSync() {
             val action = pendingSync
             pendingSync = null
+            // A send is queued: the one confirm haptic. Failures buzz from the snackbar.
+            if (action in listOf("book", "books", "shelf")) haptics.confirm()
             if (action == "book") {
                 val id = pendingSendId
                 pendingSendId = null
@@ -329,6 +332,7 @@ fun FolioApp(model: LibraryViewModel) {
         }
         val tab = nav.tab
         val density = androidx.compose.ui.platform.LocalDensity.current
+        val reducedMotion = FolioMotion.reduced
         val detailId = nav.bookId
         var editorDirty by rememberSaveable { mutableStateOf(false) }
         var confirmDiscard by rememberSaveable { mutableStateOf(false) }
@@ -345,6 +349,12 @@ fun FolioApp(model: LibraryViewModel) {
                 mutableStateOf(setOf<String>())
             }
         var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
+        // A list's "Add from Library": the Library picks books for it until added or cancelled.
+        var pickingListId by rememberSaveable { mutableStateOf<String?>(null) }
+        val pickingShelf = pickingListId?.let { id -> shelves.firstOrNull { it.id == id } }
+        LaunchedEffect(pickingListId, pickingShelf == null) {
+            if (pickingListId != null && pickingShelf == null) pickingListId = null
+        }
         var deletingShelfId by rememberSaveable { mutableStateOf<String?>(null) }
         val cards = remember(shelves, library) { listCards(shelves, library) }
         val listId = nav.listId
@@ -433,10 +443,12 @@ fun FolioApp(model: LibraryViewModel) {
                 nav.back()
             }
         }
-        // Back pops a book screen, then clears a selection; a root tab leaves the app.
-        BackHandler(nav.stack.isNotEmpty() || selection.isNotEmpty()) {
+        // Back pops a book screen, then clears a selection, then stops picking for a list; a root
+        // tab leaves the app.
+        BackHandler(nav.stack.isNotEmpty() || selection.isNotEmpty() || pickingListId != null) {
             if (editing && op.busy) return@BackHandler
-            if (nav.stack.isNotEmpty()) leaveBook() else selection = emptySet()
+            if (nav.stack.isNotEmpty()) leaveBook()
+            else if (selection.isNotEmpty()) selection = emptySet() else pickingListId = null
         }
         // Opens a book screen for a library entry, with or without an EPUB.
         fun openEntry(id: String, progress: Boolean = false) {
@@ -565,20 +577,44 @@ fun FolioApp(model: LibraryViewModel) {
                             AnimatedContent(
                                 selection.isNotEmpty(),
                                 transitionSpec = {
-                                    (fadeIn(FolioMotion.standardSpec()) +
-                                            slideInVertically(FolioMotion.standardSpec()) {
-                                                it / 2
-                                            })
-                                        .togetherWith(
-                                            fadeOut(FolioMotion.standardSpec()) +
-                                                slideOutVertically(FolioMotion.standardSpec()) {
+                                    if (reducedMotion)
+                                        fadeIn(FolioMotion.standardSpec())
+                                            .togetherWith(fadeOut(FolioMotion.standardSpec()))
+                                    else
+                                        (fadeIn(FolioMotion.standardSpec()) +
+                                                slideInVertically(FolioMotion.standardSpec()) {
                                                     it / 2
-                                                }
-                                        )
+                                                })
+                                            .togetherWith(
+                                                fadeOut(FolioMotion.standardSpec()) +
+                                                    slideOutVertically(FolioMotion.standardSpec()) {
+                                                        it / 2
+                                                    }
+                                            )
                                 },
                                 label = "Bar",
                             ) { selecting ->
-                                if (selecting)
+                                if (selecting && pickingShelf != null)
+                                    AddToListBar(
+                                        count = selection.size,
+                                        listName = pickingShelf.name,
+                                        enabled = !op.busy,
+                                        onAdd = {
+                                            val shelf = pickingShelf
+                                            model.manageBatch(selection, shelf.id, add = true) {
+                                                selection = emptySet()
+                                                pickingListId = null
+                                                nav.root(FolioNav.LISTS)
+                                                nav.open(Route.List(shelf.id))
+                                            }
+                                        },
+                                        onCancel = {
+                                            selection = emptySet()
+                                            pickingListId = null
+                                        },
+                                        hazeState = hazeState,
+                                    )
+                                else if (selecting)
                                     SelectionActionBar(
                                         enabled = !op.busy,
                                         sendEnabled = selection.any { it in library.fileIds },
@@ -604,6 +640,7 @@ fun FolioApp(model: LibraryViewModel) {
                                         onTab = { i ->
                                             nav.root(i)
                                             selection = emptySet()
+                                            pickingListId = null
                                         },
                                         current = currentBook,
                                         onContinue = {
@@ -815,7 +852,11 @@ fun FolioApp(model: LibraryViewModel) {
                                                 else selection + id
                                         },
                                         onClearSelection = { selection = emptySet() },
-                                        onAddFromLibrary = { nav.root(FolioNav.LIBRARY) },
+                                        onAddFromLibrary = {
+                                            selection = emptySet()
+                                            pickingListId = openList.id
+                                            nav.root(FolioNav.LIBRARY)
+                                        },
                                         onSend = { shelf ->
                                             sendOrPair { requestSync("shelf", shelf.id) }
                                         },
@@ -834,7 +875,9 @@ fun FolioApp(model: LibraryViewModel) {
                                         tab,
                                         modifier = Modifier.fillMaxSize(),
                                         transitionSpec = {
-                                            val offset = with(density) { 8.dp.roundToPx() }
+                                            val offset =
+                                                if (reducedMotion) 0
+                                                else with(density) { 8.dp.roundToPx() }
                                             (fadeIn(FolioMotion.standardSpec()) +
                                                     slideInVertically(FolioMotion.standardSpec()) {
                                                         offset
@@ -903,6 +946,11 @@ fun FolioApp(model: LibraryViewModel) {
                                                                 else null,
                                                             onRequestHandled = {
                                                                 requestedList = null
+                                                            },
+                                                            pickingFor = pickingShelf?.name,
+                                                            onCancelPicking = {
+                                                                selection = emptySet()
+                                                                pickingListId = null
                                                             },
                                                         )
                                                     FolioNav.LISTS ->

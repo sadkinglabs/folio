@@ -327,6 +327,7 @@ internal fun LinkCard(
         )
     val waiting = status == LinkStatus.STARTING || status == LinkStatus.WAITING_FOR_NETWORK
     val title = stringResource(R.string.link_title)
+    val haptics = rememberHaptics()
     Surface(
         modifier.fillMaxWidth().testTag(DEVICE_LINK_CARD_TAG),
         shape = FolioSpace.panelShape,
@@ -355,7 +356,10 @@ internal fun LinkCard(
                 }
                 Switch(
                     on,
-                    onLink,
+                    {
+                        haptics.toggle(it)
+                        onLink(it)
+                    },
                     Modifier.testTag(DEVICE_LINK_SWITCH_TAG).semantics {
                         contentDescription = title
                     },

@@ -125,10 +125,16 @@ fun FolioTheme(
             dark -> folioDark
             else -> folioLight
         }
+    val reducedMotion = systemReducedMotion()
     MaterialExpressiveTheme(
         colorScheme = colors,
         typography = folioTypography,
         shapes = folioShapes,
-        content = content,
+        content = {
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalReducedMotion provides reducedMotion,
+                content = content,
+            )
+        },
     )
 }

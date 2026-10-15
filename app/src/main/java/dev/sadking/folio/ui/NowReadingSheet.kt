@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -145,7 +146,8 @@ internal fun NowReadingSheet(
                     horizontalArrangement = Arrangement.spacedBy(FolioSpace.item),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CoverTile(current.book, Modifier.width(72.dp))
+                    // Decoration: the title beside it carries the meaning.
+                    CoverTile(current.book, Modifier.width(72.dp).clearAndSetSemantics {})
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             current.book.title,

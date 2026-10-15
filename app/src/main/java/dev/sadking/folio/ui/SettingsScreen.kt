@@ -557,9 +557,13 @@ private fun SheetHeading(title: String, line: String? = null) {
 /** A switch row inside a sheet: no icon, the title does the work. */
 @Composable
 private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    val haptics = rememberHaptics()
     Row(
         Modifier.fillMaxWidth()
-            .toggleable(checked, role = Role.Switch, onValueChange = onChecked)
+            .toggleable(checked, role = Role.Switch) {
+                haptics.toggle(it)
+                onChecked(it)
+            }
             .padding(horizontal = FolioSpace.section, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

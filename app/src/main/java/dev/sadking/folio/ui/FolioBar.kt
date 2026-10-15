@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.AutoStories
@@ -38,10 +39,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -49,7 +50,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.R
 import dev.sadking.folio.data.CurrentBook
@@ -118,7 +125,14 @@ internal fun FolioBar(
                                 Icon(if (tab == i) d.selectedIcon else d.icon, null)
                             }
                         },
-                        label = { Text(stringResource(d.title), maxLines = 1) },
+                        label = {
+                            Text(
+                                stringResource(d.title),
+                                style = barLabelStyle(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                     )
                 }
             }
@@ -189,6 +203,53 @@ internal fun SelectionActionBar(
     }
 }
 
+internal const val ADD_TO_LIST_BAR_TAG = "add-to-list-bar"
+
+/**
+ * The bar while picking books for one list from the Library: one filled button that names the list
+ * and the count, and Cancel. Same glass and height as the other bars.
+ */
+@Composable
+internal fun AddToListBar(
+    count: Int,
+    listName: String,
+    enabled: Boolean,
+    onAdd: () -> Unit,
+    onCancel: () -> Unit,
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+) {
+    GlassSurface(
+        hazeState,
+        modifier.fillMaxWidth().padding(top = tileLift).testTag(ADD_TO_LIST_BAR_TAG),
+        shape = FolioSpace.sheetShape,
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .windowInsetsPadding(NavigationBarDefaults.windowInsets)
+                .heightIn(min = 80.dp)
+                .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+        ) {
+            TextButton(onClick = onCancel, enabled = enabled) {
+                Text(stringResource(R.string.shell_cancel))
+            }
+            Button(
+                onClick = onAdd,
+                enabled = enabled && count > 0,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    pluralStringResource(R.plurals.rd_add_count_to_list, count, count, listName),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RowScope.BarAction(
     icon: ImageVector,
@@ -216,12 +277,28 @@ private fun RowScope.BarAction(
         Spacer(Modifier.height(4.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelMedium,
+            style = barLabelStyle(),
             color = tint,
             maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * The bar's label style: labelMedium, but at large font sizes it grows only to 130% so five labels
+ * still fit on a phone instead of cutting mid-word. The icons carry the meaning anyway.
+ */
+@Composable
+private fun barLabelStyle(): androidx.compose.ui.text.TextStyle {
+    val base = MaterialTheme.typography.labelMedium
+    val scale = LocalDensity.current.fontScale
+    return if (scale <= 1.3f) base
+    else
+        base.copy(
+            fontSize = base.fontSize * (1.3f / scale),
+            lineHeight = base.lineHeight * (1.3f / scale),
+        )
 }
 
 /**
@@ -236,7 +313,7 @@ internal fun NowReadingTile(
     onOptions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val options = stringResource(R.string.rd_book_options)
     val percent = current?.percent?.let { (it * 100).toInt() }
     val description =
@@ -250,7 +327,7 @@ internal fun NowReadingTile(
     val ring by
         animateFloatAsState(
             (current?.percent ?: 0.0).toFloat().coerceIn(0f, 1f),
-            tween(FolioMotion.RING, easing = FolioMotion.standard),
+            FolioMotion.orSnap(tween(FolioMotion.RING, easing = FolioMotion.standard)),
             label = "Now reading progress",
         )
     val ringColor = MaterialTheme.colorScheme.primary
@@ -276,7 +353,7 @@ internal fun NowReadingTile(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.longPress()
                     onOptions()
                 },
             )
@@ -323,29 +400,54 @@ internal fun NowReadingTile(
     }
 }
 
-/** The cover cropped to the square tile; a glyph on the title's colour when there is no artwork. */
+/**
+ * The cover in the square tile: the whole 2:3 artwork, fitted, on the cover's own tone, so the
+ * title is never cropped away. Without artwork, the title in small serif on the generated ground.
+ */
 @Composable
 private fun TileCover(current: CurrentBook) {
+    val book = current.book
     val image by
-        produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, current.book.coverPath) {
+        produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, book.coverPath) {
             value =
                 withContext(Dispatchers.IO) {
-                    runCatching { CoverImages.load(current.book.coverPath)?.asImageBitmap() }
+                    runCatching { CoverImages.thumbnail(book.coverPath)?.asImageBitmap() }
                         .getOrNull()
                 }
         }
-    if (image != null)
-        Image(image!!, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-    else
-        Box(
-            Modifier.fillMaxSize().background(generatedCoverColor(current.book.title)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Outlined.MenuBook,
+    val ground =
+        if (book.coverPath != null) coverToneColor(book, towardsSurface = 0.15f)
+        else generatedCoverColor(book.title)
+    Box(Modifier.fillMaxSize().background(ground), contentAlignment = Alignment.Center) {
+        if (image != null)
+            Image(
+                image!!,
                 null,
-                Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.onSurface,
+                Modifier.fillMaxSize().padding(3.dp).clip(RoundedCornerShape(3.dp)),
+                contentScale = ContentScale.Fit,
             )
+        else {
+            // The title is artwork here, like a generated cover: one size whatever the font scale.
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, fontScale = 1f)
+            ) {
+                Text(
+                    book.title,
+                    Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    style =
+                        MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                        ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+    }
 }

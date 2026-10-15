@@ -29,9 +29,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -82,6 +80,9 @@ fun LibraryScreen(
     onScan: (() -> Unit)? = null,
     requestedTab: LibraryTab? = null,
     onRequestHandled: () -> Unit = {},
+    /** The list being filled from here: taps select instead of opening, under a banner. */
+    pickingFor: String? = null,
+    onCancelPicking: () -> Unit = {},
     /** Replaces the title row (a list detail draws its own banner above the grid). */
     // A custom page header (a list's page) gets the view toggle to place among its actions.
     header: (@Composable (viewToggle: @Composable () -> Unit) -> Unit)? = null,
@@ -221,6 +222,7 @@ fun LibraryScreen(
                     modifier = Modifier.testTag(LIBRARY_TAB_WANTED_TAG),
                 )
             }
+        if (pickingFor != null) PickingBanner(pickingFor, onCancelPicking)
         AnimatedVisibility(searching || query.isNotEmpty()) {
             SearchField(query, onQuery = { query = it }, onClear = { query = "" })
         }
@@ -292,7 +294,8 @@ fun LibraryScreen(
                             noEpub = book.id !in fileIds,
                             label = label,
                             onClick = {
-                                if (selection.isEmpty()) onOpen(book) else onSelect(book.id)
+                                if (selection.isEmpty() && pickingFor == null) onOpen(book)
+                                else onSelect(book.id)
                             },
                             onSelect = { onSelect(book.id) },
                             onContext = onContext?.let { { it(book) } },
@@ -438,6 +441,39 @@ private fun LibraryHeader(
 }
 
 /** "3 selected" with Close; replaces the title row while books are selected. */
+internal const val LIBRARY_PICKING_BANNER_TAG = "library-picking-banner"
+
+/** "Choose books for Slow Sundays": a tonal strip with a Cancel icon, shown while picking. */
+@Composable
+private fun PickingBanner(listName: String, onCancel: () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small)
+            .testTag(LIBRARY_PICKING_BANNER_TAG),
+        shape = FolioSpace.panelShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Row(
+            Modifier.padding(start = FolioSpace.item, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.rd_picking_for_list, listName),
+                Modifier.weight(1f).padding(vertical = FolioSpace.small),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            IconButton(onClick = onCancel) {
+                Icon(
+                    Icons.Outlined.Close,
+                    stringResource(R.string.shell_cancel),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SelectionHeader(count: Int, onClear: () -> Unit) {
     Row(
@@ -670,7 +706,7 @@ private fun BookCoverCell(
     onSelect: () -> Unit,
     onContext: (() -> Unit)?,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val description = coverDescription(book, signals, progress)
     val noEpubState = stringResource(R.string.shell_device_no_epub)
     val selectLabel =
@@ -683,7 +719,7 @@ private fun BookCoverCell(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.longPress()
                     onSelect()
                 },
             )
@@ -727,11 +763,16 @@ private fun BookCoverCell(
                 badge = coverBadge(signals),
             )
             // The plain overload: inside this Column, the ColumnScope one would be picked.
+            val reduced = FolioMotion.reduced
             androidx.compose.animation.AnimatedVisibility(
                 selected,
                 Modifier.align(Alignment.TopEnd).padding(6.dp),
-                enter = scaleIn(FolioMotion.standardSpec()) + fadeIn(FolioMotion.standardSpec()),
-                exit = scaleOut(FolioMotion.standardSpec()) + fadeOut(FolioMotion.standardSpec()),
+                enter =
+                    if (reduced) fadeIn(FolioMotion.standardSpec())
+                    else scaleIn(FolioMotion.standardSpec()) + fadeIn(FolioMotion.standardSpec()),
+                exit =
+                    if (reduced) fadeOut(FolioMotion.standardSpec())
+                    else scaleOut(FolioMotion.standardSpec()) + fadeOut(FolioMotion.standardSpec()),
             ) {
                 Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
                     Icon(Icons.Outlined.Check, null, Modifier.padding(4.dp).size(16.dp))
@@ -759,7 +800,7 @@ private fun BookRow(
     onSelect: () -> Unit,
     onContext: (() -> Unit)?,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val selectLabel =
         stringResource(if (selected) R.string.shell_deselect_book else R.string.shell_select_book)
     val actionsLabel = stringResource(R.string.library_book_actions)
@@ -769,7 +810,7 @@ private fun BookRow(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.longPress()
                     onSelect()
                 },
             )

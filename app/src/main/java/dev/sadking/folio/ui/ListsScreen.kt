@@ -160,13 +160,20 @@ internal fun ListCardView(
     val shelf = card.shelf
     val count = pluralStringResource(R.plurals.lists_book_count, card.count, card.count)
     val options = stringResource(R.string.lists_manage, card.name)
+    val haptics = rememberHaptics()
     Box(modifier) {
         Surface(
             Modifier.fillMaxWidth()
                 .clip(FolioSpace.panelShape)
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClick = if (shelf != null) ({ menu = true }) else null,
+                    onLongClick =
+                        if (shelf != null)
+                            ({
+                                haptics.longPress()
+                                menu = true
+                            })
+                        else null,
                 )
                 .testTag(listCardTag(card.id))
                 .semantics(mergeDescendants = true) {

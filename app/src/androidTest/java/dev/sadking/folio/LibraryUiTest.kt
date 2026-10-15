@@ -140,4 +140,61 @@ class LibraryUiTest {
         compose.onNodeWithContentDescription("Add books").assertIsDisplayed()
         compose.runOnIdle { assertTrue(selected.isEmpty()) }
     }
+
+    /** A list's "Add from Library": the banner names the list and a tap selects, not opens. */
+    @Test
+    fun pickingForAListSelectsOnTapAndCancels() {
+        var selected by mutableStateOf(setOf<String>())
+        var opened = ""
+        var cancelled = false
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                LibraryScreen(
+                    listOf(book("a", "First", "Ann")),
+                    selected,
+                    onOpen = { opened = it.id },
+                    onSelect = { selected = if (it in selected) selected - it else selected + it },
+                    pickingFor = "Slow Sundays",
+                    onCancelPicking = { cancelled = true },
+                )
+            }
+        }
+        compose.onNodeWithTag(LIBRARY_PICKING_BANNER_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Choose books for Slow Sundays").assertIsDisplayed()
+        compose.waitUntil(10_000) {
+            compose
+                .onAllNodes(hasContentDescription("First, Ann"))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNode(hasContentDescription("First, Ann") and hasClickAction()).performClick()
+        compose.runOnIdle {
+            assertEquals(setOf("a"), selected)
+            assertEquals("", opened)
+        }
+        compose.onNodeWithText("1 selected").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Clear selection").performClick()
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        compose.runOnIdle { assertTrue(cancelled) }
+    }
+
+    @Test
+    fun addToListBarNamesTheListAndCount() {
+        var added = false
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                AddToListBar(
+                    count = 2,
+                    listName = "Slow Sundays",
+                    enabled = true,
+                    onAdd = { added = true },
+                    onCancel = {},
+                    hazeState = null,
+                )
+            }
+        }
+        compose.onNodeWithTag(ADD_TO_LIST_BAR_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Add 2 books to Slow Sundays").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(added) }
+    }
 }

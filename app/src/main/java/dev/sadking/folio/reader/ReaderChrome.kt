@@ -42,8 +42,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -305,6 +303,7 @@ internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions)
         )
         TextSizeStepper(state.fontSize, state.serif, actions.onSize)
         ThemeSwatches(state.pageTheme, actions.onTheme)
+        val haptics = rememberHaptics()
         SingleChoiceSegmentedButtonRow(
             Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section)
         ) {
@@ -312,7 +311,10 @@ internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions)
                 .forEachIndexed { index, (label, serif) ->
                     SegmentedButton(
                         selected = state.serif == serif,
-                        onClick = { actions.onSerif(serif) },
+                        onClick = {
+                            if (state.serif != serif) haptics.tick()
+                            actions.onSerif(serif)
+                        },
                         shape = SegmentedButtonDefaults.itemShape(index, 2),
                         label = { Text(stringResource(label), textAlign = TextAlign.Center) },
                     )
@@ -370,15 +372,15 @@ internal fun ReaderTextSheet(state: ReaderTextState, actions: ReaderTextActions)
 internal fun TextSizeStepper(size: Double, serif: Boolean, onSize: (Double) -> Unit) {
     val smaller = stringResource(R.string.appearance_smaller)
     val larger = stringResource(R.string.appearance_larger)
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     val scale by
         animateFloatAsState(
             (size / 100).toFloat(),
-            spring(stiffness = Spring.StiffnessMedium),
+            FolioMotion.orSnap(spring(stiffness = Spring.StiffnessMedium)),
             label = "textSize",
         )
     fun step(up: Boolean) {
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        haptics.tick()
         onSize(steppedTextSize(size, up))
     }
     Row(
@@ -435,7 +437,7 @@ private val themeSwatches =
 /** Four page colours as circles with a label; the chosen one carries a check. */
 @Composable
 private fun ThemeSwatches(selected: String, onTheme: (String) -> Unit) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberHaptics()
     Row(
         Modifier.fillMaxWidth().padding(horizontal = FolioSpace.item).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
@@ -446,7 +448,7 @@ private fun ThemeSwatches(selected: String, onTheme: (String) -> Unit) {
                 Modifier.weight(1f)
                     .clip(FolioSpace.tileShape)
                     .selectable(chosen, role = Role.RadioButton) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        haptics.tick()
                         onTheme(swatch.name)
                     }
                     .padding(vertical = FolioSpace.small)
@@ -509,6 +511,7 @@ private fun ChoiceSlider(
     onSelect: (Double) -> Unit,
 ) {
     val index = values.indexOf(nearestChoice(current, values)).coerceAtLeast(0)
+    val haptics = rememberHaptics()
     Column(Modifier.padding(horizontal = FolioSpace.section)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -527,7 +530,10 @@ private fun ChoiceSlider(
             value = index.toFloat(),
             onValueChange = { position ->
                 val chosen = values.getOrNull(position.roundToInt()) ?: return@Slider
-                if (chosen != values[index]) onSelect(chosen)
+                if (chosen != values[index]) {
+                    haptics.tick()
+                    onSelect(chosen)
+                }
             },
             valueRange = 0f..(values.size - 1).toFloat(),
             steps = (values.size - 2).coerceAtLeast(0),
@@ -540,9 +546,13 @@ private fun ChoiceSlider(
 /** A switch row inside a sheet: no icon, the title does the work. */
 @Composable
 private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    val haptics = rememberHaptics()
     Row(
         Modifier.fillMaxWidth()
-            .toggleable(checked, role = Role.Switch, onValueChange = onChecked)
+            .toggleable(checked, role = Role.Switch) {
+                haptics.toggle(it)
+                onChecked(it)
+            }
             .padding(horizontal = FolioSpace.section, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

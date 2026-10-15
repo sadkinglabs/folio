@@ -132,7 +132,7 @@
     <string name="library_editor_saving">Saving…</string>
     <string name="library_editor_save">Save changes</string>
     <string name="library_editor_heading">Book information</string>
-    <string name="library_editor_no_epub_note">Saved on this phone without an EPUB. Your Hardcover link is kept.</string>
+    <string name="library_editor_no_epub_note">No EPUB yet. The Hardcover link is kept.</string>
     <string name="library_editor_epub_note">Your original EPUB is kept. Your edits are saved to a new copy.</string>
     <string name="library_editor_replace_cover">Replace cover</string>
     <string name="library_editor_cover_selected">New cover selected</string>

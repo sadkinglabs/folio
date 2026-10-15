@@ -11,12 +11,17 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,6 +46,29 @@ internal object FolioSpace {
     const val COVER_RATIO = 2f / 3f
 }
 
+/**
+ * True when the system's "remove animations" setting is on (animator duration scale 0). Non-
+ * essential motion (scale, slide, springs, the progress ring) is skipped; fades stay. Provided by
+ * [FolioTheme]; defaults to full motion in previews and tests.
+ */
+internal val LocalReducedMotion = staticCompositionLocalOf { false }
+
+/** Reads the system setting once per composition of the theme. */
+@Composable
+internal fun systemReducedMotion(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching {
+                android.provider.Settings.Global.getFloat(
+                    context.contentResolver,
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                    1f,
+                ) == 0f
+            }
+            .getOrDefault(false)
+    }
+}
+
 /** Durations and easings. 200–350 ms, never a loop. */
 internal object FolioMotion {
     const val STANDARD = 200
@@ -60,6 +88,41 @@ internal object FolioMotion {
 
     fun <T> exitSpec(): FiniteAnimationSpec<T> =
         tween(EMPHASIZED_OUT, easing = emphasizedAccelerate)
+
+    /** Whether to skip non-essential motion; see [LocalReducedMotion]. */
+    val reduced: Boolean
+        @Composable get() = LocalReducedMotion.current
+
+    /** [spec], or a snap when motion is reduced. */
+    @Composable
+    fun <T> orSnap(spec: FiniteAnimationSpec<T>): FiniteAnimationSpec<T> =
+        if (reduced) androidx.compose.animation.core.snap() else spec
+}
+
+/**
+ * The app's haptics in one place, so every screen says the same thing: a long-press that opens
+ * something or starts a selection, a tick on a stepper step or a chosen chip, a confirm when a send
+ * is queued, a reject when work fails, and the switch feel on a toggle. Never on navigation.
+ */
+internal class FolioHaptics(private val feedback: HapticFeedback) {
+    fun longPress() = feedback.performHapticFeedback(HapticFeedbackType.LongPress)
+
+    fun tick() = feedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+
+    fun confirm() = feedback.performHapticFeedback(HapticFeedbackType.Confirm)
+
+    fun reject() = feedback.performHapticFeedback(HapticFeedbackType.Reject)
+
+    fun toggle(on: Boolean) =
+        feedback.performHapticFeedback(
+            if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff
+        )
+}
+
+@Composable
+internal fun rememberHaptics(): FolioHaptics {
+    val feedback = LocalHapticFeedback.current
+    return remember(feedback) { FolioHaptics(feedback) }
 }
 
 /**
