@@ -561,11 +561,11 @@ internal fun HardcoverAccountPreview() {
     }
 }
 
-@Preview(name = "Bottom bar · light", widthDp = 412, heightDp = 240)
+@Preview(name = "Bottom bar · light", widthDp = 412, heightDp = 360)
 @Preview(
     name = "Bottom bar · dark",
     widthDp = 412,
-    heightDp = 240,
+    heightDp = 360,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
@@ -590,6 +590,14 @@ internal fun BarPreview() {
                     onOptions = {},
                     transferActive = true,
                     hazeState = null,
+                )
+                SelectionActionBar(
+                    enabled = true,
+                    sendEnabled = false,
+                    onSend = {},
+                    onLists = {},
+                    onStatus = {},
+                    onRemove = {},
                 )
             }
         }

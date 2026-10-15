@@ -147,10 +147,11 @@ internal fun FolioBar(
 }
 
 /**
- * The bar while books are selected: the four tabs give way to Send, Add to list, Status and Remove
- * as icon-and-label actions on the same glass, at the same height, so the content under it does not
- * move.
+ * The bar while books are selected: the tabs give way to Material's floating toolbar with Send, Add
+ * to list, Status and Remove, each with its label. It takes the tab bar's place and height, so the
+ * content under it does not move.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SelectionActionBar(
     enabled: Boolean,
@@ -159,47 +160,71 @@ internal fun SelectionActionBar(
     onLists: () -> Unit,
     onStatus: () -> Unit,
     onRemove: () -> Unit,
-    hazeState: HazeState?,
     modifier: Modifier = Modifier,
 ) {
-    GlassSurface(
-        hazeState,
-        modifier.fillMaxWidth().padding(top = tileLift).testTag(SELECTION_BAR_TAG),
-        shape = FolioSpace.sheetShape,
+    Box(
+        modifier
+            .fillMaxWidth()
+            .padding(top = tileLift)
+            .windowInsetsPadding(NavigationBarDefaults.windowInsets)
+            .height(80.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .windowInsetsPadding(NavigationBarDefaults.windowInsets)
-                .height(80.dp)
-                .padding(horizontal = FolioSpace.small),
-            verticalAlignment = Alignment.CenterVertically,
+        HorizontalFloatingToolbar(
+            expanded = true,
+            modifier = Modifier.testTag(SELECTION_BAR_TAG),
+            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
         ) {
-            BarAction(
+            ToolbarAction(
                 Icons.AutoMirrored.Outlined.Send,
                 stringResource(R.string.rd_action_send),
                 enabled && sendEnabled,
                 onSend,
             )
-            BarAction(
+            ToolbarAction(
                 Icons.Outlined.BookmarkAdd,
                 stringResource(R.string.shell_add_to_list),
                 enabled,
                 onLists,
             )
-            BarAction(
+            ToolbarAction(
                 Icons.Outlined.Timeline,
                 stringResource(R.string.rd_action_status),
                 enabled,
                 onStatus,
             )
-            BarAction(
+            ToolbarAction(
                 Icons.Outlined.DeleteOutline,
                 stringResource(R.string.rd_action_remove),
                 enabled,
                 onRemove,
-                destructive = true,
             )
         }
+    }
+}
+
+/** An icon over its label, in the floating toolbar's content colour. */
+@Composable
+private fun ToolbarAction(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val tint = LocalContentColor.current.let { if (enabled) it else it.copy(alpha = 0.38f) }
+    Column(
+        Modifier.widthIn(min = 64.dp)
+            .heightIn(min = 56.dp)
+            .clip(FolioSpace.tileShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = FolioSpace.small)
+            .semantics(mergeDescendants = true) {},
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, null, tint = tint)
+        Spacer(Modifier.height(2.dp))
+        Text(label, style = barLabelStyle(), color = tint, maxLines = 1)
     }
 }
 
@@ -247,41 +272,6 @@ internal fun AddToListBar(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun RowScope.BarAction(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    destructive: Boolean = false,
-) {
-    val tint =
-        when {
-            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-            destructive -> MaterialTheme.colorScheme.error
-            else -> MaterialTheme.colorScheme.onSurface
-        }
-    Column(
-        Modifier.weight(1f)
-            .fillMaxHeight()
-            .clip(FolioSpace.tileShape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) {},
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(icon, null, tint = tint)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            label,
-            style = barLabelStyle(),
-            color = tint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

@@ -624,7 +624,6 @@ fun FolioApp(model: LibraryViewModel) {
                                         onLists = { batchSheet = "lists" },
                                         onStatus = { batchSheet = "status" },
                                         onRemove = { removalIds = selection },
-                                        hazeState = hazeState,
                                     )
                                 else
                                     FolioBar(
