@@ -390,31 +390,33 @@ private fun LibraryHeader(
         Modifier.fillMaxWidth().padding(start = FolioSpace.page, end = FolioSpace.gap, top = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            title,
-            style =
-                if (large) MaterialTheme.typography.headlineSmall
-                else MaterialTheme.typography.headlineMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (count != null) {
-            Spacer(Modifier.width(FolioSpace.small))
-            val label = pluralStringResource(R.plurals.library_book_count, count, count)
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.semantics { contentDescription = label },
-            ) {
-                Text(
-                    count.toString(),
-                    Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                )
+        // Title and count take all the spare width, so the title only shortens when it must.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                style =
+                    if (large) MaterialTheme.typography.headlineSmall
+                    else MaterialTheme.typography.headlineMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (count != null) {
+                Spacer(Modifier.width(FolioSpace.small))
+                val label = pluralStringResource(R.plurals.library_book_count, count, count)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.semantics { contentDescription = label },
+                ) {
+                    Text(
+                        count.toString(),
+                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
         }
-        Spacer(Modifier.weight(1f))
         IconButton(onClick = onSearch, modifier = Modifier.testTag(LIBRARY_SEARCH_TAG)) {
             Icon(
                 if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search,

@@ -77,6 +77,8 @@ internal fun LibraryPreview() {
                 onSelect = {},
                 fileIds = sampleBooks.map { it.id }.toSet(),
                 signals = mapOf(wish.id to catalogueSignals(wish, null)),
+                progress = mapOf(sampleBooks.first().id to 0.37),
+                currentId = sampleBooks.first().id,
             )
         }
     }

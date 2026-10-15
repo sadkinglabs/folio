@@ -8,3 +8,4 @@ local.properties
 development-signing/
 **/__pycache__/
 node_modules/
+.kotlin/
