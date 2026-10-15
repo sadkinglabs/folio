@@ -84,19 +84,23 @@ internal fun ListsScreen(
                     else MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.weight(1f),
             )
-            if (onScan != null)
-                IconButton(onClick = onScan, enabled = !busy) {
-                    Icon(
-                        Icons.Outlined.PhotoCamera,
-                        stringResource(R.string.library_wanted_empty_scan),
-                    )
+            if (onScan != null) {
+                val scan = stringResource(R.string.library_wanted_empty_scan)
+                Tooltipped(scan) {
+                    IconButton(onClick = onScan, enabled = !busy) {
+                        Icon(Icons.Outlined.PhotoCamera, scan)
+                    }
                 }
-            FilledTonalIconButton(
-                onClick = onNew,
-                enabled = !busy,
-                modifier = Modifier.testTag(LISTS_NEW_TAG),
-            ) {
-                Icon(Icons.Outlined.Add, stringResource(R.string.lists_new_title))
+            }
+            val new = stringResource(R.string.lists_new_title)
+            Tooltipped(new) {
+                FilledTonalIconButton(
+                    onClick = onNew,
+                    enabled = !busy,
+                    modifier = Modifier.testTag(LISTS_NEW_TAG),
+                ) {
+                    Icon(Icons.Outlined.Add, new)
+                }
             }
         }
         // Two columns on a phone; one at large text sizes, so names never break mid-word.
@@ -424,14 +428,22 @@ internal fun ListDetailScreen(
             }
             Spacer(Modifier.weight(1f))
             viewToggle?.invoke()
-            if (shelf != null && onSend != null)
-                IconButton(onClick = { onSend(shelf) }, enabled = !busy && card.count > 0) {
-                    Icon(Icons.Outlined.TabletAndroid, stringResource(R.string.send_list))
+            if (shelf != null && onSend != null) {
+                val send = stringResource(R.string.send_list)
+                Tooltipped(send) {
+                    IconButton(onClick = { onSend(shelf) }, enabled = !busy && card.count > 0) {
+                        Icon(Icons.Outlined.TabletAndroid, send)
+                    }
                 }
-            if (shelf != null && onEdit != null)
-                IconButton(onClick = { onEdit(shelf) }, enabled = !busy) {
-                    Icon(Icons.Outlined.Edit, stringResource(R.string.rd_action_edit))
+            }
+            if (shelf != null && onEdit != null) {
+                val edit = stringResource(R.string.rd_action_edit)
+                Tooltipped(edit) {
+                    IconButton(onClick = { onEdit(shelf) }, enabled = !busy) {
+                        Icon(Icons.Outlined.Edit, edit)
+                    }
                 }
+            }
         }
         Surface(
             Modifier.fillMaxWidth().padding(horizontal = FolioSpace.page),

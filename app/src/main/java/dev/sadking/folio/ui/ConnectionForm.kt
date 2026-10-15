@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
@@ -607,7 +608,7 @@ private fun ResultPill(op: Operation) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
         ) {
-            if (op.busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            if (op.busy) LoadingIndicator(Modifier.size(20.dp))
             Text(op.message, style = MaterialTheme.typography.labelMedium)
         }
     }

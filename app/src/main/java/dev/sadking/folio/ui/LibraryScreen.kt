@@ -424,19 +424,27 @@ private fun LibraryHeader(
                 }
             }
         }
-        IconButton(onClick = onSearch, modifier = Modifier.testTag(LIBRARY_SEARCH_TAG)) {
-            Icon(
-                if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search,
-                stringResource(
-                    if (searching) R.string.library_close_search else R.string.library_search
-                ),
+        val searchLabel =
+            stringResource(
+                if (searching) R.string.library_close_search else R.string.library_search
             )
+        Tooltipped(searchLabel) {
+            IconButton(onClick = onSearch, modifier = Modifier.testTag(LIBRARY_SEARCH_TAG)) {
+                Icon(
+                    if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search,
+                    searchLabel,
+                )
+            }
         }
         viewToggle()
-        if (onAdd != null)
-            FilledTonalIconButton(onClick = onAdd, enabled = !busy) {
-                Icon(Icons.Outlined.Add, stringResource(R.string.shell_add_books))
+        if (onAdd != null) {
+            val add = stringResource(R.string.shell_add_books)
+            Tooltipped(add) {
+                FilledTonalIconButton(onClick = onAdd, enabled = !busy) {
+                    Icon(Icons.Outlined.Add, add)
+                }
             }
+        }
     }
 }
 
@@ -562,9 +570,11 @@ private fun LibraryToolbar(
 /** One icon showing the layout it switches to, as Files and Gmail do. */
 @Composable
 private fun ViewToggle(grid: Boolean, onGrid: (Boolean) -> Unit) {
-    IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.testTag(LIBRARY_VIEW_TAG)) {
-        if (grid) Icon(Icons.AutoMirrored.Filled.List, stringResource(R.string.library_show_list))
-        else Icon(Icons.Outlined.GridView, stringResource(R.string.library_show_grid))
+    val label = stringResource(if (grid) R.string.library_show_list else R.string.library_show_grid)
+    Tooltipped(label) {
+        IconButton(onClick = { onGrid(!grid) }, modifier = Modifier.testTag(LIBRARY_VIEW_TAG)) {
+            Icon(if (grid) Icons.AutoMirrored.Filled.List else Icons.Outlined.GridView, label)
+        }
     }
 }
 

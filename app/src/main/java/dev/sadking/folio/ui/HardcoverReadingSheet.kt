@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
@@ -513,8 +514,7 @@ private fun PositionStep(
                     enabled = deviceFetchEnabled,
                     label = { Text(stringResource(R.string.hardcover_get_from_device)) },
                     leadingIcon = {
-                        if (deviceFetchBusy)
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        if (deviceFetchBusy) LoadingIndicator(Modifier.size(24.dp))
                         else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
                     },
                 )

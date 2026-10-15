@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package dev.sadking.folio.ui
 
@@ -247,7 +250,7 @@ internal fun HardcoverImportContent(
                     // Reaching the end loads the next page; a failed load waits for Refresh.
                     LaunchedEffect(busy, error) { if (!busy && error == null) onLoadMore() }
                     Box(Modifier.fillMaxWidth().padding(FolioSpace.item), Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        LoadingIndicator(Modifier.size(32.dp))
                     }
                 }
         }

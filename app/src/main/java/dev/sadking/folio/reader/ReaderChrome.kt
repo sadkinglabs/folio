@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package dev.sadking.folio.reader
 
@@ -127,24 +130,36 @@ internal fun ReaderTopBar(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium,
             )
+            // Icons only: each has Material's tooltip, its name on a long press.
             if (onListen != null)
-                IconButton(onClick = onListen, enabled = enabled) {
-                    Icon(Icons.Outlined.Headphones, stringResource(R.string.reader_listen))
-                }
-            IconButton(onClick = { onPanel(ReaderPanel.CONTENTS) }, enabled = enabled) {
-                Icon(
-                    Icons.AutoMirrored.Outlined.FormatListBulleted,
-                    stringResource(R.string.reader_contents),
-                )
+                BarAction(Icons.Outlined.Headphones, R.string.reader_listen, enabled, onListen)
+            BarAction(
+                Icons.AutoMirrored.Outlined.FormatListBulleted,
+                R.string.reader_contents,
+                enabled,
+            ) {
+                onPanel(ReaderPanel.CONTENTS)
             }
-            IconButton(onClick = { onPanel(ReaderPanel.TEXT) }, enabled = enabled) {
-                Icon(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance))
+            BarAction(Icons.Outlined.TextFields, R.string.reader_appearance, enabled) {
+                onPanel(ReaderPanel.TEXT)
             }
-            IconButton(onClick = { onPanel(ReaderPanel.DEVICES) }, enabled = enabled) {
-                Icon(Icons.Outlined.Devices, stringResource(R.string.reader_devices))
+            BarAction(Icons.Outlined.Devices, R.string.reader_devices, enabled) {
+                onPanel(ReaderPanel.DEVICES)
             }
         }
     }
+}
+
+/** An icon-only bar action with its tooltip. */
+@Composable
+private fun BarAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val name = stringResource(label)
+    Tooltipped(name) { IconButton(onClick = onClick, enabled = enabled) { Icon(icon, name) } }
 }
 
 /**
@@ -894,50 +909,48 @@ internal fun ListenBar(
     timerOn: Boolean = false,
     onOptions: () -> Unit = {},
 ) {
-    Surface(
-        modifier.fillMaxWidth().then(lift(FolioSpace.panelShape)).testTag(READER_LISTEN_BAR_TAG),
-        shape = FolioSpace.panelShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    // Material's floating toolbar: the player's controls in one rounded, raised strip.
+    HorizontalFloatingToolbar(
+        expanded = true,
+        modifier = modifier.testTag(READER_LISTEN_BAR_TAG),
+        colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+        val speedLabel = listenSpeedLabel(speed)
+        val speedName = stringResource(R.string.listen_speed, speedLabel)
+        TextButton(
+            onClick = onSpeed,
+            modifier = Modifier.semantics { contentDescription = speedName },
         ) {
-            val speedLabel = listenSpeedLabel(speed)
-            val speedName = stringResource(R.string.listen_speed, speedLabel)
-            TextButton(
-                onClick = onSpeed,
-                modifier = Modifier.semantics { contentDescription = speedName },
-            ) {
-                Text(speedLabel, style = MaterialTheme.typography.titleMedium)
-            }
+            Text(speedLabel, style = MaterialTheme.typography.titleMedium)
+        }
+        val previous = stringResource(R.string.listen_previous)
+        Tooltipped(previous) {
             IconButton(onClick = onPrevious, enabled = !starting) {
-                Icon(Icons.Outlined.SkipPrevious, stringResource(R.string.listen_previous))
-            }
-            FilledIconButton(
-                onClick = onToggle,
-                enabled = !starting,
-                modifier = Modifier.size(56.dp),
-            ) {
-                if (starting) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                else if (playing) Icon(Icons.Outlined.Pause, stringResource(R.string.listen_pause))
-                else Icon(Icons.Outlined.PlayArrow, stringResource(R.string.listen_play))
-            }
-            IconButton(onClick = onNext, enabled = !starting) {
-                Icon(Icons.Outlined.SkipNext, stringResource(R.string.listen_next))
-            }
-            // Voice and sleep timer; filled while a timer runs.
-            IconButton(onClick = onOptions) {
-                val name = stringResource(R.string.listen_options)
-                if (timerOn)
-                    Icon(Icons.Filled.Bedtime, name, tint = MaterialTheme.colorScheme.primary)
-                else Icon(Icons.Outlined.Tune, name)
-            }
-            IconButton(onClick = onStop) {
-                Icon(Icons.Outlined.Close, stringResource(R.string.listen_stop))
+                Icon(Icons.Outlined.SkipPrevious, previous)
             }
         }
+        FilledIconButton(onClick = onToggle, enabled = !starting, modifier = Modifier.size(56.dp)) {
+            if (starting) LoadingIndicator(Modifier.size(32.dp))
+            else if (playing) Icon(Icons.Outlined.Pause, stringResource(R.string.listen_pause))
+            else Icon(Icons.Outlined.PlayArrow, stringResource(R.string.listen_play))
+        }
+        val next = stringResource(R.string.listen_next)
+        Tooltipped(next) {
+            IconButton(onClick = onNext, enabled = !starting) {
+                Icon(Icons.Outlined.SkipNext, next)
+            }
+        }
+        // Voice and sleep timer; a moon while a timer runs.
+        val options = stringResource(R.string.listen_options)
+        Tooltipped(options) {
+            IconButton(onClick = onOptions) {
+                if (timerOn)
+                    Icon(Icons.Filled.Bedtime, options, tint = MaterialTheme.colorScheme.primary)
+                else Icon(Icons.Outlined.Tune, options)
+            }
+        }
+        val stop = stringResource(R.string.listen_stop)
+        Tooltipped(stop) { IconButton(onClick = onStop) { Icon(Icons.Outlined.Close, stop) } }
     }
 }
 

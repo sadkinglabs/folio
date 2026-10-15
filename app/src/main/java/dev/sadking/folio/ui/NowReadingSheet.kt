@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 
 package dev.sadking.folio.ui
 
@@ -89,11 +92,10 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
                                 else IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
                             if (action.busy)
-                                CircularProgressIndicator(
-                                    Modifier.size(22.dp).semantics {
+                                LoadingIndicator(
+                                    Modifier.size(28.dp).semantics {
                                         contentDescription = action.label
-                                    },
-                                    strokeWidth = 2.5.dp,
+                                    }
                                 )
                             else Icon(action.icon, action.label)
                         }

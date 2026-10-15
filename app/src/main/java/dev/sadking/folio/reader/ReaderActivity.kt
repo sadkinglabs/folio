@@ -1,4 +1,5 @@
 @file:OptIn(
+    androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
     org.readium.r2.shared.ExperimentalReadiumApi::class,
@@ -517,7 +518,7 @@ class ReaderActivity : FragmentActivity() {
                         backEnabled = !closing,
                     )
                 else if (model.publication == null)
-                    CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    LoadingIndicator(Modifier.align(Alignment.Center))
                 else
                     AndroidView(
                         factory = {

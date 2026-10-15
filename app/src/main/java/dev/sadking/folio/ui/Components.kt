@@ -957,3 +957,18 @@ internal fun StatusPill(text: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/**
+ * Material's tooltip for an icon-only control: a long press shows [label], the same words TalkBack
+ * reads, so a symbol never has to be guessed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun Tooltipped(label: String, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState(),
+        content = content,
+    )
+}
