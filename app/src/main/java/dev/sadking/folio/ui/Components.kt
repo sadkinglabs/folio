@@ -216,6 +216,7 @@ fun Cover(book: Book, modifier: Modifier = Modifier, thumbnail: Boolean = false)
                 BoxWithConstraints {
                     // A queue-sized cover (72 dp) takes a smaller title and tighter margins.
                     val small = maxWidth < 90.dp
+                    val coverWidth = maxWidth
                     Column(
                         Modifier.fillMaxSize()
                             .padding(
@@ -230,23 +231,43 @@ fun Cover(book: Book, modifier: Modifier = Modifier, thumbnail: Boolean = false)
                             thickness = 2.dp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         )
+                        val base =
+                            (when {
+                                    small -> MaterialTheme.typography.labelMedium
+                                    book.title.length > 28 -> MaterialTheme.typography.titleSmall
+                                    else -> MaterialTheme.typography.titleMedium
+                                })
+                                .copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                                    // Fallback once the title is as small as it goes: break long
+                                    // words with a hyphen, never mid-letter.
+                                    hyphens = androidx.compose.ui.text.style.Hyphens.Auto,
+                                    lineBreak = androidx.compose.ui.text.style.LineBreak.Paragraph,
+                                )
+                        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                        val width =
+                            with(androidx.compose.ui.platform.LocalDensity.current) {
+                                (coverWidth - if (small) 16.dp else 24.dp).roundToPx()
+                            }
+                        // Shrink the title until its longest word fits on one line, so short
+                        // words like "Hours" never split as "Hour / s".
+                        val style =
+                            remember(book.title, width, base) {
+                                // Measure every word: letter count is a poor guide ("Small"
+                                // and "Hours" have five letters; "Hours" is wider).
+                                val words = book.title.split(' ').filter { it.isNotBlank() }
+                                fun widest(style: androidx.compose.ui.text.TextStyle) =
+                                    words.maxOfOrNull { measurer.measure(it, style).size.width }
+                                        ?: 0
+                                var fitted = base
+                                while (
+                                    fitted.fontSize.value > 7f && widest(fitted) > width
+                                ) fitted = fitted.copy(fontSize = fitted.fontSize * 0.9f)
+                                fitted
+                            }
                         Text(
                             book.title,
-                            style =
-                                (when {
-                                        small -> MaterialTheme.typography.labelMedium
-                                        book.title.length > 28 ->
-                                            MaterialTheme.typography.titleSmall
-                                        else -> MaterialTheme.typography.titleMedium
-                                    })
-                                    .copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
-                                        // Long words on narrow covers break with a hyphen, not
-                                        // mid-letter ("Else-where", not "Elsewhe re").
-                                        hyphens = androidx.compose.ui.text.style.Hyphens.Auto,
-                                        lineBreak =
-                                            androidx.compose.ui.text.style.LineBreak.Paragraph,
-                                    ),
+                            style = style,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 5,
                             overflow = TextOverflow.Ellipsis,
