@@ -34,6 +34,7 @@ Never describe a mocked response or a Robolectric test as working on a device.
 ./gradlew checkFormatting :core:test :transport:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 Format the code with `./gradlew formatKotlin` (ktfmt).
+Screenshots without an emulator: `./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest' -Pscreenshots` renders every preview in light, dark and 200% text to `app/build/screenshots`. Check them before pushing UI work; use CI's emulator only for what needs a device (reader WebView, Link service, the journey test).
 
 ## Style
 - No new layer or dependency without a concrete benefit.
