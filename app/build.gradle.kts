@@ -17,6 +17,8 @@ android {
         versionCode = 18
         versionName = "0.12.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The owner's phone is arm64; the CI emulator is x86_64.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     signingConfigs.getByName("debug") {
         val preservedKey = rootProject.file("development-signing/debug.keystore")
@@ -35,7 +37,13 @@ android {
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
     lint { abortOnError = true }
-    packaging { resources.excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF" }
+    packaging {
+        resources.excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        // From minSdk 28 code and native libraries are stored uncompressed, which pushed the APK
+        // past 130 MB. Compressed, it downloads and sideloads far faster.
+        dex.useLegacyPackaging = true
+        jniLibs.useLegacyPackaging = true
+    }
 }
 
 kotlin { jvmToolchain(17) }

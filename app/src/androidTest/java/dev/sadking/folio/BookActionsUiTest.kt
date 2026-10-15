@@ -22,10 +22,12 @@ class BookActionsUiTest {
             currentHash = "a",
         )
 
-    private fun cover() =
-        compose
-            .onAllNodes(hasContentDescription(book.title, substring = true) and hasClickAction())
-            .onFirst()
+    // The library sorts and indexes off the main thread, which Compose tests do not wait for.
+    private fun cover(): SemanticsNodeInteraction {
+        val matcher = hasContentDescription(book.title, substring = true) and hasClickAction()
+        compose.waitUntil(10_000) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+        return compose.onAllNodes(matcher).onFirst()
+    }
 
     @Test
     fun gridLongPressSelectsAndTheAccessibilityActionOpensQuickActions() {

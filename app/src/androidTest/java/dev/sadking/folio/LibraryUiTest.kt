@@ -1,5 +1,8 @@
 package dev.sadking.folio
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -106,7 +109,8 @@ class LibraryUiTest {
 
     @Test
     fun longPressSelectsAndTheHeaderCounts() {
-        var selected = setOf<String>()
+        // State, so the screen recomposes when the selection changes.
+        var selected by mutableStateOf(setOf<String>())
         compose.setContent {
             FolioTheme(dynamic = false) {
                 LibraryScreen(
@@ -117,6 +121,12 @@ class LibraryUiTest {
                     onClearSelection = { selected = emptySet() },
                 )
             }
+        }
+        compose.waitUntil(10_000) {
+            compose
+                .onAllNodes(hasContentDescription("First, Ann"))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
         compose.onNode(hasContentDescription("First, Ann") and hasClickAction()).performTouchInput {
             longClick()
