@@ -1,15 +1,21 @@
 package dev.sadking.folio.link
 
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.withCharsetIfNeeded
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.http.content.LocalFileContent
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.receiveText
 import io.ktor.server.request.uri
+import io.ktor.server.response.header
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 
 /** One request Folio Link answered. No headers, credentials or bodies are kept. */
@@ -22,10 +28,19 @@ data class LinkEvent(
 )
 
 /**
- * Folio Link's HTTP server: KOReader's Progress sync talks to it over the local network. It only
- * answers the kosync routes; anything else is a 404.
+ * Folio Link's HTTP server on the local network: KOReader's Progress sync, its OPDS catalogue
+ * browser and the Folio plugin talk to it. [LinkRoutes] decides every answer.
  */
-class FolioLinkServer(private val kosync: Kosync, private val onEvent: (LinkEvent) -> Unit = {}) {
+class FolioLinkServer(
+    private val routes: LinkRoutes,
+    private val onEvent: (LinkEvent) -> Unit = {},
+) {
+    /** Progress sync only, with no library behind it. */
+    constructor(
+        kosync: Kosync,
+        onEvent: (LinkEvent) -> Unit = {},
+    ) : this(LinkRoutes(kosync, null, { null }), onEvent)
+
     private var server: io.ktor.server.engine.EmbeddedServer<*, *>? = null
 
     /** Starts listening on [port] (0 picks a free one) and returns the port in use. */
@@ -38,9 +53,13 @@ class FolioLinkServer(private val kosync: Kosync, private val onEvent: (LinkEven
                     val length = call.request.headers["Content-Length"]?.toLongOrNull() ?: 0
                     val response =
                         if (length > Kosync.MAX_BODY)
-                            KosyncResponse(413, """{"code":2003,"message":"Invalid request"}""")
+                            LinkResponse.Text(
+                                413,
+                                LinkRoutes.JSON,
+                                """{"code":2003,"message":"Invalid request"}""",
+                            )
                         else
-                            kosync.handle(
+                            routes.handle(
                                 KosyncRequest(
                                     method = method.value,
                                     path = call.request.uri,
@@ -55,11 +74,29 @@ class FolioLinkServer(private val kosync: Kosync, private val onEvent: (LinkEven
                                     remote = call.request.local.remoteAddress,
                                 )
                             )
-                    call.respondText(
-                        response.body,
-                        ContentType.Application.Json,
-                        HttpStatusCode.fromValue(response.status),
-                    )
+                    response.headers.forEach { (name, value) -> call.response.header(name, value) }
+                    when (response) {
+                        is LinkResponse.Text ->
+                            call.respondText(
+                                response.body,
+                                ContentType.parse(response.type)
+                                    .withCharsetIfNeeded(Charsets.UTF_8),
+                                HttpStatusCode.fromValue(response.status),
+                            )
+                        is LinkResponse.Download -> {
+                            call.response.header(
+                                HttpHeaders.ContentDisposition,
+                                ContentDisposition.Attachment.withParameter(
+                                        ContentDisposition.Parameters.FileName,
+                                        response.name,
+                                    )
+                                    .toString(),
+                            )
+                            call.respond(
+                                LocalFileContent(response.file, ContentType.parse(response.type))
+                            )
+                        }
+                    }
                     onEvent(
                         LinkEvent(
                             System.currentTimeMillis(),
