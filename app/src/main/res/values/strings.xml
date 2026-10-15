@@ -44,6 +44,8 @@
     <string name="appearance_book_only">Only for this book</string>
     <string name="appearance_book_only_hint">Size, font, spacing and margins apply to this book. Turn off to use your usual settings.</string>
     <string name="appearance_text_size">Text size · %1$d%%</string>
+    <string name="appearance_smaller">Smaller text</string>
+    <string name="appearance_larger">Larger text</string>
     <string name="appearance_theme_system">System</string>
     <string name="appearance_theme_light">Light</string>
     <string name="appearance_theme_paper">Paper</string>

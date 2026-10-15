@@ -45,12 +45,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -725,9 +728,6 @@ private fun ChoiceRow(
 
 @Composable
 private fun AppearancePanel(model: ReaderViewModel) {
-    // The slider previews locally and applies once on release: every intermediate value would
-    // otherwise re-paginate the whole chapter.
-    var size by remember(model.fontSize) { mutableFloatStateOf(model.fontSize.toFloat()) }
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -746,16 +746,7 @@ private fun AppearancePanel(model: ReaderViewModel) {
             }
             Switch(model.bookOnly, model::keepForThisBook)
         }
-        Text(
-            stringResource(R.string.appearance_text_size, size.toInt()),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Slider(
-            size,
-            { size = it },
-            valueRange = 75f..200f,
-            onValueChangeFinished = { model.appearance(size = size.toDouble()) },
-        )
+        TextSizeStepper(model)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(
                     "System" to R.string.appearance_theme_system,
@@ -950,6 +941,54 @@ private fun LinkOfferCard(
                 TextButton(onClick = onStay) { Text(stringResource(R.string.reader_link_stay)) }
                 Button(onClick = onContinue) { Text(stringResource(R.string.reader_link_continue)) }
             }
+        }
+    }
+}
+
+/** Text size in steps, each applied at once, with "Aa" drawn at the chosen size and font. */
+@Composable
+private fun TextSizeStepper(model: ReaderViewModel) {
+    val size = model.fontSize
+    val smaller = stringResource(R.string.appearance_smaller)
+    val larger = stringResource(R.string.appearance_larger)
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FilledTonalIconButton(
+            onClick = { model.appearance(size = steppedTextSize(size, up = false)) },
+            enabled = size > MIN_TEXT,
+            modifier = Modifier.semantics { contentDescription = smaller },
+        ) {
+            Text("A−", style = MaterialTheme.typography.labelLarge)
+        }
+        Column(
+            Modifier.weight(1f).semantics(mergeDescendants = true) {},
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // A fixed-height box keeps the buttons still while the sample grows.
+            Box(Modifier.height(72.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "Aa",
+                    fontSize = (22 * size / 100).sp,
+                    fontFamily =
+                        if (model.serif) androidx.compose.ui.text.font.FontFamily.Serif
+                        else androidx.compose.ui.text.font.FontFamily.SansSerif,
+                    modifier = Modifier.clearAndSetSemantics {},
+                )
+            }
+            Text(
+                stringResource(R.string.appearance_text_size, size.toInt()),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        FilledTonalIconButton(
+            onClick = { model.appearance(size = steppedTextSize(size, up = true)) },
+            enabled = size < MAX_TEXT,
+            modifier = Modifier.semantics { contentDescription = larger },
+        ) {
+            Text("A+", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

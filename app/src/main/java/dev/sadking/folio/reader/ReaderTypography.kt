@@ -50,3 +50,16 @@ data class ReaderTypography(
                 .getOrDefault(fallback)
     }
 }
+
+/** Text size is stored as a percentage (110 = 110%); Readium wants a multiplier (1.1). */
+fun readiumFontScale(percent: Double): Double = percent.coerceIn(MIN_TEXT, MAX_TEXT) / 100.0
+
+/** The next size up or down, in steps of [TEXT_STEP] between [MIN_TEXT] and [MAX_TEXT]. */
+fun steppedTextSize(current: Double, up: Boolean): Double {
+    val snapped = Math.round(current / TEXT_STEP) * TEXT_STEP
+    return (if (up) snapped + TEXT_STEP else snapped - TEXT_STEP).coerceIn(MIN_TEXT, MAX_TEXT)
+}
+
+const val MIN_TEXT = 75.0
+const val MAX_TEXT = 200.0
+const val TEXT_STEP = 10.0

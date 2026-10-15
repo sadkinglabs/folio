@@ -35,4 +35,21 @@ class ReaderTypographyTest {
         assertEquals(200.0, clamped.fontSize, 0.0)
         assertEquals(1.0, clamped.lineHeight, 0.0)
     }
+
+    @Test
+    fun readiumGetsAMultiplierNotAPercentage() {
+        assertEquals(1.1, readiumFontScale(110.0), 1e-9)
+        assertEquals(0.75, readiumFontScale(10.0), 1e-9)
+        assertEquals(2.0, readiumFontScale(900.0), 1e-9)
+    }
+
+    @Test
+    fun stepsMoveTenPercentAndStopAtTheEnds() {
+        assertEquals(120.0, steppedTextSize(110.0, up = true), 0.0)
+        assertEquals(100.0, steppedTextSize(110.0, up = false), 0.0)
+        assertEquals(MIN_TEXT, steppedTextSize(MIN_TEXT, up = false), 0.0)
+        assertEquals(MAX_TEXT, steppedTextSize(MAX_TEXT, up = true), 0.0)
+        // Old slider values land back on the steps.
+        assertEquals(120.0, steppedTextSize(113.0, up = true), 0.0)
+    }
 }

@@ -214,7 +214,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun preferences(dark: Boolean) =
         EpubPreferences(
-            fontSize = fontSize,
+            // Readium wants a multiplier; passing the percentage made every size the largest.
+            fontSize = readiumFontScale(fontSize),
             fontFamily = if (serif) FontFamily.SERIF else FontFamily.SANS_SERIF,
             publisherStyles = publisherStyles,
             lineHeight = lineHeight,
