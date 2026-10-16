@@ -132,7 +132,12 @@ class ReaderFormatsTest {
             compose.waitUntil(30000) { saved(id, hash) != null }
             val place = saved(id, hash)!!
             assertEquals("", place.xpointer)
-            assertTrue(place.locator, place.locator.contains("application/pdf"))
+            // The place is stored as JSON, where "/" may be written as "\\/": read the field.
+            assertEquals(
+                place.locator,
+                "application/pdf",
+                org.json.JSONObject(place.locator).getString("type"),
+            )
             turnPage(scenario, "pdf")
             compose.waitUntil(30000) { pageOf(saved(id, hash)) >= 2 }
         }
