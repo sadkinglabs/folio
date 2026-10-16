@@ -272,10 +272,10 @@ class ProductJourneyTest {
         // Advanced sits below the fold on a phone; scroll to it before checking it is there.
         compose.onNodeWithTag(SETTINGS_SSH_TAG).performScrollTo().assertIsDisplayed()
         tab("Library")
-        // No e-reader is set up in this run: the sync line says so and offers Set up.
-        compose.onNodeWithTag(SYNC_LINE_TAG).assertIsDisplayed()
-        compose.onNodeWithText("Your e-reader isn't set up yet").assertIsDisplayed()
-        compose.onNodeWithTag(SYNC_LINE_BUTTON_TAG).assertTextEquals("Set up")
+        // Sync lives on the Device tab; the Library shows its two sections with plain headings.
+        compose.onNodeWithTag(SYNC_LINE_TAG).assertDoesNotExist()
+        compose.onNodeWithText("Currently reading").assertIsDisplayed()
+        compose.onNodeWithText("All books").assertExists()
         capture("library-light")
         // Pride and Prejudice is being read, so it leads the Reading shelf.
         compose.onNodeWithTag(LIBRARY_SHELF_TAG).assertIsDisplayed()

@@ -100,18 +100,6 @@ internal fun LibraryPreview() {
                         reading.mapIndexed { i, book -> book.id to 0.2 * (i + 1) },
                 currentId = sampleBooks.first().id,
                 missingFiles = setOf("sample2"),
-                syncLine = {
-                    SyncStatusLine(
-                        SyncLineState(
-                            SyncLine.Synced("Kindle Paperwhite", PREVIEW_NOW - 2 * 60_000),
-                            1,
-                        ),
-                        PREVIEW_NOW,
-                        onSync = {},
-                        onSetUp = {},
-                        onDecisions = {},
-                    )
-                },
             )
         }
     }

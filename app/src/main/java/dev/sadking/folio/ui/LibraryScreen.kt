@@ -112,7 +112,6 @@ fun LibraryScreen(
     // A custom page header (a list's page) gets the view toggle to place among its actions.
     header: (@Composable (viewToggle: @Composable () -> Unit) -> Unit)? = null,
     /** The sync line under the title: the e-reader's last sync and the Sync button. */
-    syncLine: (@Composable () -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scoped = filterName != null
@@ -266,8 +265,6 @@ fun LibraryScreen(
                 busy = busy,
                 viewToggle = viewToggle,
             )
-        if (!scoped && selection.isEmpty() && pickingFor == null && syncLine != null)
-            Box(Modifier.padding(horizontal = FolioSpace.page, vertical = 4.dp)) { syncLine() }
         if (!scoped)
             PrimaryTabRow(selectedTabIndex = tab.ordinal, containerColor = Color.Transparent) {
                 Tab(
@@ -410,10 +407,14 @@ fun LibraryScreen(
                             verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
                             modifier = Modifier.fillMaxSize().testTag(LIBRARY_GRID_TAG),
                         ) {
-                            if (shelf.isNotEmpty())
+                            if (shelf.isNotEmpty()) {
                                 item(key = "shelf", span = { GridItemSpan(maxLineSpan) }) {
                                     ReadingShelf(shelf, progress, tile)
                                 }
+                                item(key = "all-books", span = { GridItemSpan(maxLineSpan) }) {
+                                    LibrarySectionTitle(stringResource(R.string.library_all_books))
+                                }
+                            }
                             items(filtered, key = { it.id }) { book ->
                                 tile(
                                     book,
@@ -430,7 +431,7 @@ fun LibraryScreen(
                             state = listState,
                             contentPadding = PaddingValues(bottom = bottomPadding),
                         ) {
-                            if (shelf.isNotEmpty())
+                            if (shelf.isNotEmpty()) {
                                 item(key = "shelf") {
                                     ReadingShelf(
                                         shelf,
@@ -439,6 +440,13 @@ fun LibraryScreen(
                                         Modifier.padding(horizontal = FolioSpace.item),
                                     )
                                 }
+                                item(key = "all-books") {
+                                    LibrarySectionTitle(
+                                        stringResource(R.string.library_all_books),
+                                        Modifier.padding(horizontal = FolioSpace.item),
+                                    )
+                                }
+                            }
                             items(filtered, key = { it.id }) { book ->
                                 BookRow(
                                     book,
@@ -857,6 +865,17 @@ private fun LoadingGrid(columns: GridCells, modifier: Modifier) {
     }
 }
 
+/** A heading between the Library's sections: "Currently reading", then "All books". */
+@Composable
+private fun LibrarySectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.padding(top = FolioSpace.small).semantics { heading() },
+    )
+}
+
 /** The "Reading" shelf: a row of 112 dp covers with their progress, the current book first. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -867,12 +886,7 @@ private fun ReadingShelf(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
-        Text(
-            stringResource(R.string.library_shelf_reading).uppercase(),
-            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = FolioSpace.small),
-        )
+        LibrarySectionTitle(stringResource(R.string.library_shelf_reading))
         // Material's carousel: covers keep their size and the one leaving the edge narrows under
         // a mask, so the row reads as more to scroll. Covers keep their captions below.
         HorizontalUncontainedCarousel(
@@ -884,11 +898,13 @@ private fun ReadingShelf(
         ) { i ->
             val book = books[i]
             val percent = progress[book.id]?.let { (it * 100).toInt() }
+            // An empty caption still takes its line, so every cover in the row is the same height
+            // and the row does not jump when a book without a percentage leaves it.
             tile(
                 book,
                 Modifier.width(112.dp).maskClip(RectangleShape),
                 CoverVariant.Shelf,
-                percent?.let { stringResource(R.string.rd_percent, it) },
+                percent?.let { stringResource(R.string.rd_percent, it) } ?: "",
             )
         }
     }

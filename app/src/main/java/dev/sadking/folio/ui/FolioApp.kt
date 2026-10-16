@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -85,6 +86,16 @@ fun FolioApp(model: LibraryViewModel) {
             "Dark" -> true
             "Light" -> false
             else -> isSystemInDarkTheme()
+        }
+    // The status and navigation bar icons follow Librillo's own theme, not the phone's, so they
+    // stay readable when the two differ (a light Librillo on a dark phone, or the other way).
+    val window = remember(context) { context.findActivity()?.window }
+    if (window != null)
+        SideEffect {
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
         }
     FolioTheme(dark, dynamic) {
         val books by model.books.collectAsStateWithLifecycle()
@@ -453,6 +464,7 @@ fun FolioApp(model: LibraryViewModel) {
                             BookTopBar(
                                 hazeState,
                                 onBack = { leaveBook() },
+                                title = (book ?: catalogue?.displayBook())?.title.orEmpty(),
                                 overflow =
                                     if (book == null) emptyList()
                                     else
@@ -869,17 +881,6 @@ fun FolioApp(model: LibraryViewModel) {
                                                                 model.refreshFolder(force = true)
                                                             },
                                                             refreshing = folderRefreshing,
-                                                            syncLine = {
-                                                                SyncStatusLine(
-                                                                    syncLineState,
-                                                                    now,
-                                                                    onSync = ::syncNow,
-                                                                    onSetUp = ::openSetup,
-                                                                    onDecisions = {
-                                                                        showDecisions = true
-                                                                    },
-                                                                )
-                                                            },
                                                         )
                                                     FolioNav.LISTS ->
                                                         ListsScreen(
@@ -1589,3 +1590,11 @@ private object SaveBookCopy : ActivityResultContracts.CreateDocument("applicatio
         super.createIntent(context, input)
             .setType(dev.sadking.folio.data.bookMimeType(input.substringAfterLast('.')))
 }
+
+/** The activity behind [this] context, unwrapping wrappers; null in previews. */
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }

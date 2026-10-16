@@ -103,8 +103,8 @@ class LargeFontUiTest {
             waitFor("the library") {
                 compose.onAllNodes(middlemarch).fetchSemanticsNodes().isNotEmpty()
             }
-            // The sync line sits under the title and stays on screen at 200%.
-            compose.onNodeWithTag(SYNC_LINE_TAG).assertIsDisplayed()
+            // Sync lives on the Device tab, not in the Library's header.
+            compose.onNodeWithTag(SYNC_LINE_TAG).assertDoesNotExist()
             QaScreenshots.capture("library-font200")
 
             compose.onNode(middlemarch).performClick()

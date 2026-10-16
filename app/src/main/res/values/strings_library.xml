@@ -5,7 +5,8 @@
     <string name="library_close_search">Close search</string>
     <string name="library_tab_library">Library</string>
     <string name="library_tab_wanted">Want to read</string>
-    <string name="library_shelf_reading">Reading</string>
+    <string name="library_shelf_reading">Currently reading</string>
+    <string name="library_all_books">All books</string>
     <string name="library_filter">Filter</string>
     <!-- TalkBack: the Filter icon with its count of active filters. -->
     <string name="library_filter_count">Filter · %1$d</string>

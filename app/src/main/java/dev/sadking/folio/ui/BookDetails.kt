@@ -943,6 +943,7 @@ internal fun BookTopBar(
     onBack: () -> Unit,
     backEnabled: Boolean = true,
     overflow: List<OverflowItem> = emptyList(),
+    title: String = "",
 ) {
     var menu by rememberSaveable { mutableStateOf(false) }
     GlassSurface(hazeState, hairlineAtTop = false) {
@@ -959,7 +960,14 @@ internal fun BookTopBar(
                     stringResource(R.string.shell_back),
                 )
             }
-            Spacer(Modifier.weight(1f))
+            // The book's title, so the bar names the page instead of sitting empty.
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+            )
             if (overflow.isNotEmpty())
                 Box {
                     IconButton(
