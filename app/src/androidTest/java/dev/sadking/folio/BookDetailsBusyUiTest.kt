@@ -33,7 +33,10 @@ class BookDetailsBusyUiTest {
         compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_PROGRESS_TAG).assertIsEnabled().performClick()
         compose.onNodeWithTag(PROGRESS_SHEET_TAG).assertIsDisplayed()
-        compose.onNodeWithText("Not opened").assertIsDisplayed()
+        // The book page behind the sheet says "Not opened" too: check the sheet's own line.
+        compose
+            .onNode(hasText("Not opened") and hasAnyAncestor(hasTestTag(PROGRESS_SHEET_TAG)))
+            .assertIsDisplayed()
         compose.onNodeWithContentDescription("Refresh from e-reader").assertDoesNotExist()
     }
 
