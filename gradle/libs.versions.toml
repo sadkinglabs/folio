@@ -24,6 +24,11 @@ readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version
 readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
 readium-navigator-tts = { module = "org.readium.kotlin-toolkit:readium-navigator-media-tts", version.ref = "readium" }
+# PDF in the phone reader: Readium's Pdfium adapter (BSD-3; Pdfium binding Apache-2.0, on JitPack).
+readium-adapter-pdfium = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium", version.ref = "readium" }
+# RAR comics (CBR) for the phone reader: Apache-2.0 wrapper around libarchive 3.8.1 (BSD-2), whose
+# RAR readers are its own code, not UnRAR's. 1.1.7 needs compileSdk 37.2; 1.1.6 does not.
+libarchive = { module = "me.zhanghai.android.libarchive:library", version = "1.1.6" }
 # The version Readium's TTS module brings; declared because the listening service uses it directly.
 media3-session = { module = "androidx.media3:media3-session", version = "1.11.0" }
 # On-device neural voice (Kokoro) for read-aloud. JitPack only; see settings.gradle.kts.

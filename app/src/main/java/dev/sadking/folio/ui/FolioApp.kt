@@ -380,9 +380,7 @@ fun FolioApp(model: LibraryViewModel) {
                 model.import(it)
             }
         val epubExportPicker =
-            rememberLauncherForActivityResult(
-                ActivityResultContracts.CreateDocument("application/epub+zip")
-            ) { uri ->
+            rememberLauncherForActivityResult(SaveBookCopy) { uri ->
                 if (uri != null)
                     books.firstOrNull { it.id == epubExportId }?.let { model.exportEpub(it, uri) }
             }
@@ -453,8 +451,7 @@ fun FolioApp(model: LibraryViewModel) {
         // The Add sheet's routes; the Want to read tab's "Find a book" uses the lookup one.
         fun addBook(action: AddBookAction) {
             when (action) {
-                AddBookAction.EPUB ->
-                    picker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
+                AddBookAction.EPUB -> picker.launch(BOOK_FILE_TYPES)
                 AddBookAction.MANUAL -> {
                     model.managementError.value = null
                     catalogueEditorId = "new"
@@ -531,7 +528,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                         ) {
                                                             epubExportId = book.id
                                                             epubExportPicker.launch(
-                                                                "${book.id}.epub"
+                                                                "${book.id}.${book.format}"
                                                             )
                                                         }
                                                     BookOverflow.DETACH ->
@@ -1355,9 +1352,7 @@ fun FolioApp(model: LibraryViewModel) {
                         }
                         BookAction.ATTACH -> {
                             attachWishId = actionBook.id
-                            attachmentPicker.launch(
-                                arrayOf("application/epub+zip", "application/octet-stream")
-                            )
+                            attachmentPicker.launch(BOOK_FILE_TYPES)
                         }
                         BookAction.SEARCH -> {
                             try {
@@ -1380,7 +1375,7 @@ fun FolioApp(model: LibraryViewModel) {
                         BookAction.DETACH -> detachBookId = actionBook.id
                         BookAction.EXPORT_EPUB -> {
                             epubExportId = actionBook.id
-                            epubExportPicker.launch("${actionBook.id}.epub")
+                            epubExportPicker.launch("${actionBook.id}.${actionBook.format}")
                         }
                         BookAction.SHARE_EPUB -> model.openEpub(actionBook, true)
                         BookAction.EXTERNAL_READER -> model.openEpub(actionBook, false)
@@ -1661,4 +1656,11 @@ fun FolioApp(model: LibraryViewModel) {
                 }
             }
     }
+}
+
+/** Saves a copy of a book file; the type follows the name's extension (EPUB, PDF, CBZ or CBR). */
+private object SaveBookCopy : ActivityResultContracts.CreateDocument("application/epub+zip") {
+    override fun createIntent(context: android.content.Context, input: String) =
+        super.createIntent(context, input)
+            .setType(dev.sadking.folio.data.bookMimeType(input.substringAfterLast('.')))
 }

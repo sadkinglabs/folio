@@ -16,9 +16,9 @@ import kotlinx.coroutines.withContext
 data class MoveResult(val moved: Int, val failed: List<String>)
 
 /**
- * Moves books from Librillo's private storage into the Books folder (M8 slice 2): the current EPUB
- * to `Author/Title.epub`, the original download, when it differs, to
- * `.librillo/originals/<id>.epub`. Each file is copied under a hidden name, flushed to disk and
+ * Moves books from Librillo's private storage into the Books folder (M8 slice 2): the current file
+ * to `Author/Title.<format>`, the original download, when it differs, to
+ * `.librillo/originals/<id>.<format>`. Each file is copied under a hidden name, flushed to disk and
  * checked against the book's hash before it gets its name; the book's paths change in the database
  * only then, and the private copy is removed last. A book that fails stays in private storage and
  * keeps working. Running it again moves what is left, and reuses an identical file an interrupted
@@ -77,10 +77,11 @@ class BooksFolderMove(private val repo: LibraryRepository) {
             "File changed or missing"
         }
         // An identical file from an interrupted run sits at the plain path; reuse it.
-        val plain = File(books, BookPaths.path(book.metadata().authors, book.title))
+        val authors = book.metadata().authors
+        val plain = File(books, BookPaths.path(authors, book.title, extension = book.format))
         val path =
             if (plain.isFile && Epub.sha256(plain) == book.currentHash) plain.relativeTo(books).path
-            else repo.freePath(books, book.metadata().authors, book.title, mine = null)
+            else repo.freePath(books, authors, book.title, mine = null, extension = book.format)
         val target = place(current, book.currentHash, File(books, path))
         val sameFile = book.originalPath == book.currentPath
         val original =
@@ -89,7 +90,7 @@ class BooksFolderMove(private val repo: LibraryRepository) {
                 place(
                     File(book.originalPath),
                     book.originalHash,
-                    File(books, ".librillo/originals/${book.id}.epub"),
+                    File(books, ".librillo/originals/${book.id}.${book.format}"),
                 )
         repo.database.withTransaction {
             dao.update(

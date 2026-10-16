@@ -24,6 +24,8 @@ data class Book(
     val currentHash: String,
     val addedAt: Long = System.currentTimeMillis(),
     val status: String = "Unread",
+    /** The file's format and extension: "epub", "pdf", "cbz" or "cbr" (see BookFormats). */
+    @ColumnInfo(defaultValue = "'epub'") val format: String = "epub",
 ) {
     fun metadata() =
         Metadata(
@@ -313,6 +315,29 @@ data class SyncTask(
     val state: String = "QUEUED",
 )
 
+/**
+ * What the phone and one e-reader agreed about a book at their last sync: the common ancestor for
+ * the 3-way compare. Without it a book missing on one side can't be told apart from one that was
+ * never there. [annotationIds] and [collections] are JSON arrays. No foreign key to books on
+ * purpose: purging a book must not erase what the e-reader last had.
+ */
+@Entity(tableName = "sync_baseline", primaryKeys = ["bookId", "ereaderId"])
+data class SyncBaseline(
+    val bookId: String,
+    val ereaderId: String,
+    /** The book's path on the e-reader when both sides last agreed. */
+    val path: String,
+    /** SHA-256 of the file both sides had. */
+    val hash: String,
+    val status: String,
+    /** When [status] last changed, in epoch milliseconds. */
+    val statusAt: Long,
+    val annotationIds: String = "[]",
+    val collections: String = "[]",
+    /** When this baseline was recorded, in epoch milliseconds. */
+    val syncedAt: Long,
+)
+
 @Dao
 interface LibraryDao {
     @Query(
@@ -544,6 +569,24 @@ interface LibraryDao {
     suspend fun recover()
 }
 
+/**
+ * Sync baselines, one per book per e-reader. Blocking on purpose, like the kosync calls: the Link
+ * server's sync session calls these from its own threads. Not used by the UI.
+ */
+@Dao
+interface SyncBaselineDao {
+    @Upsert fun upsert(baseline: SyncBaseline)
+
+    @Query("SELECT * FROM sync_baseline WHERE bookId = :bookId AND ereaderId = :ereaderId")
+    fun get(bookId: String, ereaderId: String): SyncBaseline?
+
+    @Query("SELECT * FROM sync_baseline WHERE ereaderId = :ereaderId")
+    fun forEreader(ereaderId: String): List<SyncBaseline>
+
+    @Query("DELETE FROM sync_baseline WHERE bookId = :bookId AND ereaderId = :ereaderId")
+    fun delete(bookId: String, ereaderId: String)
+}
+
 @Database(
     entities =
         [
@@ -564,12 +607,15 @@ interface LibraryDao {
             DeviceStatistics::class,
             SyncJob::class,
             SyncTask::class,
+            SyncBaseline::class,
         ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
+
+    abstract fun syncBaselines(): SyncBaselineDao
 }
 
 val MIGRATION_1_2 =
@@ -662,7 +708,6 @@ val MIGRATION_6_7 =
         }
     }
 
-/** Every shipped migration, in order. The app and migration tests must use this same list. */
 val MIGRATION_7_8 =
     object : androidx.room.migration.Migration(7, 8) {
         override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -672,6 +717,18 @@ val MIGRATION_7_8 =
         }
     }
 
+/** M9: every existing book is an EPUB; sync gets one baseline row per book per e-reader. */
+val MIGRATION_8_9 =
+    object : androidx.room.migration.Migration(8, 9) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN format TEXT NOT NULL DEFAULT 'epub'")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS sync_baseline (bookId TEXT NOT NULL, ereaderId TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, status TEXT NOT NULL, statusAt INTEGER NOT NULL, annotationIds TEXT NOT NULL, collections TEXT NOT NULL, syncedAt INTEGER NOT NULL, PRIMARY KEY(bookId,ereaderId))"
+            )
+        }
+    }
+
+/** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
         MIGRATION_1_2,
@@ -681,4 +738,5 @@ val ALL_MIGRATIONS =
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )

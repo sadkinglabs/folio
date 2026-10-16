@@ -61,8 +61,11 @@ import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.ReaderKind
 import dev.sadking.folio.reader.ReaderStart
 import dev.sadking.folio.reader.koreaderDigest
+import dev.sadking.folio.reader.opensOnPhone
+import dev.sadking.folio.reader.readerKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
@@ -160,13 +163,24 @@ fun BookDetails(
                     BookPrimary.READ -> stringResource(R.string.book_read)
                     BookPrimary.FIND_EPUB -> stringResource(R.string.rd_find_epub)
                 }
-            if (hasEpub)
-                ReadSplitButton(
-                    readLabel,
-                    readStarts(bookPrimary(hasEpub, phoneReading) == BookPrimary.CONTINUE, reports),
-                    onRead = onRead,
-                    onReadFrom = onReadFrom,
+            val starts =
+                readStarts(
+                    bookPrimary(hasEpub, phoneReading) == BookPrimary.CONTINUE,
+                    reports,
+                    epub = readerKind(book.format) == ReaderKind.EPUB,
                 )
+            if (hasEpub && !opensOnPhone(book.format))
+                // The phone cannot show this format; the book is still kept and synced.
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier =
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(BOOK_PRIMARY_TAG),
+                ) {
+                    Text(stringResource(R.string.book_m9_opens_on_ereader))
+                }
+            else if (hasEpub && starts.isNotEmpty())
+                ReadSplitButton(readLabel, starts, onRead = onRead, onReadFrom = onReadFrom)
             else
                 Button(
                     onClick = onRead,
@@ -966,12 +980,17 @@ internal sealed interface ReadStart {
 
 /**
  * The Read menu, most useful first: each e-reader's place (newest first, as reported), then
- * starting over when the phone has a place of its own, then reading aloud.
+ * starting over when the phone has a place of its own, then reading aloud. E-reader places and
+ * reading aloud work in EPUB books only.
  */
-internal fun readStarts(phoneHasPlace: Boolean, reports: List<KosyncReport>): List<ReadStart> =
-    reports.map { ReadStart.Device(it) } +
+internal fun readStarts(
+    phoneHasPlace: Boolean,
+    reports: List<KosyncReport>,
+    epub: Boolean = true,
+): List<ReadStart> =
+    (if (epub) reports.map { ReadStart.Device(it) } else emptyList()) +
         listOfNotNull(ReadStart.Beginning.takeIf { phoneHasPlace }) +
-        ReadStart.Listen
+        listOfNotNull(ReadStart.Listen.takeIf { epub })
 
 /** Read or Continue, with an arrow that opens the other ways to start. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

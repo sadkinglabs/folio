@@ -30,6 +30,21 @@ enum class AddBookAction {
 internal const val ADD_SHEET_TAG = "add-sheet"
 
 /**
+ * What the system file picker offers when adding a book. Providers label comics and PDFs
+ * inconsistently, so octet-stream stays in; import checks each file's content.
+ */
+internal val BOOK_FILE_TYPES =
+    arrayOf(
+        "application/epub+zip",
+        "application/pdf",
+        "application/vnd.comicbook+zip",
+        "application/x-cbz",
+        "application/vnd.comicbook-rar",
+        "application/x-cbr",
+        "application/octet-stream",
+    )
+
+/**
  * The Add sheet: four large tonal tiles with an icon and two words, then one row for the Hardcover
  * library import. No explanations; each tile says what it does.
  */

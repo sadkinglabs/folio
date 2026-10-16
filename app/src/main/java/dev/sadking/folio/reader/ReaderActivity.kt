@@ -40,8 +40,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
+import androidx.fragment.app.FragmentFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.sadking.folio.R
@@ -55,11 +57,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.json.JSONTokener
+import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.r2.navigator.Decoration
+import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.pdf.PdfNavigatorFactory
+import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -67,7 +74,12 @@ import org.readium.r2.shared.util.AbsoluteUrl
 
 class ReaderActivity : FragmentActivity() {
     private val model: ReaderViewModel by viewModels()
-    private var navigator: EpubNavigatorFragment? = null
+    /** The page view for any format: page turns, jumps and the current place. */
+    private var navigator: OverflowableNavigator? = null
+    /**
+     * The same navigator when the book is an EPUB; scripts, highlights and text settings need it.
+     */
+    private var epubNavigator: EpubNavigatorFragment? = null
     // Immersive on open: a tap in the centre brings the bars in.
     private var controls by mutableStateOf(false)
     private var panelOpen = false
@@ -116,7 +128,7 @@ class ReaderActivity : FragmentActivity() {
 
     /** Reads aloud from the first sentence on screen. */
     private fun startListening() {
-        val nav = navigator ?: return
+        val nav = epubNavigator ?: return
         val publication = model.publication ?: return
         controls = false
         lifecycleScope.launch {
@@ -188,37 +200,67 @@ class ReaderActivity : FragmentActivity() {
     private fun mount(container: FragmentContainerView, dark: Boolean) {
         if (navigator != null) return
         val publication = model.publication ?: return
-        val factory =
-            EpubNavigatorFactory(publication)
-                .createFragmentFactory(
-                    initialLocator = model.lastLocation ?: model.initialLocator,
-                    initialPreferences = model.preferences(dark),
-                    listener =
-                        object : EpubNavigatorFragment.Listener {
-                            override fun onExternalLinkActivated(url: AbsoluteUrl) {
-                                navigationError = getString(R.string.reader_external_link)
-                            }
-                        },
-                    configuration =
-                        EpubNavigatorFragment.Configuration { shouldApplyInsetsPadding = false },
-                )
+        val kind = model.kind ?: return
+        val place = model.lastLocation ?: model.initialLocator
+        val factory: FragmentFactory
+        val fragmentClass: Class<out Fragment>
+        val tag: String
+        when (kind) {
+            ReaderKind.EPUB -> {
+                factory =
+                    EpubNavigatorFactory(publication)
+                        .createFragmentFactory(
+                            initialLocator = place,
+                            initialPreferences = model.preferences(dark),
+                            listener =
+                                object : EpubNavigatorFragment.Listener {
+                                    override fun onExternalLinkActivated(url: AbsoluteUrl) {
+                                        navigationError = getString(R.string.reader_external_link)
+                                    }
+                                },
+                            configuration =
+                                EpubNavigatorFragment.Configuration {
+                                    shouldApplyInsetsPadding = false
+                                },
+                        )
+                fragmentClass = EpubNavigatorFragment::class.java
+                tag = "epub"
+            }
+            ReaderKind.PDF -> {
+                factory =
+                    PdfNavigatorFactory(publication, PdfiumEngineProvider())
+                        .createFragmentFactory(
+                            initialLocator = place,
+                            initialPreferences = model.pdfPreferences(),
+                        )
+                fragmentClass = PdfNavigatorFragment::class.java
+                tag = "pdf"
+            }
+            ReaderKind.COMIC -> {
+                factory = ImageNavigatorFragment.createFactory(publication, place)
+                fragmentClass = ImageNavigatorFragment::class.java
+                tag = "comic"
+            }
+        }
         supportFragmentManager.fragmentFactory = factory
-        val fragment =
-            factory.instantiate(classLoader, EpubNavigatorFragment::class.java.name)
-                as EpubNavigatorFragment
+        val fragment = factory.instantiate(classLoader, fragmentClass.name)
         supportFragmentManager
             .beginTransaction()
             .setReorderingAllowed(true)
-            .replace(container.id, fragment, "epub")
+            .replace(container.id, fragment, tag)
             .commitNow()
-        navigator = fragment
-        harden(fragment.requireView())
+        val nav = fragment as OverflowableNavigator
+        val epub = fragment as? EpubNavigatorFragment
+        navigator = nav
+        epubNavigator = epub
+        // Only the EPUB page is a WebView; PDF and comic views load nothing from outside.
+        if (epub != null) harden(fragment.requireView())
         // Listeners run in order until one consumes the event. Readium's adapter claims edge taps
         // (30% each side, in its own coordinate units) and arrow/page keys; any tap it leaves is
         // a centre tap and toggles the controls. No coordinate maths of our own: comparing tap
         // points with the fragment's pixel width failed to hide the controls on the emulator.
-        fragment.addInputListener(DirectionalNavigationAdapter(fragment))
-        fragment.addInputListener(
+        nav.addInputListener(DirectionalNavigationAdapter(nav))
+        nav.addInputListener(
             object : InputListener {
                 override fun onTap(event: TapEvent): Boolean {
                     controls = !controls
@@ -228,41 +270,43 @@ class ReaderActivity : FragmentActivity() {
         )
         // The sentence being read: highlight it and keep its page in view. The page turn saves the
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
-        // on the main thread.
-        lifecycleScope.launch {
-            // Nothing touches the page until read-aloud starts: an empty highlight at open would
-            // queue a script on the page while it is still loading.
-            var highlighted = false
-            snapshotFlow { model.listen.utterance }
-                .collectLatest { spoken ->
-                    if (spoken == null && !highlighted) return@collectLatest
-                    highlighted = spoken != null
-                    // With the screen off the page may not follow; save the sentence itself.
-                    if (
-                        spoken != null && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                    )
-                        model.listened(spoken)
-                    // Turn to the sentence first: the highlight waits on the page's script and
-                    // must never hold the page back.
-                    if (spoken != null) fragment.go(spoken, animated = false)
-                    withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
-                        fragment.applyDecorations(
-                            listOfNotNull(
-                                spoken?.let {
-                                    Decoration(
-                                        "spoken",
-                                        it,
-                                        Decoration.Style.Highlight(tint = listenTint),
-                                    )
-                                }
-                            ),
-                            "listen",
+        // on the main thread. Read-aloud highlights are EPUB-only.
+        if (epub != null)
+            lifecycleScope.launch {
+                // Nothing touches the page until read-aloud starts: an empty highlight at open
+                // would queue a script on the page while it is still loading.
+                var highlighted = false
+                snapshotFlow { model.listen.utterance }
+                    .collectLatest { spoken ->
+                        if (spoken == null && !highlighted) return@collectLatest
+                        highlighted = spoken != null
+                        // With the screen off the page may not follow; save the sentence itself.
+                        if (
+                            spoken != null &&
+                                !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                         )
+                            model.listened(spoken)
+                        // Turn to the sentence first: the highlight waits on the page's script and
+                        // must never hold the page back.
+                        if (spoken != null) epub.go(spoken, animated = false)
+                        withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
+                            epub.applyDecorations(
+                                listOfNotNull(
+                                    spoken?.let {
+                                        Decoration(
+                                            "spoken",
+                                            it,
+                                            Decoration.Style.Highlight(tint = listenTint),
+                                        )
+                                    }
+                                ),
+                                "listen",
+                            )
+                        }
                     }
-                }
-        }
+            }
         lifecycleScope.launch {
-            if (model.automaticKindleResume) {
+            if (epub != null && model.automaticKindleResume) {
                 try {
                     if (resumeKindle()) {
                         model.completedIncoming()
@@ -274,18 +318,19 @@ class ReaderActivity : FragmentActivity() {
                 }
             }
             when (val start = model.takeStart()) {
-                ReaderStart.Listen -> {
-                    // Read-aloud asks the page for its first sentence; wait until it answers.
-                    withTimeoutOrNull(CHAPTER_WAIT_MS) { fragment.evaluateJavascript("true") }
-                    startListening()
-                }
+                ReaderStart.Listen ->
+                    if (epub != null) {
+                        // Read-aloud asks the page for its first sentence; wait until it answers.
+                        withTimeoutOrNull(CHAPTER_WAIT_MS) { epub.evaluateJavascript("true") }
+                        startListening()
+                    }
                 is ReaderStart.Device ->
                     if (!resumeAt(start.pointer))
                         navigationError = getString(R.string.reader_link_failed)
                 ReaderStart.Beginning,
                 ReaderStart.Resume -> Unit
             }
-            fragment.currentLocator.collectLatest { locator ->
+            nav.currentLocator.collectLatest { locator ->
                 if (positionNavigation) return@collectLatest
                 model.location(locator)
                 // One durable write per settled page: a further page turn cancels this one.
@@ -340,7 +385,14 @@ class ReaderActivity : FragmentActivity() {
      * without translatable text still saves its native locator.
      */
     private suspend fun savePosition() {
-        val nav = navigator ?: return
+        val any = navigator ?: return
+        val nav = epubNavigator
+        if (nav == null) {
+            // PDFs and comics keep Readium's own place (page and progression); KOReader pointers
+            // are EPUB-only.
+            model.save(any.currentLocator.value)
+            return
+        }
         var locator = nav.currentLocator.value
         var pointer = ""
         try {
@@ -386,7 +438,12 @@ class ReaderActivity : FragmentActivity() {
      * the SSH handoff and Folio Link. On failure the page stays where it was.
      */
     private suspend fun resumeAt(pointer: String): Boolean {
-        val nav = navigator ?: return false
+        val nav =
+            epubNavigator
+                ?: run {
+                    navigationError = getString(R.string.reader_m9_devices_epub_only)
+                    return false
+                }
         val publication = model.publication ?: return false
         val index = xpointerSpineIndex(pointer, model.spine.size)
         if (index == null) {
@@ -497,7 +554,7 @@ class ReaderActivity : FragmentActivity() {
             model.publisherStyles,
             dark,
         ) {
-            navigator?.submitPreferences(model.preferences(dark))
+            epubNavigator?.submitPreferences(model.preferences(dark))
         }
         // Immersive reading: hiding controls also hides the system bars (API 30+, where the
         // reading area below is sized to ignore their visibility and so never re-paginates).
@@ -575,7 +632,7 @@ class ReaderActivity : FragmentActivity() {
                         ),
                     onBack = ::closeReader,
                     onPanel = { panel = it },
-                    onListen = ::startListening,
+                    onListen = if (model.kind == ReaderKind.EPUB) ::startListening else null,
                 )
             }
             AnimatedVisibility(
@@ -687,9 +744,14 @@ class ReaderActivity : FragmentActivity() {
                                 ),
                             onDownload = { KokoroModel.install(this@ReaderActivity) },
                         )
-                    ReaderPanel.TEXT -> TextPanel()
+                    ReaderPanel.TEXT ->
+                        if (model.kind == ReaderKind.EPUB) TextPanel()
+                        else PanelNote(R.string.reader_m9_text_epub_only)
                     ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
-                    ReaderPanel.DEVICES -> DevicesPanel(book?.id, scope) { panel = null }
+                    ReaderPanel.DEVICES ->
+                        if (model.kind == ReaderKind.EPUB)
+                            DevicesPanel(book?.id, scope) { panel = null }
+                        else PanelNote(R.string.reader_m9_devices_epub_only)
                 }
             }
         }
@@ -721,6 +783,16 @@ class ReaderActivity : FragmentActivity() {
                 model.bookOnly,
             ),
             actions,
+        )
+    }
+
+    /** One line in place of a sheet that only works for EPUB books. */
+    @Composable
+    private fun PanelNote(text: Int) {
+        Text(
+            stringResource(text),
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
+            style = MaterialTheme.typography.bodyLarge,
         )
     }
 

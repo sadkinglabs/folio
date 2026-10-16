@@ -69,6 +69,8 @@ dependencies {
     implementation(libs.readium.streamer)
     implementation(libs.readium.navigator)
     implementation(libs.readium.navigator.tts)
+    implementation(libs.readium.adapter.pdfium)
+    implementation(libs.libarchive)
     implementation(libs.media3.session)
     implementation(libs.sherpa.onnx) { artifact { type = "aar" } }
     implementation(libs.commons.compress)

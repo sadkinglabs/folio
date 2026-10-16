@@ -61,9 +61,10 @@ class LinkQueue(context: Context) {
 
 /** Folio's library as Folio Link serves it. Called from the server's own threads. */
 class RoomLinkLibrary(private val dao: LibraryDao, private val queue: LinkQueue) : LinkLibrary {
-    // allBooks() already leaves out books in Recently removed.
+    // allBooks() already leaves out books in Recently removed. Folio Link serves EPUBs only until
+    // sync v2 carries PDFs and comics with their own names and types.
     private fun books(): List<Book> = runBlocking {
-        dao.allBooks().filter { File(it.currentPath).isFile }
+        dao.allBooks().filter { it.format == "epub" && File(it.currentPath).isFile }
     }
 
     private fun Book.link() =

@@ -534,6 +534,18 @@ Your books live in one visible folder on the phone, `Books/Author/Title.epub`. T
 
 **Not in this milestone:** an Inbox on the e-reader, series subfolders, other layouts (flat, by series), and mirroring anything other than EPUBs (covers, notes as files).
 
+### Why Librillo exists (owner, 2026-10-16)
+Every decision is checked against these.
+1. **Getting an EPUB onto the Kindle took maintenance.** Cable, SSH, OPDS and Syncthing all needed setting up again. Librillo sets up once, then mirrors.
+2. **Listening in the car or on the bike means read-aloud,** and the Kindle must know where listening stopped without any manual sync.
+3. **With only the phone in your pocket,** it must open where the Kindle left off, and the other way round.
+4. **Downloading another copy of a book while out** split highlights and notes across two files. Planned: recognise the same book through its Hardcover match, keep one file, and carry the other copy's highlights and position over by matching the text.
+5. **Bookshop photos got lost in the camera roll.** Scan cover → Want to read keeps them as a to-read list.
+6. **Reading history** goes to Hardcover automatically, so it outlives any device.
+7. **Highlights got lost and never revisited.** They're merged across devices. Planned: kept as one Markdown file per book in an Obsidian vault folder, refreshed on every sync.
+8. **EPUBs piled up in Downloads.** Librillo gathers them into one Books folder (Inbox) and cleans up.
+9. **Downloaded files carry messy metadata.** Librillo matches each to its Hardcover entry, cover included, with manual edits on top.
+
 ### M9: Seamless sync between phone and e-reader
 Decided with the owner on 2026-10-16, in a question-by-question session. This replaces M8's slices 3–8 and M4's send queue. M8 slices 1–2 (path rule, Books folder, moving the library) stay as the base.
 
@@ -579,6 +591,8 @@ Decided with the owner on 2026-10-16, in a question-by-question session. This re
 - **Positions** stay on kosync. Librillo's reader already publishes and offers positions.
 - **Books** gain a `format` column (epub, pdf, cbz, cbr), schema 9. Hashing and the path rule are format-agnostic. Readium opens PDF (pdfium adapter) and CBZ (image publication); CBR needs a RAR reader, and its licence is checked before adding it.
 - **Annotations:** KOReader stores them in `.sdr/metadata.<ext>.lua` (`annotations`: `pos0`/`pos1` xpointers or page numbers, `text`, `note`, `datetime`, `chapter`). The phone stores `BookAnnotation` rows with a device id. Merging is by identity (`device` + `datetime` + `pos0`), adding whatever is missing on each side, never deleting. Showing them in the phone reader converts xpointers through the existing resolver.
+
+**Status:** step 1 built (schema 9 with `format` and `sync_baseline`; EPUB, PDF, CBZ and CBR import and reading; Readium Pdfium adapter and libarchive for CBR). Rendering of PDF, CBZ and CBR is not verified on a device yet.
 
 **Build order** (the owner asked for everything at once; built in this order, with each stage compiled, tested and pushed before the next):
 1. **Schema 9 and formats:** `format`, the baseline table, import of PDF/CBZ/CBR, the reader opening them.

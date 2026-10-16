@@ -140,7 +140,7 @@ print('Migration 6→7 matches Room schema; separate file-revision anchors, perm
 
 # Folio Link adds one table for every device's latest kosync report; nothing existing changes.
 v8=json.loads((schemas/'8.json').read_text())['database']
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_7_8',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_7_8',1)[1].split('val MIGRATION_8_9',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==1,statements
 old.execute("INSERT INTO reading VALUES ('kept','kindle',0.4,'xp','reading',0,1,'a.sdr','h','d')")
@@ -155,4 +155,31 @@ assert old.execute("SELECT percent FROM reading WHERE bookId='kept'").fetchone()
 old.execute("INSERT INTO kosync_progress VALUES ('doc','kobo-1','Kobo','/body/p',0.5,10,10000)")
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 7→8 matches Room schema; KOReader reading data kept and Folio Link reports stored.')
+
+# Schema 9: books gain a format (every existing book is an EPUB) and sync gets a baseline table.
+old.execute("INSERT INTO books VALUES ('v8-book','Kept','[]','','','','[]','','','[]','A/Kept.epub','A/Kept.epub',NULL,'h8','h8',1000,'Reading')")
+v9=json.loads((schemas/'9.json').read_text())['database']
+assert v9['version']==9
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_8_9',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==2,statements
+for sql in statements:old.execute(sql)
+expected9=sqlite3.connect(':memory:');schema(expected9,v9)
+for entity in v9['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected9.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected9.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected9.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT format,title,status FROM books WHERE id='v8-book'").fetchone()==('epub','Kept','Reading')
+assert old.execute("SELECT percent FROM reading WHERE bookId='kept'").fetchone()==(0.4,)
+old.execute("INSERT INTO sync_baseline VALUES ('v8-book','kindle-1','A/Kept.epub','h8','Reading',1000,'[]','[]',2000)")
+try:
+    old.execute("INSERT INTO sync_baseline VALUES ('v8-book','kindle-1','A/Kept.epub','h8','Finished',1001,'[]','[]',2001)")
+    raise AssertionError('Two baselines for one book on one e-reader')
+except sqlite3.IntegrityError:pass
+# Purging a book keeps what the e-reader last had, so the next sync can act on it.
+old.execute("DELETE FROM books WHERE id='v8-book'")
+assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 8→9 matches Room schema; existing books become EPUB and keep their data, baselines are one per book per e-reader and outlive a purge.')
 

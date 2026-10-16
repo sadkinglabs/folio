@@ -308,13 +308,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     val file = File(current.currentPath)
                     require(repo.holds(book.id, file)) { msg(R.string.msg_library_file_misplaced) }
                     val folder = File(app.cacheDir, "epub-share").apply { mkdirs() }
-                    File(folder, "${book.id}.epub").also { file.copyTo(it, overwrite = true) }
+                    File(folder, "${book.id}.${current.format}").also {
+                        file.copyTo(it, overwrite = true)
+                    } to bookMimeType(current.format)
                 }
             val uri =
                 androidx.core.content.FileProvider.getUriForFile(
                     app,
                     "${app.packageName}.photos",
-                    ready,
+                    ready.first,
                 )
             withContext(Dispatchers.Main) {
                 val intent =
@@ -322,12 +324,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         android.content
                             .Intent(android.content.Intent.ACTION_SEND)
                             .putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            .setType("application/epub+zip")
+                            .setType(ready.second)
                     else
                         android.content
                             .Intent(android.content.Intent.ACTION_VIEW)
-                            .setDataAndType(uri, "application/epub+zip")
-                intent.clipData = android.content.ClipData.newUri(app.contentResolver, "EPUB", uri)
+                            .setDataAndType(uri, ready.second)
+                intent.clipData = android.content.ClipData.newUri(app.contentResolver, "Book", uri)
                 intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 try {
                     val chooser =

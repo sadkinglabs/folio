@@ -77,7 +77,7 @@ class LibrarySpaceUiTest {
                 AddBooksSheet("account", onAction = { selected = it }, onDismiss = {})
             }
         }
-        compose.onNodeWithText("Import EPUB").assertIsDisplayed()
+        compose.onNodeWithText("Import book").assertIsDisplayed()
         compose.onNodeWithText("Find online").assertIsDisplayed()
         compose.onNodeWithText("Scan cover").assertIsDisplayed()
         compose.onNodeWithText("Type it in").assertIsDisplayed()

@@ -25,8 +25,8 @@ class LibraryBackup(private val repo: LibraryRepository) {
                 val name =
                     if (file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile)
                         file.name
-                    else if (location == book.originalPath) "folder-original.epub"
-                    else "folder-current.epub"
+                    else if (location == book.originalPath) "folder-original.${book.format}"
+                    else "folder-current.${book.format}"
                 val relative = "library/${book.id}/$name"
                 files[relative] = file
                 return relative
@@ -44,6 +44,7 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 .put("id", b.id)
                                 .put("metadata", metadataJson(b.metadata()))
                                 .put("status", b.status)
+                                .put("bookFormat", b.format)
                                 .put("addedAt", b.addedAt)
                                 .put("original", path(b, b.originalPath))
                                 .put("current", path(b, b.currentPath))
@@ -188,8 +189,16 @@ class LibraryBackup(private val repo: LibraryRepository) {
                         ) {
                             "Book fingerprint mismatch"
                         }
-                        Epub.parse(original)
-                        if (original != current) Epub.parse(current)
+                        // Backups made before PDFs and comics hold only EPUBs.
+                        val format = o.optString("bookFormat", BookFormats.EPUB)
+                        require(format in BookFormats.ALL) { "Unsupported book format" }
+                        for (file in listOf(original, current).distinct()) {
+                            if (format == BookFormats.EPUB) Epub.parse(file)
+                            else
+                                require(BookFormats.detect(file) == format) {
+                                    "Book file does not match its format"
+                                }
+                        }
                         val cover =
                             if (o.isNull("cover")) null
                             else
@@ -209,6 +218,7 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 currentHash = o.getString("currentHash"),
                                 addedAt = o.getLong("addedAt"),
                                 status = status,
+                                format = format,
                             )
                             .withMetadata(m)
                     }

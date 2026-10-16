@@ -3,6 +3,7 @@
 package dev.sadking.folio.reader
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,14 +14,24 @@ import dev.sadking.folio.core.Epub
 import dev.sadking.folio.data.*
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.util.UUID
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import me.zhanghai.android.libarchive.Archive
+import me.zhanghai.android.libarchive.ArchiveEntry
 import org.json.JSONObject
+import org.readium.adapter.pdfium.document.PdfiumDocumentFactory
+import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.preferences.Axis
+import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.publication.Locator
@@ -49,6 +60,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     var publication by mutableStateOf<Publication?>(null)
+        private set
+
+    /** How the open book is shown. EPUB-only features check it. Null until the book opens. */
+    var kind by mutableStateOf<ReaderKind?>(null)
         private set
 
     var initialLocator: Locator? = null
@@ -171,18 +186,28 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         }
                         val found =
                             dao.book(id) ?: error(app.getString(R.string.msg_reader_no_epub))
+                        val epubFile = found.format == "epub"
+                        require(opensOnPhone(found.format)) {
+                            app.getString(R.string.reader_m9_format_unsupported)
+                        }
                         val file = File(found.currentPath).canonicalFile
                         require(app.repository.holds(found.id, file) && file.isFile) {
-                            app.getString(R.string.msg_reader_epub_missing)
+                            app.getString(
+                                if (epubFile) R.string.msg_reader_epub_missing
+                                else R.string.msg_reader_m9_file_missing
+                            )
                         }
                         require(Epub.sha256(file) == found.currentHash) {
-                            app.getString(R.string.msg_reader_epub_changed)
+                            app.getString(
+                                if (epubFile) R.string.msg_reader_epub_changed
+                                else R.string.msg_reader_m9_file_changed
+                            )
                         }
-                        // Positions stay phone-only if the spine cannot be read.
-                        spine = runCatching { Epub.spine(file) }.getOrDefault(emptyList())
-                        linkDocument = runCatching { koreaderDigest(file) }.getOrNull()
-                        found to file
+                        // Readium reads only ZIP archives: a RAR comic opens from a ZIP copy.
+                        val readable = if (found.format == "cbr") comicZip(found, file) else file
+                        Triple(found, file, readable)
                     }
+                val format = loaded.first.format
                 // All resource requests through Readium are offline; no book-triggered HTTP
                 // fetches.
                 val http =
@@ -195,26 +220,75 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                             )
                     }
                 val retriever = AssetRetriever(app.contentResolver, http)
-                val asset =
-                    retriever.retrieve(loaded.second.toUrl(isDirectory = false)).getOrElse {
-                        error(app.getString(R.string.msg_reader_epub_unopenable))
-                    }
-                val opened =
-                    PublicationOpener(
-                            DefaultPublicationParser(app, http, retriever, pdfFactory = null)
+                suspend fun publicationOf(file: File): Publication {
+                    val asset =
+                        retriever.retrieve(file.toUrl(isDirectory = false)).getOrElse {
+                            error(
+                                app.getString(
+                                    if (format == "epub") R.string.msg_reader_epub_unopenable
+                                    else R.string.msg_reader_m9_unopenable
+                                )
+                            )
+                        }
+                    return PublicationOpener(
+                            DefaultPublicationParser(
+                                app,
+                                http,
+                                retriever,
+                                pdfFactory = PdfiumDocumentFactory(app),
+                            )
                         )
                         .open(asset, allowUserInteraction = false)
                         .getOrElse {
                             asset.close()
-                            error(app.getString(R.string.msg_reader_epub_protected))
+                            error(
+                                app.getString(
+                                    when (format) {
+                                        "epub" -> R.string.msg_reader_epub_protected
+                                        "pdf" -> R.string.msg_reader_m9_pdf_protected
+                                        else -> R.string.msg_reader_m9_comic_unreadable
+                                    }
+                                )
+                            )
                         }
+                }
+                val opened =
+                    try {
+                        publicationOf(loaded.third)
+                    } catch (failure: IllegalStateException) {
+                        // CancellationException is an IllegalStateException: never swallow it.
+                        if (failure is CancellationException || format != "cbz") throw failure
+                        // A CBZ with stray files can fail Readium's comic check; its pictures
+                        // still open.
+                        publicationOf(
+                            withContext(Dispatchers.IO) { comicZip(loaded.first, loaded.second) }
+                        )
+                    }
+                val openedKind = readerKind(opened)
+                if (openedKind == null) {
+                    opened.close()
+                    error(app.getString(R.string.reader_m9_format_unsupported))
+                }
                 if (
                     opened.readingOrder.isEmpty() ||
                         opened.locatorFromLink(opened.readingOrder.first()) == null
                 ) {
                     opened.close()
-                    error(app.getString(R.string.msg_reader_no_chapters))
+                    error(
+                        app.getString(
+                            if (format == "epub") R.string.msg_reader_no_chapters
+                            else R.string.msg_reader_m9_no_pages
+                        )
+                    )
                 }
+                if (openedKind == ReaderKind.EPUB)
+                    withContext(Dispatchers.IO) {
+                        // Positions stay phone-only if the spine cannot be read.
+                        spine = runCatching { Epub.spine(loaded.second) }.getOrDefault(emptyList())
+                        // KOReader pointers are EPUB-only: PDFs and comics never offer or publish
+                        // one.
+                        linkDocument = runCatching { koreaderDigest(loaded.second) }.getOrNull()
+                    }
                 val saved = dao.phoneReading(id, loaded.first.currentHash)
                 initialLocator = saved?.let {
                     runCatching { Locator.fromJSON(JSONObject(it.locator)) }.getOrNull()
@@ -237,7 +311,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         .getString("incoming:$id", null)
                         ?.let { runCatching { JSONObject(it) }.getOrNull() }
                 automaticKindleResume =
-                    from == ReaderStart.Resume &&
+                    openedKind == ReaderKind.EPUB &&
+                        from == ReaderStart.Resume &&
                         queued != null &&
                         queued.optString("revision") == loaded.first.currentHash &&
                         queued.optString("expectedPhone") == saved?.locator.orEmpty() &&
@@ -247,6 +322,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     bookOnly = true
                 }
                 book = loaded.first
+                kind = openedKind
                 publication = opened
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -273,6 +349,21 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     else -> if (dark) Theme.DARK else Theme.LIGHT
                 },
         )
+
+    /**
+     * PDFs scroll top to bottom at the screen's width, like one long page. They have no text
+     * settings.
+     */
+    fun pdfPreferences() =
+        PdfiumPreferences(fit = Fit.WIDTH, scroll = true, scrollAxis = Axis.VERTICAL)
+
+    /** A ZIP of the comic's pages in the cache, for archives Readium cannot read itself. */
+    private fun comicZip(book: Book, file: File): File =
+        try {
+            ComicCache.zipFor(app, file, book.currentHash)
+        } catch (_: IOException) {
+            error(app.getString(R.string.msg_reader_m9_comic_unreadable))
+        }
 
     fun appearance(
         size: Double = fontSize,
@@ -595,4 +686,112 @@ sealed interface ReaderStart {
 
     /** A KOReader pointer an e-reader reported. */
     data class Device(val pointer: String) : ReaderStart
+}
+
+/** How the phone reader shows a book. */
+enum class ReaderKind {
+    EPUB,
+    PDF,
+    COMIC,
+}
+
+/** The reader for a book's stored format (Book.format), or null when the phone cannot open it. */
+fun readerKind(format: String): ReaderKind? =
+    when (format.lowercase()) {
+        "epub" -> ReaderKind.EPUB
+        "pdf" -> ReaderKind.PDF
+        "cbz",
+        "cbr" -> ReaderKind.COMIC
+        else -> null
+    }
+
+/** True when the phone reader can open books stored in [format]. */
+fun opensOnPhone(format: String) = readerKind(format) != null
+
+/** The reader for an opened publication, from what Readium found in the file. */
+internal fun readerKind(publication: Publication): ReaderKind? =
+    when {
+        publication.conformsTo(Publication.Profile.PDF) -> ReaderKind.PDF
+        publication.conformsTo(Publication.Profile.DIVINA) -> ReaderKind.COMIC
+        publication.conformsTo(Publication.Profile.EPUB) -> ReaderKind.EPUB
+        else -> null
+    }
+
+private val COMIC_PAGE_TYPES =
+    setOf("jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "jxl", "tif", "tiff")
+
+/**
+ * An archive path as a comic page's ZIP entry name, or null when it is not a page: folders, hidden
+ * files, macOS leftovers and metadata such as ComicInfo.xml.
+ */
+internal fun comicPageName(path: String): String? {
+    val name = path.replace('\\', '/').trimStart('/')
+    val parts = name.split('/')
+    if (parts.any { it.isEmpty() || it.startsWith(".") || it == "__MACOSX" }) return null
+    return name.takeIf { it.substringAfterLast('.', "").lowercase() in COMIC_PAGE_TYPES }
+}
+
+/**
+ * RAR comics (CBR): Readium reads only ZIP archives, so the pages are copied once per file revision
+ * into a ZIP in the app's cache, and the reader opens that. The book file is only read. One comic
+ * is kept; opening another replaces it, and Android may clear the cache at any time.
+ */
+internal object ComicCache {
+    private const val BLOCK = 64 * 1024
+
+    fun zipFor(context: Context, source: File, hash: String): File {
+        val dir = File(context.cacheDir, "comics").apply { mkdirs() }
+        val target = File(dir, "$hash.cbz")
+        if (target.isFile && target.length() > 0) return target
+        dir.listFiles()?.forEach { it.delete() }
+        val partial = File(dir, "$hash.partial")
+        try {
+            ZipOutputStream(partial.outputStream().buffered()).use { zip ->
+                // Pictures are already compressed.
+                zip.setLevel(Deflater.NO_COMPRESSION)
+                if (copyPages(source, zip) == 0) throw IOException("No pages")
+            }
+            if (!partial.renameTo(target)) throw IOException("Cache rename failed")
+            return target
+        } finally {
+            partial.delete()
+        }
+    }
+
+    private fun copyPages(source: File, zip: ZipOutputStream): Int {
+        val archive = Archive.readNew()
+        try {
+            Archive.readSupportFilterAll(archive)
+            Archive.readSupportFormatAll(archive)
+            Archive.readOpenFileName(archive, source.path.toByteArray(), BLOCK.toLong())
+            val bytes = ByteArray(BLOCK)
+            val written = mutableSetOf<String>()
+            while (true) {
+                val entry = Archive.readNextHeader(archive)
+                if (entry == 0L) break
+                if (ArchiveEntry.isEncrypted(entry)) throw IOException("Password-protected")
+                val path =
+                    ArchiveEntry.pathnameUtf8(entry)
+                        ?: ArchiveEntry.pathname(entry)?.let { String(it) }
+                val name = path?.let(::comicPageName)
+                if (
+                    ArchiveEntry.filetype(entry) != ArchiveEntry.AE_IFREG ||
+                        name == null ||
+                        !written.add(name)
+                )
+                    continue
+                zip.putNextEntry(ZipEntry(name))
+                while (true) {
+                    val buffer = ByteBuffer.wrap(bytes)
+                    Archive.readData(archive, buffer)
+                    if (buffer.position() == 0) break
+                    zip.write(bytes, 0, buffer.position())
+                }
+                zip.closeEntry()
+            }
+            return written.size
+        } finally {
+            Archive.readFree(archive)
+        }
+    }
 }

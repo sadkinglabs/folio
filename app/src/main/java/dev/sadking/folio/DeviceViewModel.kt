@@ -346,7 +346,8 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             val existing = dao.transfers(config.id).associateBy { it.bookId }
             val books =
                 dao.allBooks()
-                    .filter { selected == null || it.id in selected }
+                    // The SSH send names files `<id>.epub`; PDFs and comics wait for sync v2.
+                    .filter { (selected == null || it.id in selected) && it.format == "epub" }
                     .map { b ->
                         SyncBook(
                             b.id,

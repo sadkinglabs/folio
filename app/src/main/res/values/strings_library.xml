@@ -121,7 +121,10 @@
 
     <!-- Library: add books sheet -->
     <string name="library_add_title">Add</string>
-    <string name="library_add_epub">Import EPUB</string>
+    <string name="library_add_epub">Import book</string>
+    <string name="import_unsupported_format">Librillo takes EPUB, PDF, CBZ and CBR files. This file is none of them.</string>
+    <string name="edit_title_required">Enter a title.</string>
+    <string name="edit_series_number_invalid">The series number must be a number, like 2 or 2.5.</string>
     <string name="library_add_manual">Type it in</string>
     <string name="library_add_discover">Scan cover</string>
     <string name="library_add_lookup">Find online</string>

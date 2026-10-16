@@ -123,7 +123,7 @@ fun CatalogueBookDetails(
             busy = state.busy,
             onPickFile = {
                 attaching = false
-                picker.launch(arrayOf("application/epub+zip", "application/octet-stream"))
+                picker.launch(BOOK_FILE_TYPES)
             },
             onPick = {
                 attaching = false

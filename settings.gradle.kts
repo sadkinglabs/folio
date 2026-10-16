@@ -15,11 +15,15 @@ dependencyResolutionManagement {
         // which Gradle reports as a missing library.
         maven("https://maven-central.storage-download.googleapis.com/maven2/")
         mavenCentral()
-        // sherpa-onnx (on-device voice) is published only on JitPack. Limited to that group so no
-        // other dependency can resolve from it.
+        // sherpa-onnx (on-device voice) and Readium's Pdfium engine are published only on JitPack.
+        // Limited to those groups so no other dependency can resolve from it.
         exclusiveContent {
             forRepository { maven("https://jitpack.io") }
-            filter { includeGroup("com.github.k2-fsa.sherpa-onnx") }
+            filter {
+                includeGroup("com.github.k2-fsa.sherpa-onnx")
+                // Readium's PDF engine (Pdfium, Apache-2.0) is published only on JitPack.
+                includeGroup("com.github.marain87")
+            }
         }
     }
 }

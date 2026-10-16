@@ -36,6 +36,19 @@ class BookPageTest {
     }
 
     @Test
+    fun pdfsAndComicsOfferOnlyStartingOver() {
+        val kindle = report("Kindle", 0.6, 20)
+        assertEquals(
+            listOf(ReadStart.Beginning),
+            readStarts(phoneHasPlace = true, listOf(kindle), epub = false),
+        )
+        assertEquals(
+            emptyList<ReadStart>(),
+            readStarts(phoneHasPlace = false, listOf(kindle), epub = false),
+        )
+    }
+
+    @Test
     fun recordLosesSendAndShareAndGainsAttach() {
         val record = bookPageActions(false)
         assertEquals(BookPageAction.ATTACH, record.first())

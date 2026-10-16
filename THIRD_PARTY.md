@@ -7,6 +7,9 @@ Folio Android/JVM source is independently written and licensed Apache-2.0. The o
 | AndroidX Compose/Material3, Room, Lifecycle, Activity | Apache-2.0 | Runtime dependencies and official Material icon vectors. Preserve AOSP notices in distribution. |
 | Kotlin standard library / coroutines | Apache-2.0 | Runtime dependencies. |
 | mwiede JSch 2.28.8 | BSD-style (JSch); JZlib BSD-style notice | SSH/SFTP dependency. Complete upstream notices in `docs/licenses`. |
+| Readium Pdfium adapter 3.4.0 (`readium-adapter-pdfium`) | BSD-3-Clause | PDF reading on the phone (M9). |
+| marain87 PdfiumAndroid 1.9.8 and AndroidPdfViewer 3.2.8 (JitPack) | Apache-2.0; the bundled PDFium is BSD-3-Clause, with its own third-party notices (not yet audited) | Pulled in by the Readium Pdfium adapter. JitPack is limited to the `com.github.marain87` group. |
+| zhanghai libarchive-android 1.1.6 | Apache-2.0 wrapper; bundled libarchive 3.8.1 BSD-2-Clause | Reads RAR comics (CBR) on the phone (M9). libarchive's RAR and RAR5 readers are its own code, not UnRAR's. junrar was rejected: it is under the UnRAR licence. |
 | JUnit 4 | EPL-1.0 | Test dependency only; not in app runtime. |
 | Gradle wrapper | Apache-2.0 | Build bootstrap, distribution SHA256 pinned. |
 | org.json 20250517 | Public-domain licence | JVM unit-test implementation only; Android uses platform org.json. |

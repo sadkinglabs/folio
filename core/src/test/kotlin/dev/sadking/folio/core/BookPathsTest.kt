@@ -87,4 +87,47 @@ class BookPathsTest {
         assertEquals(composed, decomposed)
         assertEquals(BookPaths.key(composed), BookPaths.key(composed.uppercase()))
     }
+
+    @Test
+    fun otherFormatsKeepTheirExtension() {
+        val lee = listOf("Ann Lee")
+        val herge = listOf("Hergé")
+        assertEquals("Hergé/Tintin.cbz", BookPaths.path(herge, "Tintin", extension = "cbz"))
+        assertEquals("Ann Lee/Home.pdf", BookPaths.path(lee, "Home", extension = ".PDF"))
+        assertEquals("Ann Lee/Home.cbr", BookPaths.path(lee, "Home", extension = "cbr"))
+    }
+
+    @Test
+    fun clashesCountOnlyTheSameExtension() {
+        val taken = setOf("Ann Lee/Home.epub", "Ann Lee/Home.pdf").map(BookPaths::key)
+        val lee = listOf("Ann Lee")
+        assertEquals(
+            "Ann Lee/Home (2).pdf",
+            BookPaths.path(lee, "Home", extension = "pdf") { BookPaths.key(it) in taken },
+        )
+        assertEquals(
+            "Ann Lee/Home.cbz",
+            BookPaths.path(lee, "Home", extension = "cbz") { BookPaths.key(it) in taken },
+        )
+    }
+
+    @Test
+    fun longNamesFitWithAnyExtension() {
+        val title = "Word ".repeat(60).trim()
+        for (ext in listOf("epub", "pdf", "cbz", "cbr")) {
+            val file = BookPaths.path(listOf("Author"), title, extension = ext).substringAfter('/')
+            assertTrue(file.endsWith(".$ext"))
+            assertTrue(file.length <= BookPaths.MAX_CHARS)
+            assertTrue(file.toByteArray().size <= BookPaths.MAX_BYTES)
+        }
+    }
+
+    @Test
+    fun extensionMustBeAPlainWord() {
+        for (bad in listOf("", ".", "e/pub", "../x", "ep ub")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                BookPaths.path(listOf("A"), "B", extension = bad)
+            }
+        }
+    }
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Book page: the Read button for a format the phone cannot show. -->
+    <string name="book_m9_opens_on_ereader">Opens on your e-reader</string>
+    <string name="reader_m9_format_unsupported">The phone can\'t open this kind of file. It opens on your e-reader.</string>
+    <string name="msg_reader_m9_file_missing">The book file is missing. Attach it again from the book page.</string>
+    <string name="msg_reader_m9_file_changed">This file was changed outside Librillo. Import it again to read it.</string>
+    <string name="msg_reader_m9_unopenable">Could not open this file</string>
+    <string name="msg_reader_m9_pdf_protected">This PDF is password-protected or damaged.</string>
+    <string name="msg_reader_m9_comic_unreadable">Could not read the pages of this comic. It may be damaged or password-protected.</string>
+    <string name="msg_reader_m9_no_pages">This file has no pages the phone can show.</string>
+    <string name="reader_m9_text_epub_only">Text settings work in EPUB books. PDFs and comics keep their own layout.</string>
+    <string name="reader_m9_devices_epub_only">Jumping to an e-reader\'s place works in EPUB books for now.</string>
+</resources>

@@ -3,9 +3,9 @@ package dev.sadking.folio.core
 import java.text.Normalizer
 
 /**
- * Where a book's EPUB goes in the Books folder: `Author/Title.epub`. The same path is used on the
- * phone and on the e-reader, so names must be safe on FAT and exFAT, which e-readers use, and on
- * the phone's ext4/F2FS.
+ * Where a book's file goes in the Books folder: `Author/Title.<format>`. The same path is used on
+ * the phone and on the e-reader, so names must be safe on FAT and exFAT, which e-readers use, and
+ * on the phone's ext4/F2FS.
  */
 object BookPaths {
     const val UNKNOWN_AUTHOR = "Unknown author"
@@ -24,15 +24,26 @@ object BookPaths {
     /**
      * The path for a book: the first author's folder and the title as the file name. [taken] says
      * whether a path is already used by another book; the comparison is case-insensitive because
-     * FAT ignores case. A clash gets " (2)", " (3)" and so on.
+     * FAT ignores case. A clash gets " (2)", " (3)" and so on. [extension] is the book's format
+     * ("epub", "pdf", "cbz", "cbr"). Pass it by name, since [taken] stays last for trailing
+     * lambdas.
      */
-    fun path(authors: List<String>, title: String, taken: (String) -> Boolean = { false }): String {
+    fun path(
+        authors: List<String>,
+        title: String,
+        extension: String = "epub",
+        taken: (String) -> Boolean = { false },
+    ): String {
+        val ext = extension.removePrefix(".").lowercase()
+        require(ext.isNotEmpty() && ext.all { it in 'a'..'z' || it in '0'..'9' }) {
+            "Not a file extension: $extension"
+        }
         val folder = part(authors.firstOrNull { it.isNotBlank() }.orEmpty(), UNKNOWN_AUTHOR)
-        val name = part(title, UNTITLED, reserveForSuffix = ".epub".length)
-        var candidate = "$folder/$name.epub"
+        val name = part(title, UNTITLED, reserveForSuffix = ext.length + 1)
+        var candidate = "$folder/$name.$ext"
         var n = 2
         while (taken(candidate)) {
-            candidate = "$folder/$name ($n).epub"
+            candidate = "$folder/$name ($n).$ext"
             n++
         }
         return candidate

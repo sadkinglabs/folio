@@ -2,10 +2,16 @@ package dev.sadking.folio.data
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.room.withTransaction
+import dev.sadking.folio.R
+import dev.sadking.folio.core.BookFormats
 import dev.sadking.folio.core.BookPaths
+import dev.sadking.folio.core.Comic
 import dev.sadking.folio.core.Epub
+import dev.sadking.folio.core.FileTitle
 import dev.sadking.folio.core.Metadata
+import dev.sadking.folio.core.Pdf
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +44,14 @@ class LibraryRepository(
     fun holds(bookId: String, file: File): Boolean =
         file.canonicalFile.parentFile == File(root, bookId).canonicalFile || inBooksFolder(file)
 
+    /**
+     * Adds an EPUB, PDF, CBZ or CBR file. The kind comes from the file's bytes, never from its name
+     * alone. Returns the book and whether it is new; a file already in the library returns that
+     * book (restored if it was removed).
+     */
     suspend fun import(uri: Uri): Pair<Book, Boolean> =
         withContext(Dispatchers.IO) {
+            val name = displayName(uri)
             lock.withLock {
                 val stage = File(root, ".import-${UUID.randomUUID()}")
                 try {
@@ -53,19 +65,19 @@ class LibraryRepository(
                         }
                         return@withLock book to false
                     }
-                    val parsed = Epub.parse(stage)
+                    val format =
+                        requireNotNull(detectFormat(stage, name)) {
+                            context.getString(R.string.import_unsupported_format)
+                        }
+                    val (m, coverBytes) = readMetadata(stage, format, name)
                     val id = UUID.randomUUID().toString()
                     val dir = File(root, id).apply { mkdirs() }
-                    val original = File(dir, "original.epub")
+                    val original = File(dir, "original.$format")
                     check(stage.renameTo(original)) { "Cannot commit imported file" }
                     try {
-                        val cover =
-                            parsed.cover?.let { bytes ->
-                                File(dir, "cover-original")
-                                    .also { it.writeBytes(bytes) }
-                                    .absolutePath
-                            }
-                        val m = parsed.metadata
+                        val cover = coverBytes?.let { bytes ->
+                            File(dir, "cover-original").also { it.writeBytes(bytes) }.absolutePath
+                        }
                         val book =
                             Book(
                                     id,
@@ -76,6 +88,7 @@ class LibraryRepository(
                                     originalHash = hash,
                                     currentHash = hash,
                                     coverPath = cover,
+                                    format = format,
                                 )
                                 .withMetadata(m)
                         dao.insert(book)
@@ -88,6 +101,42 @@ class LibraryRepository(
                     stage.delete()
                 }
             }
+        }
+
+    /** The name the file provider shows for [uri], else the last part of its path. */
+    private fun displayName(uri: Uri): String? =
+        runCatching {
+                context.contentResolver
+                    .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            }
+            .getOrNull() ?: uri.lastPathSegment
+
+    /**
+     * The book format of [file]: from its first bytes, then, for a ZIP they leave undecided, from
+     * its entries. Null when it is not a book Librillo takes.
+     */
+    private fun detectFormat(file: File, name: String?): String? {
+        val header = file.inputStream().use { it.readNBytes(BookFormats.HEADER_BYTES) }
+        return BookFormats.detect(header, name) ?: Comic.zipKind(file)
+    }
+
+    /**
+     * Metadata and cover for a new book. PDFs and CBRs fall back to the file name when their own
+     * details can't be read; a cover is a bonus, never a reason to refuse a file.
+     */
+    private fun readMetadata(
+        file: File,
+        format: String,
+        name: String?,
+    ): Pair<Metadata, ByteArray?> =
+        when (format) {
+            BookFormats.EPUB -> Epub.parse(file).let { it.metadata to it.cover }
+            BookFormats.PDF -> Pdf.metadata(file, name) to PdfCover.render(file)
+            BookFormats.CBZ -> Comic.parse(file, name).let { it.metadata to it.cover }
+            else ->
+                RarComic.parse(file, name)?.let { it.metadata to it.cover }
+                    ?: (Metadata(FileTitle.from(name)) to null)
         }
 
     /**
@@ -311,6 +360,8 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             lock.withLock {
                 val old = dao.book(id) ?: error("Book no longer exists")
+                if (old.format != BookFormats.EPUB)
+                    return@withLock editRecord(old, metadata, coverUri)
                 if (inBooksFolder(File(old.currentPath)))
                     return@withLock editInFolder(old, metadata, coverUri)
                 val dir = File(root, id)
@@ -414,6 +465,72 @@ class LibraryRepository(
         }
     }
 
+    /**
+     * An edit to a PDF, CBZ or CBR: Librillo never rewrites these files, so the new details live in
+     * the library only. A file in the Books folder is renamed to follow a new title or author; its
+     * content stays the same.
+     */
+    private suspend fun editRecord(old: Book, metadata: Metadata, coverUri: Uri?): Book {
+        require(metadata.title.isNotBlank()) { context.getString(R.string.edit_title_required) }
+        require(
+            metadata.seriesIndex.isBlank() ||
+                metadata.seriesIndex.toDoubleOrNull()?.let { it >= 0 && it.isFinite() } == true
+        ) {
+            context.getString(R.string.edit_series_number_invalid)
+        }
+        val (bytes, _) = coverBytes(coverUri)
+        val current = File(old.currentPath)
+        var path = old.currentPath
+        var renamed: File? = null
+        if (inBooksFolder(current)) {
+            val books = booksRoot()
+            require(current.isFile && Epub.sha256(current) == old.currentHash) {
+                "This book's file changed outside Librillo. Open the Books folder to check it."
+            }
+            val dest =
+                File(
+                    books,
+                    freePath(
+                        books,
+                        metadata.authors,
+                        metadata.title,
+                        mine = current,
+                        extension = old.format,
+                    ),
+                )
+            if (dest.canonicalFile != current.canonicalFile) {
+                dest.parentFile!!.mkdirs()
+                check(!dest.exists() && current.renameTo(dest)) { "Cannot rename the book's file" }
+                renamed = dest
+                path = dest.absolutePath
+            }
+        }
+        try {
+            val cover =
+                bytes?.let {
+                    File(File(root, old.id).apply { mkdirs() }, "cover-${UUID.randomUUID()}")
+                        .also { it.writeBytes(bytes) }
+                        .absolutePath
+                } ?: old.coverPath
+            val book =
+                old.withMetadata(metadata)
+                    .copy(
+                        currentPath = path,
+                        originalPath =
+                            if (old.originalPath == old.currentPath) path else old.originalPath,
+                        coverPath = cover,
+                    )
+            dao.update(book)
+            if (renamed != null && renamed.parentFile != current.parentFile)
+                removeEmptyFolder(current)
+            return book
+        } catch (e: Exception) {
+            // The record didn't change, so the file goes back to the name it has there.
+            if (renamed != null) renamed.renameTo(current)
+            throw e
+        }
+    }
+
     private fun coverBytes(coverUri: Uri?): Pair<ByteArray?, String> {
         val bytes = coverUri?.let { uri ->
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -440,11 +557,17 @@ class LibraryRepository(
     }
 
     /**
-     * A free `Author/Title.epub` path in [books]. A name counts as taken when a file with the same
-     * name, ignoring case, is there, unless it is [mine].
+     * A free `Author/Title.<extension>` path in [books]. A name counts as taken when a file with
+     * the same name, ignoring case, is there, unless it is [mine].
      */
-    internal fun freePath(books: File, authors: List<String>, title: String, mine: File?): String =
-        BookPaths.path(authors, title) { candidate ->
+    internal fun freePath(
+        books: File,
+        authors: List<String>,
+        title: String,
+        mine: File?,
+        extension: String = BookFormats.EPUB,
+    ): String =
+        BookPaths.path(authors, title, extension = extension) { candidate ->
             val file = File(books, candidate)
             val key = BookPaths.key(file.name)
             file.parentFile?.listFiles().orEmpty().any {

@@ -47,10 +47,10 @@
     <string name="msg_library_import_existing">Already in your library, or restored</string>
     <string name="msg_library_import_failed">Not imported</string>
     <string name="msg_library_imported">%1$d in your library · %2$d failed. Review the import results.</string>
-    <string name="msg_library_exporting_epub">Exporting the EPUB…</string>
+    <string name="msg_library_exporting_epub">Saving a copy…</string>
     <string name="msg_library_restore_first">Restore this book from Recently removed first</string>
     <string name="msg_library_file_misplaced">This book\'s file could not be found in Librillo\'s storage</string>
-    <string name="msg_library_epub_exported">EPUB exported with your latest changes</string>
+    <string name="msg_library_epub_exported">Copy saved</string>
     <string name="msg_library_preparing_share">Preparing to share…</string>
     <string name="msg_library_preparing_open">Preparing to open…</string>
     <string name="msg_library_share_title">Share EPUB</string>
