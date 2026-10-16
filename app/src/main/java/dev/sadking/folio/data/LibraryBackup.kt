@@ -17,6 +17,9 @@ class LibraryBackup(private val repo: LibraryRepository) {
     suspend fun export(destination: File) =
         repo.lock.withLock {
             val files = linkedMapOf<String, File>()
+            fun present(location: String): String? = location.takeIf {
+                it.isNotBlank() && File(it).isFile
+            }
             fun path(book: Book, location: String): String {
                 val file = File(location)
                 require(repo.holds(book.id, file)) { "Invalid library resource" }
@@ -46,9 +49,22 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 .put("status", b.status)
                                 .put("bookFormat", b.format)
                                 .put("addedAt", b.addedAt)
-                                .put("original", path(b, b.originalPath))
-                                .put("current", path(b, b.currentPath))
-                                .put("cover", b.coverPath?.let { path(b, it) } ?: JSONObject.NULL)
+                                // A book whose file is missing (moved away or deleted by hand) is
+                                // backed up as a record: its reading data, notes and lists are
+                                // kept, and the folder scan relinks the file if it comes back.
+                                .put(
+                                    "original",
+                                    present(b.originalPath)?.let { path(b, it) } ?: JSONObject.NULL,
+                                )
+                                .put(
+                                    "current",
+                                    present(b.currentPath)?.let { path(b, it) } ?: JSONObject.NULL,
+                                )
+                                .put(
+                                    "cover",
+                                    b.coverPath?.let(::present)?.let { path(b, it) }
+                                        ?: JSONObject.NULL,
+                                )
                                 .put("originalHash", b.originalHash)
                                 .put("currentHash", b.currentHash)
                         }
@@ -181,18 +197,21 @@ class LibraryBackup(private val repo: LibraryRepository) {
                             require(name.startsWith("library/$bookId/"))
                             return File(stage, name).also { require(it.isFile) }
                         }
-                        val original = resource("original")
-                        val current = resource("current")
+                        // A book backed up while its file was missing has no file here.
+                        val original = if (o.isNull("original")) null else resource("original")
+                        val current = if (o.isNull("current")) null else resource("current")
                         require(
-                            Epub.sha256(original) == o.getString("originalHash") &&
-                                Epub.sha256(current) == o.getString("currentHash")
+                            (original == null ||
+                                Epub.sha256(original) == o.getString("originalHash")) &&
+                                (current == null ||
+                                    Epub.sha256(current) == o.getString("currentHash"))
                         ) {
                             "Book fingerprint mismatch"
                         }
                         // Backups made before PDFs and comics hold only EPUBs.
                         val format = o.optString("bookFormat", BookFormats.EPUB)
                         require(format in BookFormats.ALL) { "Unsupported book format" }
-                        for (file in listOf(original, current).distinct()) {
+                        for (file in listOfNotNull(original, current).distinct()) {
                             if (format == BookFormats.EPUB) Epub.parse(file)
                             else
                                 require(BookFormats.detect(file) == format) {
@@ -211,8 +230,8 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 bookId,
                                 m.title,
                                 encode(m.authors),
-                                originalPath = original.name,
-                                currentPath = current.name,
+                                originalPath = original?.name.orEmpty(),
+                                currentPath = current?.name.orEmpty(),
                                 coverPath = cover?.name,
                                 originalHash = o.getString("originalHash"),
                                 currentHash = o.getString("currentHash"),
@@ -409,12 +428,17 @@ class LibraryBackup(private val repo: LibraryRepository) {
                             require(!destination.exists()) {
                                 "Untracked library folder exists; restore cancelled"
                             }
-                            check(source.renameTo(destination))
-                            created += destination
+                            // A record backed up without its file may have no folder at all.
+                            if (source.exists()) {
+                                check(source.renameTo(destination))
+                                created += destination
+                            }
+                            fun placed(name: String) =
+                                if (name.isEmpty()) "" else File(destination, name).absolutePath
                             dao.insert(
                                 b.copy(
-                                    originalPath = File(destination, b.originalPath).absolutePath,
-                                    currentPath = File(destination, b.currentPath).absolutePath,
+                                    originalPath = placed(b.originalPath),
+                                    currentPath = placed(b.currentPath),
                                     coverPath =
                                         b.coverPath?.let { File(destination, it).absolutePath },
                                 )

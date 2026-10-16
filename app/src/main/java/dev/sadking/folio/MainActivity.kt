@@ -22,6 +22,12 @@ class MainActivity : ComponentActivity() {
         (application as FolioApplication).link.resumeIfEnabled()
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Each time Librillo comes to the foreground: file the Inbox and catch up with the folder.
+        model.refreshFolder()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

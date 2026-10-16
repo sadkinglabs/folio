@@ -13,6 +13,15 @@ class FolioApplication : Application() {
             .build()
     }
     val repository by lazy { LibraryRepository(this, database) }
+    /** One scan of the Books folder for the whole app, so runs never overlap (M9 step 2). */
+    val folderScan by lazy {
+        BooksFolderScan(
+            repository,
+            java.io.File(filesDir, BooksFolderScan.CACHE_NAME),
+            FolderScanNotes.preferences(this),
+            canRead = { BooksFolder(this).hasAccess },
+        )
+    }
     val syncCoordinator by lazy { dev.sadking.folio.sync.SyncCoordinator(this) }
     val deviceSettings by lazy { DeviceSettings(this) }
     val linkQueue by lazy { dev.sadking.folio.link.LinkQueue(this) }

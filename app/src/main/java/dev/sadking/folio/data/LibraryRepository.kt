@@ -13,8 +13,11 @@ import dev.sadking.folio.core.FileTitle
 import dev.sadking.folio.core.Metadata
 import dev.sadking.folio.core.Pdf
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.Files
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -28,6 +31,20 @@ class LibraryRepository(
     val dao = database.library()
     internal val lock = Mutex()
     val root = File(context.filesDir, "library").apply { mkdirs() }
+
+    /** Whether Librillo may write to the Books folder: All files access is on. Tests replace it. */
+    internal var folderAccess: () -> Boolean = { BooksFolder(context).hasAccess }
+
+    /**
+     * True when new books go into the Books folder rather than private storage: access is on and
+     * the folder exists or can be made. Creates `Books/Inbox` the first time the folder is used.
+     */
+    fun folderReady(): Boolean {
+        if (!folderAccess()) return false
+        val books = booksRoot()
+        File(books, BooksInbox.FOLDER).mkdirs()
+        return books.isDirectory
+    }
 
     /** True for a file in Librillo's private storage. */
     fun isPrivate(file: File): Boolean =
@@ -47,61 +64,126 @@ class LibraryRepository(
     /**
      * Adds an EPUB, PDF, CBZ or CBR file. The kind comes from the file's bytes, never from its name
      * alone. Returns the book and whether it is new; a file already in the library returns that
-     * book (restored if it was removed).
+     * book (restored if it was removed). With folder access the book goes straight into the Books
+     * folder at `Author/Title.<format>`; without it, into private storage. The source is left
+     * alone.
      */
     suspend fun import(uri: Uri): Pair<Book, Boolean> =
         withContext(Dispatchers.IO) {
             val name = displayName(uri)
             lock.withLock {
-                val stage = File(root, ".import-${UUID.randomUUID()}")
+                // The copy is made on the volume the book will live on, so filing it is a rename.
+                val toFolder = folderReady()
+                val stage =
+                    if (toFolder)
+                        File(booksRoot(), ".librillo/.import-${UUID.randomUUID()}.part").also {
+                            it.parentFile!!.mkdirs()
+                        }
+                    else File(root, ".import-${UUID.randomUUID()}")
                 try {
                     context.contentResolver.openInputStream(uri)?.use { input ->
-                        stage.outputStream().use { Epub.copyBounded(input, it) }
+                        FileOutputStream(stage).use { output ->
+                            Epub.copyBounded(input, output)
+                            output.fd.sync()
+                        }
                     } ?: error("Cannot open selected file")
-                    val hash = Epub.sha256(stage)
-                    dao.duplicate(hash)?.let { book ->
-                        dao.removedEntry(book.id)?.let { removed ->
-                            dao.restoreRemoved(removed.groupId)
-                        }
-                        return@withLock book to false
-                    }
-                    val format =
-                        requireNotNull(detectFormat(stage, name)) {
-                            context.getString(R.string.import_unsupported_format)
-                        }
-                    val (m, coverBytes) = readMetadata(stage, format, name)
-                    val id = UUID.randomUUID().toString()
-                    val dir = File(root, id).apply { mkdirs() }
-                    val original = File(dir, "original.$format")
-                    check(stage.renameTo(original)) { "Cannot commit imported file" }
-                    try {
-                        val cover = coverBytes?.let { bytes ->
-                            File(dir, "cover-original").also { it.writeBytes(bytes) }.absolutePath
-                        }
-                        val book =
-                            Book(
-                                    id,
-                                    m.title,
-                                    encode(m.authors),
-                                    originalPath = original.absolutePath,
-                                    currentPath = original.absolutePath,
-                                    originalHash = hash,
-                                    currentHash = hash,
-                                    coverPath = cover,
-                                    format = format,
-                                )
-                                .withMetadata(m)
-                        dao.insert(book)
-                        book to true
-                    } catch (e: Exception) {
-                        dir.deleteRecursively()
-                        throw e
-                    }
+                    addLocked(stage, name, toFolder)
                 } finally {
                     stage.delete()
                 }
             }
         }
+
+    /**
+     * Files a book dropped in `Books/Inbox`: moved (renamed, never copied) to
+     * `Author/Title.<format>` and added. A file already in the library is left where it is and that
+     * book is returned with false. Throws [NotABook], [UnreadableBook] or [TooLargeBook] for files
+     * Librillo can't take; the file is then left where it is.
+     */
+    suspend fun fileFromInbox(file: File): Pair<Book, Boolean> =
+        withContext(Dispatchers.IO) {
+            lock.withLock {
+                require(
+                    file.parentFile?.canonicalFile ==
+                        File(booksRoot(), BooksInbox.FOLDER).canonicalFile
+                ) {
+                    "Not an Inbox file"
+                }
+                if (file.length() > Epub.MAX_FILE) throw TooLargeBook()
+                addLocked(file, file.name, toFolder = true)
+            }
+        }
+
+    /**
+     * Adds [file] as a new book, or returns the book that already has its content (restored if it
+     * was removed) and leaves [file] alone. A new book's file is renamed, never copied: to
+     * `Author/Title.<format>` in the Books folder when [toFolder], else into private storage. The
+     * rename and the record happen together; if recording fails, the file is renamed back. Call
+     * under [lock].
+     */
+    internal suspend fun addLocked(
+        file: File,
+        name: String?,
+        toFolder: Boolean,
+    ): Pair<Book, Boolean> {
+        val format =
+            detectFormat(file, name)
+                ?: throw NotABook(context.getString(R.string.import_unsupported_format))
+        val hash = Epub.sha256(file)
+        dao.duplicate(hash)?.let { book ->
+            dao.removedEntry(book.id)?.let { removed -> dao.restoreRemoved(removed.groupId) }
+            return book to false
+        }
+        val (m, coverBytes) =
+            try {
+                readMetadata(file, format, name)
+            } catch (e: Exception) {
+                throw UnreadableBook(e)
+            }
+        val id = UUID.randomUUID().toString()
+        val dir = File(root, id)
+        val books = booksRoot()
+        val dest =
+            if (toFolder)
+                File(books, freePath(books, m.authors, m.title, mine = null, extension = format))
+            else File(dir, "original.$format")
+        return withContext(NonCancellable) {
+            moveNoClobber(file, dest)
+            try {
+                val cover = coverBytes?.let { bytes ->
+                    File(dir.apply { mkdirs() }, "cover-original")
+                        .also { it.writeBytes(bytes) }
+                        .absolutePath
+                }
+                val book =
+                    Book(
+                            id,
+                            m.title,
+                            encode(m.authors),
+                            originalPath = dest.absolutePath,
+                            currentPath = dest.absolutePath,
+                            originalHash = hash,
+                            currentHash = hash,
+                            coverPath = cover,
+                            format = format,
+                        )
+                        .withMetadata(m)
+                dao.insert(book)
+                book to true
+            } catch (e: Exception) {
+                runCatching { moveNoClobber(dest, file) }
+                if (toFolder) removeEmptyFolder(dest)
+                dir.deleteRecursively()
+                throw e
+            }
+        }
+    }
+
+    /** Renames [from] to [to], making [to]'s folder; fails rather than replace a file. */
+    private fun moveNoClobber(from: File, to: File) {
+        to.parentFile!!.mkdirs()
+        Files.move(from.toPath(), to.toPath())
+    }
 
     /** The name the file provider shows for [uri], else the last part of its path. */
     private fun displayName(uri: Uri): String? =
@@ -137,6 +219,104 @@ class LibraryRepository(
             else ->
                 RarComic.parse(file, name)?.let { it.metadata to it.cover }
                     ?: (Metadata(FileTitle.from(name)) to null)
+        }
+
+    /**
+     * Adds a file found in the Books folder as a new book where it is: no copy and no rename. Null
+     * when it isn't a book Librillo takes, or its content is already in the library. Call with
+     * [lock] held.
+     */
+    internal suspend fun addInPlace(file: File, hash: String): Book? =
+        withContext(Dispatchers.IO) {
+            require(inBooksFolder(file) && file.isFile) { "Not a file in the Books folder" }
+            if (dao.duplicate(hash) != null) return@withContext null
+            val format = detectFormat(file, file.name) ?: return@withContext null
+            val (m, coverBytes) =
+                try {
+                    readMetadata(file, format, file.name)
+                } catch (_: Exception) {
+                    return@withContext null
+                }
+            val id = UUID.randomUUID().toString()
+            val dir = File(root, id)
+            try {
+                val cover = coverBytes?.let { bytes ->
+                    File(dir.apply { mkdirs() }, "cover-original")
+                        .also { it.writeBytes(bytes) }
+                        .absolutePath
+                }
+                val book =
+                    Book(
+                            id,
+                            m.title,
+                            encode(m.authors),
+                            originalPath = file.absolutePath,
+                            currentPath = file.absolutePath,
+                            originalHash = hash,
+                            currentHash = hash,
+                            coverPath = cover,
+                            format = format,
+                        )
+                        .withMetadata(m)
+                dao.insert(book)
+                book
+            } catch (e: Exception) {
+                dir.deleteRecursively()
+                throw e
+            }
+        }
+
+    /**
+     * Points a book at [file], where its content now is: the file was moved or renamed by hand.
+     * Progress, notes and lists stay, since they belong to the book, not its path. An original kept
+     * in the same file follows it. Null for a book that is gone or in Recently removed. Call with
+     * [lock] held.
+     */
+    internal suspend fun relink(bookId: String, file: File): Book? =
+        withContext(Dispatchers.IO) {
+            require(inBooksFolder(file) && file.isFile) { "Not a file in the Books folder" }
+            val book = dao.book(bookId) ?: return@withContext null
+            if (dao.removedEntry(bookId) != null) return@withContext null
+            val path = file.absolutePath
+            val moved =
+                book.copy(
+                    currentPath = path,
+                    originalPath =
+                        if (book.originalPath == book.currentPath) path else book.originalPath,
+                )
+            dao.update(moved)
+            moved
+        }
+
+    /**
+     * Accepts new content, [hash], at a book's own [file] as a new revision: it was changed outside
+     * Librillo. The phone's reading position is carried to the new revision, where it may land a
+     * little off; older positions and bookmarks stay under the old one. When the book's original
+     * was this same file, the original is the new content too, as the old bytes are gone. Null when
+     * the file isn't a book of the same format. Call with [lock] held.
+     */
+    internal suspend fun acceptRevision(bookId: String, file: File, hash: String): Book? =
+        withContext(Dispatchers.IO) {
+            require(inBooksFolder(file) && file.isFile) { "Not a file in the Books folder" }
+            val book = dao.book(bookId) ?: return@withContext null
+            if (dao.removedEntry(bookId) != null || book.currentHash == hash)
+                return@withContext null
+            if (detectFormat(file, file.name) != book.format) return@withContext null
+            val sameFile = book.originalPath == book.currentPath
+            val revised =
+                book.copy(
+                    currentPath = file.absolutePath,
+                    currentHash = hash,
+                    originalPath = if (sameFile) file.absolutePath else book.originalPath,
+                    originalHash = if (sameFile) hash else book.originalHash,
+                )
+            database.withTransaction {
+                dao.update(revised)
+                val old = dao.phoneReading(bookId, book.currentHash)
+                if (old != null && dao.phoneReading(bookId, hash) == null)
+                    dao.savePhoneReading(old.copy(revisionHash = hash))
+            }
+            revised
         }
 
     /**

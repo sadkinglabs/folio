@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -47,9 +49,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -61,6 +66,9 @@ internal const val LIBRARY_TAB_WANTED_TAG = "library-tab-wanted"
 internal const val LIBRARY_FILTER_TAG = "library-filter"
 internal const val LIBRARY_VIEW_TAG = "library-view"
 internal const val LIBRARY_SEARCH_TAG = "library-search"
+internal const val LIBRARY_REFRESH_TAG = "library-refresh"
+/** The pull indicator stays at least this long, so a quick check still reads as one. */
+private const val REFRESH_MIN_MILLIS = 600L
 
 /**
  * The Library screen: a serif title with the count, Add and Search; two tabs, Library and Want to
@@ -94,6 +102,12 @@ fun LibraryScreen(
     /** The list being filled from here: taps select instead of opening, under a banner. */
     pickingFor: String? = null,
     onCancelPicking: () -> Unit = {},
+    /** Pulling down on the Library: Librillo checks the Inbox and the Books folder again. */
+    onRefresh: () -> Unit = {},
+    /** True while that check runs; the pull indicator stays until it ends. */
+    refreshing: Boolean = false,
+    /** Books whose file is gone. Null checks the disk off the main thread; previews pass a set. */
+    missingFiles: Set<String>? = null,
     /** Replaces the title row (a list detail draws its own banner above the grid). */
     // A custom page header (a list's page) gets the view toggle to place among its actions.
     header: (@Composable (viewToggle: @Composable () -> Unit) -> Unit)? = null,
@@ -176,6 +190,33 @@ fun LibraryScreen(
     val listState = rememberLazyListState()
     val motionScope = rememberCoroutineScope()
     val bottomPadding = LocalContentBottomPadding.current + FolioSpace.item
+    // A book's file can vanish in the Files app without any change in the library: check the disk
+    // again on return, on pull-down, and whenever the books change.
+    var checks by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        checks++
+        onPauseOrDispose {}
+    }
+    val inspection = LocalInspectionMode.current
+    val checkedMissing by
+        produceState(emptySet<String>(), books, fileIds, checks, missingFiles) {
+            value =
+                if (missingFiles != null || inspection) emptySet()
+                else
+                    withContext(Dispatchers.IO) {
+                        missingFileIds(books.filter { it.id in fileIds })
+                    }
+        }
+    val missing = missingFiles ?: checkedMissing
+    var pulled by remember { mutableStateOf(false) }
+    val busyNow by rememberUpdatedState(busy || refreshing)
+    LaunchedEffect(pulled) {
+        if (pulled) {
+            delay(REFRESH_MIN_MILLIS)
+            snapshotFlow { busyNow }.first { !it }
+            pulled = false
+        }
+    }
     val columns = GridCells.Adaptive(104.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f))
     fun clearFilters() {
         query = ""
@@ -265,138 +306,153 @@ fun LibraryScreen(
                 onFiles = { files = quickToggle(files, it, "All books") },
             )
         }
-        if (results == null) LoadingGrid(columns, Modifier.weight(1f))
-        else if (filtered.isEmpty())
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when {
-                    source.isNotEmpty() || scoped ->
-                        EmptyState(
-                            stringResource(R.string.library_no_match_title),
-                            stringResource(R.string.library_no_match_body),
-                            Icons.Outlined.FilterList,
-                            { clearFilters() },
-                            actionEnabled = !busy,
-                            actionLabel = stringResource(R.string.library_no_match_action),
-                            // Not in the library: look the words up on Hardcover instead.
-                            secondaryAction =
-                                onSearchHardcover
-                                    ?.takeIf { query.isNotBlank() }
-                                    ?.let { { it(query.trim()) } },
-                            secondaryLabel =
-                                stringResource(R.string.library_search_hardcover, query.trim()),
-                        )
-                    wanted ->
-                        EmptyState(
-                            stringResource(R.string.library_wanted_empty_title),
-                            stringResource(R.string.library_wanted_empty_body),
-                            Icons.Outlined.BookmarkBorder,
-                            onFind ?: onImport,
-                            actionEnabled = !busy,
-                            actionLabel = stringResource(R.string.library_wanted_empty_find),
-                            illustration = FolioIllustration.Bookmark,
-                            secondaryAction = onScan,
-                            secondaryLabel = stringResource(R.string.library_wanted_empty_scan),
-                        )
-                    else ->
-                        EmptyState(
-                            stringResource(R.string.library_empty_title),
-                            stringResource(R.string.library_empty_body),
-                            Icons.Outlined.AutoStories,
-                            onImport,
-                            actionEnabled = !busy,
-                            actionLabel = stringResource(R.string.library_empty_action),
-                            illustration = FolioIllustration.Books,
-                        )
-                }
-            }
-        else
-            AnimatedContent(
-                grid,
-                modifier = Modifier.weight(1f),
-                transitionSpec = {
-                    fadeIn(FolioMotion.standardSpec()) togetherWith
-                        fadeOut(FolioMotion.standardSpec())
-                },
-                label = "Library layout",
-            ) { showGrid ->
-                val tile: @Composable (Book, Modifier, CoverVariant, String?) -> Unit =
-                    { book, tileModifier, variant, label ->
-                        BookCoverCell(
-                            book,
-                            tileModifier,
-                            selected = book.id in selection,
-                            variant = variant,
-                            signals = signals[book.id],
-                            progress = progress[book.id],
-                            noEpub = book.id !in fileIds,
-                            label = label,
-                            onClick = {
-                                if (selection.isEmpty() && pickingFor == null) open(book)
-                                else onSelect(book.id)
-                            },
-                            onSelect = { onSelect(book.id) },
-                            onContext = onContext?.let { { it(book) } },
-                        )
-                    }
-                if (showGrid)
-                    LazyVerticalGrid(
-                        state = gridState,
-                        columns = columns,
-                        contentPadding =
-                            PaddingValues(
-                                start = FolioSpace.item,
-                                end = FolioSpace.item,
-                                top = FolioSpace.small,
-                                bottom = bottomPadding,
-                            ),
-                        horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
-                        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
-                        modifier = Modifier.fillMaxSize().testTag(LIBRARY_GRID_TAG),
-                    ) {
-                        if (shelf.isNotEmpty())
-                            item(key = "shelf", span = { GridItemSpan(maxLineSpan) }) {
-                                ReadingShelf(shelf, progress, tile)
-                            }
-                        items(filtered, key = { it.id }) { book ->
-                            tile(
-                                book,
-                                Modifier.fillMaxWidth(),
-                                if (book.id in fileIds) CoverVariant.Grid else CoverVariant.Wanted,
-                                null,
+        PullToRefreshBox(
+            isRefreshing = pulled,
+            onRefresh = {
+                pulled = true
+                checks++
+                onRefresh()
+            },
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag(LIBRARY_REFRESH_TAG),
+            enabled = !scoped && selection.isEmpty() && pickingFor == null,
+        ) {
+            if (results == null) LoadingGrid(columns, Modifier.fillMaxSize())
+            else if (filtered.isEmpty())
+                // Scrollable, so pulling down works on an empty library too.
+                Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    when {
+                        source.isNotEmpty() || scoped ->
+                            EmptyState(
+                                stringResource(R.string.library_no_match_title),
+                                stringResource(R.string.library_no_match_body),
+                                Icons.Outlined.FilterList,
+                                { clearFilters() },
+                                actionEnabled = !busy,
+                                actionLabel = stringResource(R.string.library_no_match_action),
+                                // Not in the library: look the words up on Hardcover instead.
+                                secondaryAction =
+                                    onSearchHardcover
+                                        ?.takeIf { query.isNotBlank() }
+                                        ?.let { { it(query.trim()) } },
+                                secondaryLabel =
+                                    stringResource(R.string.library_search_hardcover, query.trim()),
                             )
-                        }
+                        wanted ->
+                            EmptyState(
+                                stringResource(R.string.library_wanted_empty_title),
+                                stringResource(R.string.library_wanted_empty_body),
+                                Icons.Outlined.BookmarkBorder,
+                                onFind ?: onImport,
+                                actionEnabled = !busy,
+                                actionLabel = stringResource(R.string.library_wanted_empty_find),
+                                illustration = FolioIllustration.Bookmark,
+                                secondaryAction = onScan,
+                                secondaryLabel = stringResource(R.string.library_wanted_empty_scan),
+                            )
+                        else ->
+                            EmptyState(
+                                stringResource(R.string.library_empty_title),
+                                stringResource(R.string.library_empty_body),
+                                Icons.Outlined.AutoStories,
+                                onImport,
+                                actionEnabled = !busy,
+                                actionLabel = stringResource(R.string.library_empty_action),
+                                illustration = FolioIllustration.Books,
+                            )
                     }
-                else
-                    LazyColumn(
-                        Modifier.fillMaxSize().testTag(LIBRARY_LIST_TAG),
-                        state = listState,
-                        contentPadding = PaddingValues(bottom = bottomPadding),
-                    ) {
-                        if (shelf.isNotEmpty())
-                            item(key = "shelf") {
-                                ReadingShelf(
-                                    shelf,
-                                    progress,
-                                    tile,
-                                    Modifier.padding(horizontal = FolioSpace.item),
-                                )
-                            }
-                        items(filtered, key = { it.id }) { book ->
-                            BookRow(
+                }
+            else
+                AnimatedContent(
+                    grid,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        fadeIn(FolioMotion.standardSpec()) togetherWith
+                            fadeOut(FolioMotion.standardSpec())
+                    },
+                    label = "Library layout",
+                ) { showGrid ->
+                    val tile: @Composable (Book, Modifier, CoverVariant, String?) -> Unit =
+                        { book, tileModifier, variant, label ->
+                            BookCoverCell(
                                 book,
+                                tileModifier,
                                 selected = book.id in selection,
+                                variant = variant,
                                 signals = signals[book.id],
                                 progress = progress[book.id],
                                 noEpub = book.id !in fileIds,
+                                fileMissing = book.id in missing,
+                                label = label,
                                 onClick = {
-                                    if (selection.isEmpty()) open(book) else onSelect(book.id)
+                                    if (selection.isEmpty() && pickingFor == null) open(book)
+                                    else onSelect(book.id)
                                 },
                                 onSelect = { onSelect(book.id) },
                                 onContext = onContext?.let { { it(book) } },
                             )
                         }
-                    }
-            }
+                    if (showGrid)
+                        LazyVerticalGrid(
+                            state = gridState,
+                            columns = columns,
+                            contentPadding =
+                                PaddingValues(
+                                    start = FolioSpace.item,
+                                    end = FolioSpace.item,
+                                    top = FolioSpace.small,
+                                    bottom = bottomPadding,
+                                ),
+                            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                            verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
+                            modifier = Modifier.fillMaxSize().testTag(LIBRARY_GRID_TAG),
+                        ) {
+                            if (shelf.isNotEmpty())
+                                item(key = "shelf", span = { GridItemSpan(maxLineSpan) }) {
+                                    ReadingShelf(shelf, progress, tile)
+                                }
+                            items(filtered, key = { it.id }) { book ->
+                                tile(
+                                    book,
+                                    Modifier.fillMaxWidth(),
+                                    if (book.id in fileIds && book.id !in missing) CoverVariant.Grid
+                                    else CoverVariant.Wanted,
+                                    null,
+                                )
+                            }
+                        }
+                    else
+                        LazyColumn(
+                            Modifier.fillMaxSize().testTag(LIBRARY_LIST_TAG),
+                            state = listState,
+                            contentPadding = PaddingValues(bottom = bottomPadding),
+                        ) {
+                            if (shelf.isNotEmpty())
+                                item(key = "shelf") {
+                                    ReadingShelf(
+                                        shelf,
+                                        progress,
+                                        tile,
+                                        Modifier.padding(horizontal = FolioSpace.item),
+                                    )
+                                }
+                            items(filtered, key = { it.id }) { book ->
+                                BookRow(
+                                    book,
+                                    selected = book.id in selection,
+                                    signals = signals[book.id],
+                                    progress = progress[book.id],
+                                    noEpub = book.id !in fileIds,
+                                    fileMissing = book.id in missing,
+                                    onClick = {
+                                        if (selection.isEmpty()) open(book) else onSelect(book.id)
+                                    },
+                                    onSelect = { onSelect(book.id) },
+                                    onContext = onContext?.let { { it(book) } },
+                                )
+                            }
+                        }
+                }
+        }
     }
     if (showFilter)
         LibraryFilterSheet(
@@ -834,9 +890,16 @@ private fun ReadingShelf(
     }
 }
 
-/** One badge at most: finished, on the e-reader, sending, or a problem. No EPUB is the frame. */
+/**
+ * One badge at most: file missing, finished, on the e-reader, sending, or a problem. No EPUB is the
+ * frame.
+ */
 @Composable
-private fun coverBadge(signals: BookSignals?): Pair<ImageVector, String>? {
+private fun coverBadge(
+    signals: BookSignals?,
+    fileMissing: Boolean = false,
+): Pair<ImageVector, String>? {
+    if (fileMissing) return Icons.Outlined.SearchOff to stringResource(R.string.m9ui_file_missing)
     val reading = signals?.reading ?: return null
     val device = signals.device
     return when {
@@ -874,6 +937,7 @@ private fun BookCoverCell(
     signals: BookSignals?,
     progress: Double?,
     noEpub: Boolean,
+    fileMissing: Boolean = false,
     label: String?,
     onClick: () -> Unit,
     onSelect: () -> Unit,
@@ -882,6 +946,7 @@ private fun BookCoverCell(
     val haptics = rememberHaptics()
     val description = coverDescription(book, signals, progress)
     val noEpubState = stringResource(R.string.shell_device_no_epub)
+    val missingState = stringResource(R.string.m9ui_file_missing)
     val selectLabel =
         stringResource(if (selected) R.string.shell_deselect_book else R.string.shell_select_book)
     val actionsLabel = stringResource(R.string.library_book_actions)
@@ -901,6 +966,7 @@ private fun BookCoverCell(
                 role = Role.Button
                 this.selected = selected
                 if (noEpub) stateDescription = noEpubState
+                else if (fileMissing) stateDescription = missingState
                 customActions =
                     listOfNotNull(
                         CustomAccessibilityAction(selectLabel) {
@@ -933,7 +999,7 @@ private fun BookCoverCell(
                     ),
                 variant = variant,
                 progress = if (reading) progress?.toFloat() else null,
-                badge = coverBadge(signals),
+                badge = coverBadge(signals, fileMissing),
             )
             // The plain overload: inside this Column, the ColumnScope one would be picked.
             val reduced = FolioMotion.reduced
@@ -969,6 +1035,7 @@ private fun BookRow(
     signals: BookSignals?,
     progress: Double?,
     noEpub: Boolean,
+    fileMissing: Boolean = false,
     onClick: () -> Unit,
     onSelect: () -> Unit,
     onContext: (() -> Unit)?,
@@ -1013,9 +1080,9 @@ private fun BookRow(
         CoverTile(
             book,
             Modifier.width(56.dp),
-            variant = if (noEpub) CoverVariant.Wanted else CoverVariant.Grid,
+            variant = if (noEpub || fileMissing) CoverVariant.Wanted else CoverVariant.Grid,
             progress = if (reading) progress?.toFloat() else null,
-            badge = coverBadge(signals),
+            badge = coverBadge(signals, fileMissing),
             lifted = false,
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1039,6 +1106,7 @@ private fun BookRow(
                             ?.takeIf { reading }
                             ?.let { stringResource(R.string.rd_percent, (it * 100).toInt()) },
                         if (noEpub) stringResource(R.string.shell_device_no_epub) else null,
+                        if (fileMissing) stringResource(R.string.m9ui_file_missing) else null,
                     )
                     .joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,

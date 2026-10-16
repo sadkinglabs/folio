@@ -9,6 +9,7 @@ import dev.sadking.folio.data.*
 import dev.sadking.folio.reader.koreaderDigest
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.withLock
@@ -26,6 +27,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         dao.removed().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val importResults = MutableStateFlow<List<ImportOutcome>>(emptyList())
     val showImportResults = MutableStateFlow(false)
+    /** True while [refreshFolder] runs, for the Library's pull-to-refresh indicator. */
+    val folderRefreshing = MutableStateFlow(false)
+    /** Kept across passes: it remembers which Inbox files are still being written. */
+    private val inbox by lazy { BooksInbox(repo) }
     val managementError = MutableStateFlow<String?>(null)
     val books =
         dao.books().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -257,23 +262,141 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             require(dev.sadking.folio.data.BooksFolder(app).hasAccess) {
                 msg(R.string.msg_books_folder_no_access)
             }
-            val result = dev.sadking.folio.data.BooksFolderMove(repo).run()
-            val moved =
+            moveMessage(dev.sadking.folio.data.BooksFolderMove(repo).run())
+        }
+
+    private fun moveMessage(result: MoveResult): String {
+        val moved =
+            app.resources.getQuantityString(
+                R.plurals.msg_books_folder_moved,
+                result.moved,
+                result.moved,
+            )
+        return if (result.failed.isEmpty()) moved
+        else
+            moved +
+                " " +
                 app.resources.getQuantityString(
-                    R.plurals.msg_books_folder_moved,
-                    result.moved,
-                    result.moved,
+                    R.plurals.msg_books_folder_stayed,
+                    result.failed.size,
+                    result.failed.size,
+                    result.failed.joinToString(", "),
                 )
-            if (result.failed.isEmpty()) moved
-            else
-                moved +
-                    " " +
-                    app.resources.getQuantityString(
-                        R.plurals.msg_books_folder_stayed,
-                        result.failed.size,
-                        result.failed.size,
-                        result.failed.joinToString(", "),
+    }
+
+    /**
+     * Brings the library up to date with the Books folder (M9 step 2): moves books still in private
+     * storage (once per app start), files what is in the Inbox, then scans the folder. Runs when
+     * Librillo comes to the foreground and on pull-to-refresh, at most once every 30 seconds unless
+     * [force] (a pull) or All files access was just turned on. Quiet unless something changed.
+     */
+    fun refreshFolder(force: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // One refresh at a time, across activities; a second request while one runs is dropped.
+            if (!folderRun.compareAndSet(false, true)) return@launch
+            try {
+                val ready = repo.folderReady()
+                val now = android.os.SystemClock.elapsedRealtime()
+                val accessJustGranted = ready && !lastReady
+                lastReady = ready
+                if (!ready) return@launch
+                if (!force && !accessJustGranted && now - lastRefresh < REFRESH_INTERVAL_MS)
+                    return@launch
+                lastRefresh = now
+                folderRefreshing.value = true
+                val lines = mutableListOf<String>()
+                if (!autoMoved) {
+                    autoMoved = true
+                    val move = BooksFolderMove(repo)
+                    if (move.pending() > 0) {
+                        val result = move.run()
+                        if (result.moved > 0 || result.failed.isNotEmpty())
+                            lines += moveMessage(result)
+                    }
+                }
+                var filed = inbox.run()
+                if (filed.waiting > 0) {
+                    // A file still being written gets one more look once it has had time to settle.
+                    delay(INBOX_SETTLE_MS)
+                    filed += inbox.run()
+                }
+                filed.message(app.resources)?.let { lines += it }
+                if (filed.added.isNotEmpty() || filed.notImported.isNotEmpty())
+                    importResults.value = inboxOutcomes(filed)
+                val scan = app.folderScan
+                val before = scan.lastResult()
+                val missingBefore = scan.missing()
+                val found = scan.run()
+                // Only news goes in the message: a book that was already missing, or a file that
+                // already couldn't be read, is not reported again on every check.
+                val newlyMissing = (scan.missing() - missingBefore).size
+                val newlyNotAdded = (found.notAdded - before?.notAdded.orEmpty().toSet()).size
+                lines += scanLines(found, newlyNotAdded)
+                val missing = found.missing.size
+                val news =
+                    lines +
+                        listOfNotNull(
+                            newlyMissing
+                                .takeIf { it > 0 }
+                                ?.let { plural(R.plurals.msg_scan_m9_missing, it) }
+                        )
+                if (news.isNotEmpty())
+                    runner.notices.emit(Operation(message = news.joinToString(" ")))
+                if (found.finishedAt > 0)
+                    // Settings shows this check's news, and how many books still miss their file.
+                    FolderScanNotes.recordScan(
+                        FolderScanNotes.preferences(app),
+                        found.finishedAt,
+                        (lines +
+                                listOfNotNull(
+                                    missing
+                                        .takeIf { it > 0 }
+                                        ?.let { plural(R.plurals.msg_scan_m9_missing, it) }
+                                ))
+                            .joinToString(" "),
                     )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                runner.notices.emit(
+                    Operation(message = msg(R.string.msg_folder_m9_refresh_failed), failed = true)
+                )
+            } finally {
+                folderRefreshing.value = false
+                folderRun.set(false)
+            }
+        }
+    }
+
+    private fun plural(id: Int, count: Int) = app.resources.getQuantityString(id, count, count)
+
+    /** The scan's news in plain lines: books added, followed and changed, and unreadable files. */
+    private fun scanLines(found: ScanResult, newlyNotAdded: Int) =
+        listOfNotNull(
+            found.added.size.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_added, it) },
+            found.relinked.size
+                .takeIf { it > 0 }
+                ?.let { plural(R.plurals.msg_scan_m9_relinked, it) },
+            found.revised.size.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_revised, it) },
+            newlyNotAdded.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_not_added, it) },
+        )
+
+    /** Inbox results for Settings → Imports, with the reason for each file not imported. */
+    private fun inboxOutcomes(result: InboxResult): List<ImportOutcome> =
+        (result.added + result.notImported).map { entry ->
+            ImportOutcome(
+                Uri.fromFile(entry.file).toString(),
+                entry.name.take(200),
+                msg(
+                    when (entry.reason) {
+                        null -> R.string.msg_library_import_added
+                        InboxReason.ALREADY_IN_LIBRARY -> R.string.msg_library_import_existing
+                        else -> R.string.msg_library_import_failed
+                    }
+                ),
+                entry.bookId,
+                entry.reason?.takeIf { it != InboxReason.ALREADY_IN_LIBRARY }?.text(app.resources),
+            )
         }
 
     fun exportEpub(book: Book, uri: Uri) =
@@ -407,13 +530,23 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun restoreBackup(uri: Uri) =
         run(msg(R.string.msg_library_restoring_backup)) {
             val temp = File(app.cacheDir, "restore-${UUID.randomUUID()}.zip")
-            try {
-                app.contentResolver.openInputStream(uri)?.use { input ->
-                    temp.outputStream().use { Epub.copyBounded(input, it, BackupArchive.MAX_TOTAL) }
-                } ?: error(msg(R.string.msg_library_backup_unreadable))
-                LibraryBackup(repo).restore(temp)
-            } finally {
-                temp.delete()
+            val restored =
+                try {
+                    app.contentResolver.openInputStream(uri)?.use { input ->
+                        temp.outputStream().use {
+                            Epub.copyBounded(input, it, BackupArchive.MAX_TOTAL)
+                        }
+                    } ?: error(msg(R.string.msg_library_backup_unreadable))
+                    LibraryBackup(repo).restore(temp)
+                } finally {
+                    temp.delete()
+                }
+            // Restored books land in private storage; with folder access they go on to the folder.
+            if (!repo.folderReady()) restored
+            else {
+                val move = BooksFolderMove(repo).run()
+                if (move.moved == 0 && move.failed.isEmpty()) restored
+                else restored + " " + moveMessage(move)
             }
         }
 
@@ -488,4 +621,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 ?: error(msg(R.string.msg_write_failed))
             msg(R.string.msg_library_highlights_exported)
         }
+
+    private companion object {
+        const val REFRESH_INTERVAL_MS = 30_000L
+        const val INBOX_SETTLE_MS = 6_000L
+        /** One folder refresh at a time, across activities. */
+        val folderRun = AtomicBoolean(false)
+        @Volatile var lastRefresh = -REFRESH_INTERVAL_MS
+        @Volatile var lastReady = false
+        /** The automatic move runs once per app start, the first time access is on. */
+        @Volatile var autoMoved = false
+    }
 }

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Books/Inbox (M9 step 2): one message per pass, and why a file was not imported. -->
+    <plurals name="msg_inbox_m9_added">
+        <item quantity="one">Added %1$d book from the Inbox.</item>
+        <item quantity="other">Added %1$d books from the Inbox.</item>
+    </plurals>
+    <plurals name="msg_inbox_m9_already">
+        <item quantity="one">%1$d was already in your library.</item>
+        <item quantity="other">%1$d were already in your library.</item>
+    </plurals>
+    <plurals name="msg_inbox_m9_already_alone">
+        <item quantity="one">%1$d file in the Inbox was already in your library.</item>
+        <item quantity="other">%1$d files in the Inbox were already in your library.</item>
+    </plurals>
+    <plurals name="msg_inbox_m9_not_imported">
+        <item quantity="one">%1$d file couldn\'t be added. It\'s in Inbox/Not imported.</item>
+        <item quantity="other">%1$d files couldn\'t be added. They\'re in Inbox/Not imported.</item>
+    </plurals>
+    <plurals name="msg_inbox_m9_retry">
+        <item quantity="one">%1$d file in the Inbox couldn\'t be filed. Librillo will try again next time.</item>
+        <item quantity="other">%1$d files in the Inbox couldn\'t be filed. Librillo will try again next time.</item>
+    </plurals>
+    <string name="inbox_m9_reason_duplicate">Already in your library</string>
+    <string name="inbox_m9_reason_unreadable">Librillo couldn\'t read this file. It may be damaged or protected.</string>
+    <string name="inbox_m9_reason_too_large">This file is over 256 MB, the most Librillo takes.</string>
+    <string name="msg_folder_m9_refresh_failed">Couldn\'t check the Books folder. Librillo will try again next time you open it.</string>
+    <!-- End of Books/Inbox. -->
+    <!-- The Books folder scan (M9 step 2): one line each, joined into one message. -->
+    <plurals name="msg_scan_m9_added">
+        <item quantity="one">Added %1$d book from the Books folder.</item>
+        <item quantity="other">Added %1$d books from the Books folder.</item>
+    </plurals>
+    <plurals name="msg_scan_m9_relinked">
+        <item quantity="one">%1$d book\'s file was moved or renamed. Librillo followed it.</item>
+        <item quantity="other">%1$d books\' files were moved or renamed. Librillo followed them.</item>
+    </plurals>
+    <plurals name="msg_scan_m9_revised">
+        <item quantity="one">%1$d book\'s file was changed outside Librillo.</item>
+        <item quantity="other">%1$d books\' files were changed outside Librillo.</item>
+    </plurals>
+    <plurals name="msg_scan_m9_missing">
+        <item quantity="one">%1$d book\'s file is missing. The book and your notes are kept.</item>
+        <item quantity="other">%1$d books\' files are missing. The books and your notes are kept.</item>
+    </plurals>
+    <plurals name="msg_scan_m9_not_added">
+        <item quantity="one">%1$d file in the Books folder couldn\'t be read as a book. It was left where it is.</item>
+        <item quantity="other">%1$d files in the Books folder couldn\'t be read as books. They were left where they are.</item>
+    </plurals>
+</resources>

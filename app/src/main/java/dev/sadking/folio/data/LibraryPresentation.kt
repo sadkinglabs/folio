@@ -1,6 +1,7 @@
 package dev.sadking.folio.data
 
 import dev.sadking.folio.core.LibraryRules
+import java.io.File
 
 data class LibraryPresentation(
     val entries: List<Book>,
@@ -104,3 +105,12 @@ fun presentLibrary(
     }
     return LibraryPresentation(entries, fileIds, signals, scoped)
 }
+
+/**
+ * Ids of books whose recorded file is gone (see [bookFileMissing]). Reads the disk: call it off the
+ * main thread, never from [presentLibrary].
+ */
+fun missingFileIds(
+    books: List<Book>,
+    isFile: (String) -> Boolean = { File(it).isFile },
+): Set<String> = books.filter { bookFileMissing(it, isFile) }.map { it.id }.toSet()

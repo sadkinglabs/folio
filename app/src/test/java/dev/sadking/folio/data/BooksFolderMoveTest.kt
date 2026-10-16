@@ -251,4 +251,56 @@ class BooksFolderMoveTest {
             otherDb.close()
         }
     }
+
+    @Test
+    fun aBookWhoseFileIsMissingIsBackedUpAsARecordWithItsNotes() = runBlocking {
+        val kept = imported("Kept", "Ann Lee")
+        val lost = imported("Lost", "Bo Lind")
+        BooksFolderMove(repo).run()
+        // Deleted by hand in the Files app: the record and its notes must survive a backup.
+        File(repo.dao.book(lost.id)!!.currentPath).delete()
+        repo.dao.annotation(
+            BookAnnotation(
+                "note-1",
+                lost.id,
+                "phone",
+                "a line",
+                "my note",
+                "1",
+                "2026",
+                "/p",
+                "/p",
+                "highlight",
+            )
+        )
+        val archive = File(base, "backup.zip")
+        LibraryBackup(repo).export(archive)
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val other = File(base, "other").apply { mkdirs() }
+        val otherDb =
+            Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
+        try {
+            val fresh =
+                LibraryRepository(
+                    object : ContextWrapper(context) {
+                        override fun getFilesDir() = other
+                    },
+                    otherDb,
+                ) {
+                    File(other, "Books")
+                }
+            LibraryBackup(fresh).restore(archive)
+            val restoredLost = fresh.dao.book(lost.id)!!
+            assertEquals("", restoredLost.currentPath)
+            assertEquals(lost.currentHash, restoredLost.currentHash)
+            assertEquals(listOf("my note"), fresh.dao.allAnnotations().map { it.note })
+            val restoredKept = fresh.dao.book(kept.id)!!
+            assertEquals(kept.currentHash, Epub.sha256(File(restoredKept.currentPath)))
+        } finally {
+            otherDb.close()
+        }
+    }
 }

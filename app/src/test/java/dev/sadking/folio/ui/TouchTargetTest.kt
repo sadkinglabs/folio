@@ -32,6 +32,8 @@ class TouchTargetTest {
             "BarPreview" to { BarPreview() },
             "BooksFolderPreview" to { BooksFolderPreview() },
             "DetailsPreview" to { DetailsPreview() },
+            "DetailsFileMissingPreview" to { DetailsFileMissingPreview() },
+            "DetailsChangedPreview" to { DetailsChangedPreview() },
             "DeviceFirstRunPreview" to { DeviceFirstRunPreview() },
             "DeviceOffPreview" to { DeviceOffPreview() },
             "DiscoveryPreview" to { DiscoveryPreview() },

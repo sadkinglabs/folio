@@ -53,6 +53,7 @@ import dev.sadking.folio.R
 import dev.sadking.folio.data.BooksFolder
 import dev.sadking.folio.data.BooksFolderMove
 import dev.sadking.folio.data.DeviceStatistics
+import dev.sadking.folio.data.FolderScanNotes
 import dev.sadking.folio.data.LinkStatus
 import dev.sadking.folio.data.linkStatus
 import dev.sadking.folio.link.FolioLink
@@ -61,7 +62,9 @@ import dev.sadking.folio.reader.ReaderTextActions
 import dev.sadking.folio.reader.ReaderTextSheet
 import dev.sadking.folio.reader.ReaderTextState
 import dev.sadking.folio.reader.ReaderTypography
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 internal const val SETTINGS_TAG = "settings"
 internal const val SETTINGS_THEME_TAG = "settings-theme"
@@ -83,6 +86,8 @@ internal const val SETTINGS_FOLDER_TAG = "settings-folder"
 internal const val SETTINGS_BOOKS_FOLDER_TAG = "settings-books-folder"
 internal const val BOOKS_FOLDER_ALLOW_TAG = "books-folder-allow"
 internal const val BOOKS_FOLDER_MOVE_TAG = "books-folder-move"
+internal const val BOOKS_FOLDER_INBOX_TAG = "books-folder-inbox"
+internal const val BOOKS_FOLDER_LAST_SCAN_TAG = "books-folder-last-scan"
 internal const val SETTINGS_PLUGIN_TAG = "settings-plugin"
 internal const val TEXT_SHEET_TAG = "settings-text-sheet"
 internal const val BACKUP_EXPORT_TAG = "settings-backup-export"
@@ -502,6 +507,9 @@ internal fun SettingsScreen(
                 refused = booksFolder.refused,
                 pending = booksFolder.pending,
                 canChange = booksFolder.inFolder == 0,
+                inbox = booksFolder.inbox,
+                lastScanAt = booksFolder.lastScan?.at,
+                lastScanMessage = booksFolder.lastScan?.message.orEmpty(),
                 busy = busy,
                 onMove = {
                     showBooksFolder = false
@@ -848,6 +856,10 @@ internal class BooksFolderState(
     val pending: Int,
     /** Books already in the folder; while there are any, the folder can't be moved yet. */
     val inFolder: Int,
+    /** The Inbox as people see it: "Books/Inbox". */
+    val inbox: String,
+    /** The folder scan's last result, or null before the first scan. */
+    val lastScan: FolderScanNotes.LastScan?,
     val allow: () -> Unit,
     val change: () -> Unit,
 )
@@ -861,10 +873,23 @@ internal fun rememberBooksFolder(busy: Boolean = false): BooksFolderState {
     var hasAccess by remember { mutableStateOf(folder.hasAccess) }
     var refused by remember { mutableStateOf(false) }
     // Access is granted on a system page; read it again when the user comes back.
+    var resumes by remember { mutableIntStateOf(0) }
     LifecycleResumeEffect(folder) {
         hasAccess = folder.hasAccess
+        resumes++
         onPauseOrDispose {}
     }
+    // The folder scan's last result, read again on return and when library work ends.
+    val lastScan by
+        produceState<FolderScanNotes.LastScan?>(null, busy, resumes) {
+            value =
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                            FolderScanNotes.lastScan(FolderScanNotes.preferences(context))
+                        }
+                        .getOrNull()
+                }
+        }
     // Counted again when library work ends, so the row is right after a move.
     val counts by
         produceState(0 to 0, busy, location) {
@@ -890,6 +915,8 @@ internal fun rememberBooksFolder(busy: Boolean = false): BooksFolderState {
         refused = refused,
         pending = counts.first,
         inFolder = counts.second,
+        inbox = "${location.name}/Inbox",
+        lastScan = lastScan,
         allow = {
             runCatching { context.startActivity(BooksFolder.accessIntent(context)) }
         },
@@ -898,8 +925,8 @@ internal fun rememberBooksFolder(busy: Boolean = false): BooksFolderState {
 }
 
 /**
- * The Books folder: where it is, Android's All files access with a plain reason, and changing the
- * location. Nothing moves into it yet; that is the next step of M8.
+ * The Books folder: where it is, Android's All files access with a plain reason, the Inbox with the
+ * last check, moving books in, and changing the location.
  */
 @Composable
 internal fun BooksFolderContent(
@@ -910,6 +937,9 @@ internal fun BooksFolderContent(
     refused: Boolean = false,
     pending: Int = 0,
     canChange: Boolean = true,
+    inbox: String? = null,
+    lastScanAt: Long? = null,
+    lastScanMessage: String = "",
     busy: Boolean = false,
     onMove: () -> Unit = {},
 ) {
@@ -950,6 +980,40 @@ internal fun BooksFolderContent(
                         .testTag(BOOKS_FOLDER_ALLOW_TAG),
             ) {
                 Text(stringResource(R.string.books_folder_allow))
+            }
+        if (hasAccess && inbox != null)
+            Column(
+                Modifier.padding(horizontal = FolioSpace.section).testTag(BOOKS_FOLDER_INBOX_TAG),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    stringResource(R.string.m9ui_inbox, inbox),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    stringResource(R.string.m9ui_inbox_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    when {
+                        lastScanAt == null -> stringResource(R.string.m9ui_not_checked)
+                        lastScanMessage.isBlank() ->
+                            stringResource(
+                                R.string.m9ui_last_check_quiet,
+                                relativeTime(lastScanAt),
+                            )
+                        else ->
+                            stringResource(
+                                R.string.m9ui_last_check,
+                                relativeTime(lastScanAt),
+                                lastScanMessage,
+                            )
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp).testTag(BOOKS_FOLDER_LAST_SCAN_TAG),
+                )
             }
         if (hasAccess && pending > 0) {
             Text(

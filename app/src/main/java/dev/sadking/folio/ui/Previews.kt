@@ -90,6 +90,7 @@ internal fun LibraryPreview() {
                     mapOf(sampleBooks.first().id to 0.37) +
                         reading.mapIndexed { i, book -> book.id to 0.2 * (i + 1) },
                 currentId = sampleBooks.first().id,
+                missingFiles = setOf("sample2"),
             )
         }
     }
@@ -111,6 +112,30 @@ internal fun DetailsPreview() {
                 lists = listOf("Slow Sundays"),
                 signals = BookSignals("On Kindle", "Reading · phone", 0.41, null),
             )
+        }
+    }
+}
+
+@Preview(name = "Details · file missing", widthDp = 412, heightDp = 892)
+@Composable
+internal fun DetailsFileMissingPreview() {
+    FolioTheme(dynamic = false) {
+        Surface {
+            BookDetails(
+                sampleBooks[1],
+                signals = BookSignals("On Kindle", "Reading · phone", 0.41, null),
+                fileMissing = true,
+            )
+        }
+    }
+}
+
+@Preview(name = "Details · changed outside", widthDp = 412, heightDp = 892)
+@Composable
+internal fun DetailsChangedPreview() {
+    FolioTheme(dynamic = false) {
+        Surface {
+            BookDetails(sampleBooks[2], fileMissing = false, changedOutside = true)
         }
     }
 }
@@ -538,7 +563,7 @@ internal fun BackupPreview() {
     }
 }
 
-@Preview(name = "Books folder · light", widthDp = 412, heightDp = 640)
+@Preview(name = "Books folder · light", widthDp = 412, heightDp = 800)
 @Composable
 internal fun BooksFolderPreview() {
     FolioTheme(dynamic = false) {
@@ -549,6 +574,9 @@ internal fun BooksFolderPreview() {
                 onAllow = {},
                 onChange = {},
                 pending = 12,
+                inbox = "Books/Inbox",
+                lastScanAt = System.currentTimeMillis() - 5 * 60_000L,
+                lastScanMessage = "Added 2 books from the Inbox. 1 was already in your library.",
             )
         }
     }

@@ -5,6 +5,7 @@
 
 package dev.sadking.folio.ui
 
+import android.content.SharedPreferences
 import android.text.format.DateUtils
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -25,10 +26,12 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Replay
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Sync
@@ -48,14 +51,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.FolioApplication
@@ -67,6 +73,7 @@ import dev.sadking.folio.reader.koreaderDigest
 import dev.sadking.folio.reader.opensOnPhone
 import dev.sadking.folio.reader.readerKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -85,6 +92,8 @@ internal const val BOOK_STATUS_STRIP_TAG = "book-status-strip"
 internal const val BOOK_LISTS_ADD_TAG = "book-lists-add"
 internal const val BOOK_OVERFLOW_TAG = "book-overflow"
 internal const val PROGRESS_SHEET_TAG = "progress-sheet"
+internal const val BOOK_FILE_MISSING_TAG = "book-file-missing"
+internal const val BOOK_CHANGED_OUTSIDE_TAG = "book-changed-outside"
 
 /**
  * The one book page, for books with and without an EPUB. A record ([hasEpub] false) gets the same
@@ -92,7 +101,8 @@ internal const val PROGRESS_SHEET_TAG = "progress-sheet"
  * status strip with Hardcover only.
  *
  * Busy rules: a running library operation ([busy]) disables changes; a transfer ([deviceBusy]) only
- * disables sending and the e-reader refresh. Reading is never blocked.
+ * disables sending and the e-reader refresh. Reading is never blocked. A book whose file is gone
+ * says so above Read, and Send and Share wait for the file.
  */
 @Composable
 fun BookDetails(
@@ -109,6 +119,10 @@ fun BookDetails(
     busy: Boolean = false,
     deviceBusy: Boolean = busy,
     contentPadding: PaddingValues = PaddingValues(),
+    /** The book's file is gone. Null checks the disk off the main thread; previews pass a value. */
+    fileMissing: Boolean? = null,
+    /** The folder scan took a new version made outside Librillo. Null reads [FolderScanNotes]. */
+    changedOutside: Boolean? = null,
     onRead: () -> Unit = {},
     /** The Read menu's other starts: from the beginning, read aloud, or an e-reader's place. */
     onReadFrom: (ReaderStart) -> Unit = {},
@@ -142,6 +156,17 @@ fun BookDetails(
         }
     }
     val sending = signals?.device in listOf("Sending", "Queued")
+    val missing = rememberFileMissing(book, hasEpub, fileMissing)
+    val (changed, clearChanged) = rememberChangedOutside(book.id, changedOutside)
+    // Opening the book is when the "changed outside Librillo" note has done its job.
+    val read = {
+        clearChanged()
+        onRead()
+    }
+    val readFrom: (ReaderStart) -> Unit = {
+        clearChanged()
+        onReadFrom(it)
+    }
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
@@ -153,6 +178,24 @@ fun BookDetails(
             Modifier.fillMaxWidth().padding(horizontal = FolioSpace.page),
             verticalArrangement = Arrangement.spacedBy(FolioSpace.section),
         ) {
+            if (missing)
+                BookNotice(
+                    Icons.Outlined.SearchOff,
+                    stringResource(R.string.m9ui_file_missing),
+                    stringResource(R.string.m9ui_file_missing_body),
+                    MaterialTheme.colorScheme.errorContainer,
+                    MaterialTheme.colorScheme.onErrorContainer,
+                    BOOK_FILE_MISSING_TAG,
+                )
+            else if (changed)
+                BookNotice(
+                    Icons.Outlined.Info,
+                    stringResource(R.string.m9ui_changed_outside),
+                    stringResource(R.string.m9ui_changed_outside_body),
+                    MaterialTheme.colorScheme.secondaryContainer,
+                    MaterialTheme.colorScheme.onSecondaryContainer,
+                    BOOK_CHANGED_OUTSIDE_TAG,
+                )
             val readLabel =
                 when (bookPrimary(hasEpub, phoneReading)) {
                     BookPrimary.CONTINUE ->
@@ -180,10 +223,10 @@ fun BookDetails(
                     Text(stringResource(R.string.book_m9_opens_on_ereader))
                 }
             else if (hasEpub && starts.isNotEmpty())
-                ReadSplitButton(readLabel, starts, onRead = onRead, onReadFrom = onReadFrom)
+                ReadSplitButton(readLabel, starts, onRead = read, onReadFrom = readFrom)
             else
                 Button(
-                    onClick = onRead,
+                    onClick = read,
                     modifier =
                         Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(BOOK_PRIMARY_TAG),
                 ) {
@@ -200,7 +243,7 @@ fun BookDetails(
                                     if (justSent) R.string.rd_action_queued
                                     else R.string.rd_action_send
                                 ),
-                                enabled = !deviceBusy && !justSent,
+                                enabled = !deviceBusy && !justSent && !missing,
                                 busy = sending,
                                 tag = BOOK_ACTION_SEND_TAG,
                             ) {
@@ -244,7 +287,7 @@ fun BookDetails(
                             IconAction(
                                 Icons.Outlined.Share,
                                 stringResource(R.string.rd_action_share),
-                                enabled = !busy,
+                                enabled = !busy && !missing,
                                 tag = BOOK_ACTION_SHARE_TAG,
                                 onClick = onShare,
                             )
@@ -294,6 +337,94 @@ fun BookDetails(
             onRefresh = onRefreshReading,
             onDismiss = { progressSheet = false },
         )
+}
+
+/** A tonal note on the book page: an icon, a short title and one plain sentence. */
+@Composable
+private fun BookNotice(
+    icon: ImageVector,
+    title: String,
+    body: String,
+    container: Color,
+    content: Color,
+    tag: String,
+) {
+    Surface(
+        Modifier.fillMaxWidth().testTag(tag).semantics(mergeDescendants = true) {},
+        shape = FolioSpace.panelShape,
+        color = container,
+        contentColor = content,
+    ) {
+        Row(
+            Modifier.padding(FolioSpace.item),
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+        ) {
+            Icon(icon, null, Modifier.size(20.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(body, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * Whether the book's recorded file is gone, checked off the main thread when the page opens, when
+ * Librillo comes back, and when the path changes. [override] fixes the answer for previews and
+ * tests.
+ */
+@Composable
+private fun rememberFileMissing(book: Book, hasEpub: Boolean, override: Boolean?): Boolean {
+    val inspection = LocalInspectionMode.current
+    var resumes by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(book.id) {
+        resumes++
+        onPauseOrDispose {}
+    }
+    val checked by
+        produceState(false, book.currentPath, hasEpub, resumes) {
+            value =
+                if (override != null || !hasEpub || inspection) false
+                else withContext(Dispatchers.IO) { bookFileMissing(book) }
+        }
+    return override ?: checked
+}
+
+/**
+ * Whether the folder scan flagged this book as changed outside Librillo, and a way to clear the
+ * flag once the book is opened. Follows [FolderScanNotes] while the page is shown, so a scan that
+ * ends meanwhile shows up. [override] fixes the answer for previews and tests.
+ */
+@Composable
+private fun rememberChangedOutside(bookId: String, override: Boolean?): Pair<Boolean, () -> Unit> {
+    val context = LocalContext.current
+    val live = override == null && !LocalInspectionMode.current
+    var changed by remember(bookId) { mutableStateOf(false) }
+    if (live)
+        LaunchedEffect(bookId) {
+            val prefs =
+                withContext(Dispatchers.IO) {
+                    FolderScanNotes.preferences(context).also { FolderScanNotes.changedIds(it) }
+                }
+            changed = bookId in FolderScanNotes.changedIds(prefs)
+            // Held here, strongly: SharedPreferences keeps listeners only weakly.
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
+                if (key == null || key == FolderScanNotes.CHANGED_IDS)
+                    changed = bookId in FolderScanNotes.changedIds(p)
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            try {
+                awaitCancellation()
+            } finally {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
+    val clear: () -> Unit = {
+        if (live && changed)
+            FolderScanNotes.clearChanged(FolderScanNotes.preferences(context), bookId)
+        changed = false
+    }
+    return (override ?: changed) to clear
 }
 
 /**

@@ -1,9 +1,26 @@
 package dev.sadking.folio.data
 
+import java.io.File
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class LibraryPresentationTest {
+    @get:Rule val folder = TemporaryFolder()
+
+    @Test
+    fun onlyBooksWhoseRecordedFileIsGoneAreMissing() {
+        val present = folder.newFile("present.epub")
+        val books =
+            listOf(
+                book("present").copy(currentPath = present.path),
+                book("gone").copy(currentPath = File(folder.root, "gone.epub").path),
+                book("record").copy(currentPath = ""),
+            )
+        assertEquals(setOf("gone"), missingFileIds(books))
+    }
+
     private fun book(
         id: String = "file",
         title: String = "Pride and Prejudice",

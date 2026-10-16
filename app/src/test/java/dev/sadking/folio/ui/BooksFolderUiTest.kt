@@ -80,4 +80,31 @@ class BooksFolderUiTest {
         state = Triple(true, 0, false)
         compose.onNodeWithTag(BOOKS_FOLDER_MOVE_TAG).assertDoesNotExist()
     }
+
+    @Test
+    fun theInboxAndTheLastCheckShowOnceAccessIsAllowed() {
+        var access by mutableStateOf(false)
+        var lastAt by mutableStateOf<Long?>(null)
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BooksFolderContent(
+                    "Phone storage/Books",
+                    access,
+                    {},
+                    {},
+                    inbox = "Books/Inbox",
+                    lastScanAt = lastAt,
+                    lastScanMessage = "Added 2 books from the Inbox.",
+                )
+            }
+        }
+        compose.onNodeWithTag(BOOKS_FOLDER_INBOX_TAG).assertDoesNotExist()
+        access = true
+        compose.onNodeWithText("Inbox: Books/Inbox").assertIsDisplayed()
+        compose.onNodeWithText("Not checked yet.").assertIsDisplayed()
+        lastAt = System.currentTimeMillis() - 5 * 60_000L
+        compose
+            .onNodeWithText("Added 2 books from the Inbox.", substring = true)
+            .assertIsDisplayed()
+    }
 }

@@ -99,6 +99,7 @@ fun FolioApp(model: LibraryViewModel) {
         val shelves by model.shelves.collectAsStateWithLifecycle()
         val memberships by model.memberships.collectAsStateWithLifecycle()
         val foregroundOp by model.operation.collectAsStateWithLifecycle()
+        val folderRefreshing by model.folderRefreshing.collectAsStateWithLifecycle()
         val discoveryState by discovery.state.collectAsStateWithLifecycle()
         val activeTasks by devices.activeSyncTasks.collectAsStateWithLifecycle()
         val syncJobs by devices.syncJobs.collectAsStateWithLifecycle()
@@ -951,6 +952,10 @@ fun FolioApp(model: LibraryViewModel) {
                                                                 selection = emptySet()
                                                                 pickingListId = null
                                                             },
+                                                            onRefresh = {
+                                                                model.refreshFolder(force = true)
+                                                            },
+                                                            refreshing = folderRefreshing,
                                                         )
                                                     FolioNav.LISTS ->
                                                         ListsScreen(

@@ -49,6 +49,10 @@ class ScreenshotTest {
 
     @Test fun details() = shoot("details") { DetailsPreview() }
 
+    @Test fun detailsFileMissing() = shoot("details-file-missing") { DetailsFileMissingPreview() }
+
+    @Test fun detailsChanged() = shoot("details-changed") { DetailsChangedPreview() }
+
     @Test fun editor() = shoot("editor") { EditorPreview() }
 
     @Test fun lists() = shoot("lists") { ListsPreview() }

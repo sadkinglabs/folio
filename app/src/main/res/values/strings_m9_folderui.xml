@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A book whose file is gone from the phone: Library tiles and the book page. -->
+    <string name="m9ui_file_missing">File missing</string>
+    <string name="m9ui_file_missing_body">Librillo can\'t find this book\'s file. Your progress, notes and lists are kept. Put the file back anywhere in the Books folder, then pull down on the Library to look again.</string>
+    <!-- Book page: the folder scan took a new version of the file. Shown until the book is opened. -->
+    <string name="m9ui_changed_outside">This file was changed outside Librillo</string>
+    <string name="m9ui_changed_outside_body">Librillo now uses the new version. Your saved place may be a little off.</string>
+    <!-- Settings, Books folder. %1$s is the folder, for example Books/Inbox. -->
+    <string name="m9ui_inbox">Inbox: %1$s</string>
+    <string name="m9ui_inbox_body">Drop EPUB, PDF, CBZ or CBR files here. Librillo files them by author when it opens, or when you pull down on the Library.</string>
+    <!-- %1$s is a time such as "5 minutes ago"; %2$s is the scan\'s own message. -->
+    <string name="m9ui_last_check">Last checked %1$s. %2$s</string>
+    <string name="m9ui_last_check_quiet">Last checked %1$s. Nothing new.</string>
+    <string name="m9ui_not_checked">Not checked yet.</string>
+</resources>

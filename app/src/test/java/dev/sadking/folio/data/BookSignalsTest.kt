@@ -79,4 +79,12 @@ class BookSignalsTest {
             bookSignals(book, true, null, null, task.copy(state = "PAUSED"), false).device,
         )
     }
+
+    @Test
+    fun aRecordedFileThatIsGoneIsMissingButNoPathIsNot() {
+        val placed = book.copy(currentPath = "/storage/emulated/0/Books/A/T.epub")
+        assertTrue(bookFileMissing(placed) { false })
+        assertFalse(bookFileMissing(placed) { true })
+        assertFalse(bookFileMissing(book) { false })
+    }
 }
