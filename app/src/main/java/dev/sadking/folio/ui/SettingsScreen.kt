@@ -51,6 +51,7 @@ import dev.sadking.folio.data.BooksFolder
 import dev.sadking.folio.data.BooksFolderMove
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.FolderScanNotes
+import dev.sadking.folio.device.HardcoverSettings
 import dev.sadking.folio.reader.ReaderDefaults
 import dev.sadking.folio.reader.ReaderTextActions
 import dev.sadking.folio.reader.ReaderTextSheet
@@ -127,7 +128,21 @@ internal fun SettingsTab(
     val dao = remember { app.database.library() }
     val allBooks by dao.books().collectAsState(emptyList())
     val allWishes by dao.wishes().collectAsState(emptyList())
-    val finished = remember(allBooks, allWishes) { finishedOnHardcover(allBooks, allWishes) }
+    val allReading by dao.reading().collectAsState(emptyList())
+    val observations by dao.hardcoverObservations().collectAsState(emptyList())
+    val account = remember(hardcoverUsername) { HardcoverSettings(app).accountId }
+    val finished =
+        remember(allBooks, allWishes, allReading, observations, account) {
+            finishedOnHardcover(
+                allBooks,
+                allWishes,
+                allReading,
+                observations
+                    .filter { it.accountId == account && it.status == 3 }
+                    .map { it.hardcoverId }
+                    .toSet(),
+            )
+        }
     var finishedSent by remember { mutableStateOf(false) }
     val readerPrefs = remember { context.getSharedPreferences(ReaderDefaults.PREFERENCES, 0) }
     var reading by remember {
@@ -157,10 +172,10 @@ internal fun SettingsTab(
             automatic = it
             app.hardcoverOutbox.automatic = it
         },
-        finishedToSend = finished.size,
+        finishedToSend = finished,
         finishedSent = finishedSent,
         onSendFinished = {
-            finished.forEach { app.hardcoverOutbox.queueFinish(it, null, explicit = true) }
+            finished.ids.forEach { app.hardcoverOutbox.queueFinish(it, null, explicit = true) }
             finishedSent = true
         },
         hardcoverUsername = hardcoverUsername,
@@ -199,7 +214,7 @@ internal fun SettingsScreen(
     statistics: DeviceStatistics? = null,
     hardcoverAutomatic: Boolean = false,
     onHardcoverAutomatic: (Boolean) -> Unit = {},
-    finishedToSend: Int = 0,
+    finishedToSend: FinishedToSend = FinishedToSend(emptyList(), 0, 0),
     finishedSent: Boolean = false,
     onSendFinished: () -> Unit = {},
     hardcoverUsername: String = "",
@@ -314,21 +329,34 @@ internal fun SettingsScreen(
                 Modifier.testTag(SETTINGS_HARDCOVER_AUTOMATIC_TAG),
                 value = stringResource(R.string.m9sync_hardcover_automatic_hint),
             )
-            if (hardcoverUsername.isNotBlank() && (finishedToSend > 0 || finishedSent))
+            if (hardcoverUsername.isNotBlank()) {
+                val toSend = finishedToSend.ids.size
                 SettingsRow(
                     Icons.Outlined.DoneAll,
                     stringResource(R.string.hardcover_send_finished),
-                    if (finishedSent) stringResource(R.string.hardcover_send_finished_queued)
-                    else
-                        pluralStringResource(
-                            R.plurals.hardcover_send_finished_value,
-                            finishedToSend,
-                            finishedToSend,
-                        ),
+                    when {
+                        finishedSent -> stringResource(R.string.hardcover_send_finished_queued)
+                        toSend > 0 ->
+                            pluralStringResource(
+                                R.plurals.hardcover_send_finished_value,
+                                toSend,
+                                toSend,
+                            )
+                        finishedToSend.unmatched > 0 ->
+                            pluralStringResource(
+                                R.plurals.hardcover_send_finished_unmatched,
+                                finishedToSend.unmatched,
+                                finishedToSend.unmatched,
+                            )
+                        finishedToSend.alreadyRead > 0 ->
+                            stringResource(R.string.hardcover_send_finished_all_read)
+                        else -> stringResource(R.string.hardcover_send_finished_none)
+                    },
                     Modifier.testTag(SETTINGS_HARDCOVER_SEND_FINISHED_TAG),
                     onClick = { confirmFinished = true },
-                    enabled = !busy && !finishedSent,
+                    enabled = !busy && !finishedSent && toSend > 0,
                 )
+            }
         }
         if (confirmFinished)
             AlertDialog(
@@ -337,8 +365,8 @@ internal fun SettingsScreen(
                     Text(
                         pluralStringResource(
                             R.plurals.hardcover_send_finished_title,
-                            finishedToSend,
-                            finishedToSend,
+                            finishedToSend.ids.size,
+                            finishedToSend.ids.size,
                         )
                     )
                 },
@@ -998,14 +1026,44 @@ internal fun BooksFolderContent(
     }
 }
 
+/** What "Send Finished books to Hardcover" would do: what it sends, and what it leaves. */
+internal data class FinishedToSend(
+    /** Book or catalogue ids to mark Read on Hardcover. */
+    val ids: List<String>,
+    /** Finished books not matched to Hardcover, which cannot be sent. */
+    val unmatched: Int,
+    /** Finished books Hardcover already has as Read. */
+    val alreadyRead: Int,
+)
+
 /**
- * Books marked Finished in Librillo that are matched to Hardcover, by book id: what "Send Finished
- * books to Hardcover" sends. Hardcover leaves those it already has as Read alone.
+ * Every book that shows as Finished in Librillo: marked Finished on the phone, finished on the
+ * e-reader (KOReader's "complete"), or a catalogue entry without a file marked Finished. Those
+ * matched to Hardcover and not already Read there are sent; the rest are counted, so the row can
+ * say why they are not.
  */
 internal fun finishedOnHardcover(
     books: List<dev.sadking.folio.data.Book>,
     wishes: List<dev.sadking.folio.data.WishBook>,
-): List<String> {
-    val linked = wishes.filter { it.hardcoverId != null }.mapNotNull { it.linkedBookId }.toSet()
-    return books.filter { it.status == "Finished" && it.id in linked }.map { it.id }
+    reading: List<dev.sadking.folio.data.ReadingSnapshot> = emptyList(),
+    readOnHardcover: Set<Int> = emptySet(),
+): FinishedToSend {
+    val owned = books.map { it.id }.toSet()
+    val kindleFinished = reading.filter { it.status == "complete" }.map { it.bookId }.toSet()
+    val finished =
+        books
+            .filter { it.status == "Finished" || it.id in kindleFinished }
+            .map { book ->
+                book.id to wishes.firstOrNull { it.linkedBookId == book.id }?.hardcoverId
+            } +
+            wishes
+                .filter { it.linkedBookId !in owned && it.status == "Finished" }
+                .map { it.id to it.hardcoverId }
+    val matched = finished.filter { it.second != null }
+    val send = matched.filter { it.second !in readOnHardcover }
+    return FinishedToSend(
+        send.map { it.first },
+        unmatched = finished.size - matched.size,
+        alreadyRead = matched.size - send.size,
+    )
 }

@@ -110,6 +110,12 @@
         <item quantity="one">%d book marked Finished here</item>
         <item quantity="other">%d books marked Finished here</item>
     </plurals>
+    <plurals name="hardcover_send_finished_unmatched">
+        <item quantity="one">%d Finished book isn\'t matched to Hardcover yet. Open it, then Hardcover, to match it.</item>
+        <item quantity="other">%d Finished books aren\'t matched to Hardcover yet. Open one, then Hardcover, to match it.</item>
+    </plurals>
+    <string name="hardcover_send_finished_all_read">Hardcover already has all your Finished books as Read.</string>
+    <string name="hardcover_send_finished_none">No books are marked Finished yet.</string>
     <string name="hardcover_send_finished_queued">Sending. They reach Hardcover when you\'re online.</string>
     <plurals name="hardcover_send_finished_title">
         <item quantity="one">Mark %d book as Read on Hardcover?</item>
