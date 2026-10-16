@@ -54,7 +54,6 @@
     <string name="hardcover_percent_hint">Enter a percentage from 0 to 100.</string>
     <string name="hardcover_use_phone_position">Use phone · %1$d%%</string>
     <string name="hardcover_use_device_position">Use e-reader · %1$d%%</string>
-    <string name="hardcover_get_from_device">Get from e-reader</string>
     <string name="hardcover_device_fetched_old">The e-reader position is for an earlier copy of this EPUB.</string>
     <string name="hardcover_send_to_hardcover">Send to Hardcover</string>
     <string name="hardcover_mark_reading_title">Mark Currently Reading?</string>

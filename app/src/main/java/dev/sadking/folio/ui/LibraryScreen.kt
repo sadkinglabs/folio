@@ -111,6 +111,8 @@ fun LibraryScreen(
     /** Replaces the title row (a list detail draws its own banner above the grid). */
     // A custom page header (a list's page) gets the view toggle to place among its actions.
     header: (@Composable (viewToggle: @Composable () -> Unit) -> Unit)? = null,
+    /** The sync line under the title: the e-reader's last sync and the Sync button. */
+    syncLine: (@Composable () -> Unit)? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val scoped = filterName != null
@@ -264,6 +266,8 @@ fun LibraryScreen(
                 busy = busy,
                 viewToggle = viewToggle,
             )
+        if (!scoped && selection.isEmpty() && pickingFor == null && syncLine != null)
+            Box(Modifier.padding(horizontal = FolioSpace.page, vertical = 4.dp)) { syncLine() }
         if (!scoped)
             PrimaryTabRow(selectedTabIndex = tab.ordinal, containerColor = Color.Transparent) {
                 Tab(
@@ -890,10 +894,7 @@ private fun ReadingShelf(
     }
 }
 
-/**
- * One badge at most: file missing, finished, on the e-reader, sending, or a problem. No EPUB is the
- * frame.
- */
+/** One badge at most: file missing or finished. No EPUB is the frame. */
 @Composable
 private fun coverBadge(
     signals: BookSignals?,
@@ -901,17 +902,7 @@ private fun coverBadge(
 ): Pair<ImageVector, String>? {
     if (fileMissing) return Icons.Outlined.SearchOff to stringResource(R.string.m9ui_file_missing)
     val reading = signals?.reading ?: return null
-    val device = signals.device
-    return when {
-        reading.startsWith("Finished") -> Icons.Outlined.DoneAll to reading
-        device == "On Kindle" ->
-            Icons.Outlined.TabletAndroid to stringResource(R.string.shell_device_on_ereader)
-        device == "Sending" || device == "Queued" ->
-            Icons.Outlined.Sync to stringResource(R.string.shell_device_sending_badge)
-        device in listOf("Transfer failed", "Transfer paused", "Needs update") ->
-            Icons.Outlined.ErrorOutline to displayDeviceState(signals)
-        else -> null
-    }
+    return if (reading.startsWith("Finished")) Icons.Outlined.DoneAll to reading else null
 }
 
 /** What TalkBack reads for a cover: title, author and, for a book in progress, its progress. */

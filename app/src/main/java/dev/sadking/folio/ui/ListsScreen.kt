@@ -64,8 +64,6 @@ internal fun ListsScreen(
     onOpen: (String) -> Unit,
     onNew: () -> Unit,
     onEdit: (Shelf) -> Unit = {},
-    onSend: (Shelf) -> Unit = {},
-    onPolicy: (Shelf, Boolean) -> Unit = { _, _ -> },
     onDelete: (Shelf) -> Unit = {},
     onScan: (() -> Unit)? = null,
 ) {
@@ -124,8 +122,6 @@ internal fun ListsScreen(
                     busy = busy,
                     onClick = { onOpen(card.id) },
                     onEdit = onEdit,
-                    onSend = onSend,
-                    onPolicy = onPolicy,
                     onDelete = onDelete,
                 )
             }
@@ -206,8 +202,8 @@ private fun listGround(card: ListCard): Color {
 }
 
 /**
- * One list: a tinted panel with a fan of its covers, the name in serif and the count. Small marks
- * at the end of the count line say when a list goes along in sends or fills by a rule.
+ * One list: a tinted panel with a fan of its covers, the name in serif and the count. A small mark
+ * at the end of the count line says when a list fills by a rule.
  */
 @Composable
 internal fun ListCardView(
@@ -215,8 +211,6 @@ internal fun ListCardView(
     busy: Boolean,
     onClick: () -> Unit,
     onEdit: (Shelf) -> Unit,
-    onSend: (Shelf) -> Unit,
-    onPolicy: (Shelf, Boolean) -> Unit,
     onDelete: (Shelf) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -277,15 +271,7 @@ internal fun ListCardView(
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
-                    if (card.syncEnabled)
-                        Icon(
-                            Icons.Outlined.Sync,
-                            stringResource(R.string.lists_in_sync),
-                            Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
                     if (card.rule != null) {
-                        if (card.syncEnabled) Spacer(Modifier.width(6.dp))
                         Icon(
                             Icons.Outlined.AutoAwesome,
                             stringResource(R.string.rd_list_by_rule),
@@ -305,25 +291,6 @@ internal fun ListCardView(
                     onClick = {
                         menu = false
                         onEdit(shelf)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.send_list)) },
-                    leadingIcon = { Icon(Icons.Outlined.TabletAndroid, null) },
-                    enabled = !busy && card.count > 0,
-                    onClick = {
-                        menu = false
-                        onSend(shelf)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.lists_sync_toggle)) },
-                    leadingIcon = { Icon(Icons.Outlined.Sync, null) },
-                    trailingIcon = { if (card.syncEnabled) Icon(Icons.Outlined.Check, null) },
-                    enabled = !busy,
-                    onClick = {
-                        menu = false
-                        onPolicy(shelf, !card.syncEnabled)
                     },
                 )
                 DropdownMenuItem(
@@ -393,8 +360,8 @@ internal fun CoverMosaic(covers: List<Book>, modifier: Modifier = Modifier, cove
 
 /**
  * One list's books, as a route above the Lists tab. A tinted banner carries the mosaic, the name in
- * serif and the count; user lists get Send and Edit. Below, the Library grid with its sort and
- * layout controls. Rule lists show their rule as a chip.
+ * serif and the count; user lists get Edit. Below, the Library grid with its sort and layout
+ * controls. Rule lists show their rule as a chip.
  */
 @Composable
 internal fun ListDetailScreen(
@@ -406,7 +373,6 @@ internal fun ListDetailScreen(
     onSelect: (String) -> Unit,
     onClearSelection: () -> Unit,
     onAddFromLibrary: () -> Unit,
-    onSend: ((Shelf) -> Unit)? = null,
     onEdit: ((Shelf) -> Unit)? = null,
     signals: Map<String, BookSignals> = emptyMap(),
     fileIds: Set<String> = card.books.map { it.id }.toSet(),
@@ -416,7 +382,7 @@ internal fun ListDetailScreen(
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     val shelf = card.shelf
-    // The list's page header: Back, the page actions (view, Send, Edit) and the banner. The view
+    // The list's page header: Back, the page actions (view, Edit) and the banner. The view
     // toggle comes from the grid, which owns the layout choice; an empty list has none.
     val pageHeader: @Composable (viewToggle: (@Composable () -> Unit)?) -> Unit = { viewToggle ->
         Row(
@@ -428,14 +394,6 @@ internal fun ListDetailScreen(
             }
             Spacer(Modifier.weight(1f))
             viewToggle?.invoke()
-            if (shelf != null && onSend != null) {
-                val send = stringResource(R.string.send_list)
-                Tooltipped(send) {
-                    IconButton(onClick = { onSend(shelf) }, enabled = !busy && card.count > 0) {
-                        Icon(Icons.Outlined.TabletAndroid, send)
-                    }
-                }
-            }
             if (shelf != null && onEdit != null) {
                 val edit = stringResource(R.string.rd_action_edit)
                 Tooltipped(edit) {
@@ -538,9 +496,9 @@ private val manualFields = listOf("Manual", "Missing on Kindle")
 
 /**
  * The list editor, for a new list ([shelf] null) or an existing one. Name, Manual or Rule, the
- * rule's field and value, and whether the list goes along in sends. Save is the one filled button;
- * Delete is an icon in the title row. The rule-change note appears only when a rule list is
- * switched to Manual.
+ * rule's field and value. Lists sync with the e-reader's KOReader collections by themselves. Save
+ * is the one filled button; Delete is an icon in the title row. The rule-change note appears only
+ * when a rule list is switched to Manual.
  */
 @Composable
 internal fun ListEditorSheet(
@@ -548,7 +506,7 @@ internal fun ListEditorSheet(
     takenNames: List<String>,
     busy: Boolean,
     error: String?,
-    onCreate: (name: String, field: String, value: String, syncEnabled: Boolean) -> Unit,
+    onCreate: (name: String, field: String, value: String) -> Unit,
     onSave: (Shelf) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -558,7 +516,6 @@ internal fun ListEditorSheet(
     // Rule field identifiers are stored in the database; only their display text is translated.
     var field by rememberSaveable(key) { mutableStateOf(shelf?.ruleField ?: "Manual") }
     var value by rememberSaveable(key) { mutableStateOf(shelf?.ruleValue ?: "") }
-    var sync by rememberSaveable(key) { mutableStateOf(shelf?.syncEnabled ?: false) }
     val taken = takenNames.any {
         it.equals(name.trim(), true) && !it.equals(shelf?.name ?: "", true)
     }
@@ -668,33 +625,16 @@ internal fun ListEditorSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            val syncLabel = stringResource(R.string.lists_sync_toggle)
-            Row(
-                Modifier.fillMaxWidth().toggleableCompat(sync, !busy) { sync = it },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(syncLabel, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        stringResource(R.string.lists_sync_toggle_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(FolioSpace.item))
-                Switch(sync, null, enabled = !busy)
-            }
             if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
             Button(
                 onClick = {
-                    if (shelf == null) onCreate(name.trim(), field, value.trim(), sync)
+                    if (shelf == null) onCreate(name.trim(), field, value.trim())
                     else
                         onSave(
                             shelf.copy(
                                 name = name.trim(),
                                 ruleField = field,
                                 ruleValue = value.trim(),
-                                syncEnabled = sync,
                             )
                         )
                 },

@@ -22,50 +22,36 @@ fun presentLibrary(
     wishMembers: List<WishMembership>,
     transfers: List<Transfer>,
     snapshots: List<ReadingSnapshot>,
-    tasks: List<SyncTask>,
     observations: List<HardcoverObservation>,
     accountId: Int?,
     deviceId: String,
-    paired: Boolean,
-    jobState: String?,
+    baselines: List<SyncBaseline> = emptyList(),
 ): LibraryPresentation {
     val entries = unifiedLibrary(books, wishes)
     val fileIds = books.map { it.id }.toSet()
     val linked = wishes.filter { it.linkedBookId != null }.associateBy { it.linkedBookId }
     val cloud = observations.filter { it.accountId == accountId }.associateBy { it.hardcoverId }
-    // A book is on the e-reader when it went there over SSH or the Librillo plugin confirmed it.
-    // The confirmation for the book's current file wins, then the most recent.
+    // A book is on the e-reader when the last sync left its current file there (the baseline),
+    // or, from before sync, when it went there over SSH or the first plugin confirmed it.
     val currentHash = books.associate { it.id to it.currentHash }
-    val deviceTransfers =
-        transfers
-            .filter { it.deviceId == deviceId || it.deviceId.startsWith(LINK_DEVICE_PREFIX) }
-            .groupBy { it.bookId }
-            .mapValues { (bookId, sent) ->
-                sent.filter { it.hash == currentHash[bookId] }.maxByOrNull { it.completedAt }
-                    ?: sent.maxBy { it.completedAt }
-            }
+    val onEreader =
+        (transfers
+                .filter { it.deviceId == deviceId || it.deviceId.startsWith(LINK_DEVICE_PREFIX) }
+                .filter { it.hash == currentHash[it.bookId] }
+                .map { it.bookId } +
+                baselines.filter { it.hash == currentHash[it.bookId] }.map { it.bookId })
+            .toSet()
     val latest =
         snapshots
             .filter { it.deviceId == deviceId }
             .groupBy { it.bookId }
             .mapValues { (_, values) -> values.maxBy { it.fetchedAt } }
-    val pending = tasks.associate { task ->
-        task.bookId to
-            if (jobState in listOf("FAILED", "PAUSED")) task.copy(state = "PAUSED") else task
-    }
     val signals =
         books.associate { book ->
             val wish = linked[book.id]
             book.id to
                 linkedReadingSignals(
-                    bookSignals(
-                        book,
-                        paired,
-                        deviceTransfers[book.id],
-                        latest[book.id],
-                        pending[book.id],
-                        wish?.hardcoverId != null,
-                    ),
+                    bookSignals(book, latest[book.id], wish?.hardcoverId != null),
                     wish,
                     cloud[wish?.hardcoverId],
                 )
@@ -73,8 +59,6 @@ fun presentLibrary(
             wishes
                 .filter { it.linkedBookId !in fileIds }
                 .associate { it.id to catalogueSignals(it, cloud[it.hardcoverId]) }
-    val verified =
-        books.filter { deviceTransfers[it.id]?.hash == it.currentHash }.map { it.id }.toSet()
     val wishById = wishes.associateBy { it.id }
     val membership =
         members.groupBy { it.shelfId }.mapValues { it.value.map { row -> row.bookId }.toSet() }
@@ -99,7 +83,7 @@ fun presentLibrary(
                                     hardcoverStatus(it.status)
                                 }
                                 ?: "Want to Read",
-                        book.id in verified,
+                        book.id in onEreader,
                     )
             }
     }

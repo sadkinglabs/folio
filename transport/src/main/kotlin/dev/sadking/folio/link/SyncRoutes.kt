@@ -51,6 +51,9 @@ class SyncRoutes(
         /** Verified uploads waiting on disk for finish, by e-reader path. */
         val received = HashMap<String, File>()
 
+        /** Uploads the phone refused before taking them (too large), by e-reader path. */
+        val refusals = HashMap<String, Refusal>()
+
         fun discard() {
             received.values.forEach { it.delete() }
             received.clear()
@@ -136,6 +139,7 @@ class SyncRoutes(
                         phone = phone,
                         baselines = library.baselines(device),
                         answers = library.phoneAnswers(device) + answers,
+                        ignored = library.refused(device).map { it.sha256 }.toSet(),
                     )
                 } catch (_: IllegalArgumentException) {
                     return invalid()
@@ -158,6 +162,7 @@ class SyncRoutes(
                     used = now(),
                 )
             sessions[device] = session
+            library.started(device, name, now())
             return json(
                 JSONObject()
                     .put("session", session.id)
@@ -201,7 +206,7 @@ class SyncRoutes(
         val listed = session.uploads[path] ?: return invalid()
         if (body == null) return invalid()
         val declared = request.header("Content-Length")?.toLongOrNull()
-        if (declared != null && declared > maxUpload) return tooLarge()
+        if (declared != null && declared > maxUpload) return tooLarge(session, path)
         val temp =
             try {
                 File.createTempFile("librillo-", ".upload", library.uploadDir().apply { mkdirs() })
@@ -217,7 +222,7 @@ class SyncRoutes(
             }
         if (sha256 == null) {
             temp.delete()
-            return tooLarge()
+            return tooLarge(session, path)
         }
         if (sha256 != listed.sha256) {
             temp.delete()
@@ -245,6 +250,14 @@ class SyncRoutes(
                 .put("size", temp.length())
                 .put("sha256", sha256)
         )
+    }
+
+    /** Answers 413, and remembers at finish that the phone can't take [path]. */
+    private fun tooLarge(session: Session, path: String): LinkResponse {
+        synchronized(lock) {
+            if (sessions[session.device] === session) session.refusals[path] = Refusal.TOO_LARGE
+        }
+        return tooLarge()
     }
 
     /** Copies [input] to [file] and returns its SHA-256, or null once it passes [maxUpload]. */
@@ -299,15 +312,22 @@ class SyncRoutes(
         val revisions = plan.phone.filterIsInstance<PhoneAction.Revise>().associateBy { it.path }
         val imports = plan.phone.filterIsInstance<PhoneAction.Import>().map { it.path }.toSet()
         val received = LinkedHashMap<String, String>()
+        val refusals = HashMap(session.refusals)
         plan.kindle.forEachIndexed { index, action ->
             if (action !is KindleAction.Upload || results[index]?.ok != true) return@forEachIndexed
             val file = session.received[action.path] ?: return@forEachIndexed
             val revision = revisions[action.path]
             val bookId =
-                when {
-                    revision != null -> library.revise(device, revision.bookId, action.path, file)
-                    action.path in imports -> library.receive(device, action.path, file)
-                    else -> null
+                try {
+                    when {
+                        revision != null ->
+                            library.revise(device, revision.bookId, action.path, file)
+                        action.path in imports -> library.receive(device, action.path, file)
+                        else -> null
+                    }
+                } catch (e: SyncRefusal) {
+                    refusals[action.path] = e.reason
+                    null
                 }
             if (bookId != null) received[action.path] = bookId
         }
@@ -331,7 +351,23 @@ class SyncRoutes(
             ),
         )
         library.saveQuestions(device, plan.questions)
+        library.saveRefused(device, refused(session, refusals))
         library.synced(device, session.name, now())
+    }
+
+    /**
+     * The e-reader's refused files after this sync: the earlier ones whose content is still on the
+     * e-reader, and the ones refused now. Content that changed or went away is forgotten, so a new
+     * version of a file is offered again.
+     */
+    private fun refused(session: Session, refusals: Map<String, Refusal>): List<RefusedFile> {
+        val time = now()
+        val fresh = refusals.mapNotNull { (path, reason) ->
+            session.uploads[path]?.let { RefusedFile(it.sha256, path, reason, time) }
+        }
+        val present = session.files.map { it.sha256 }.toSet()
+        val earlier = library.refused(session.device).filter { it.sha256 in present }
+        return (fresh + earlier).distinctBy { it.sha256 }.sortedBy { it.path }
     }
 
     /** The session [id], if it is still current; using it keeps it alive. Call under [lock]. */

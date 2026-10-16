@@ -68,7 +68,7 @@ class FolioLink(context: Context, dao: LibraryDao) {
     val routes =
         LinkRoutes(
             kosync,
-            RoomLinkLibrary(dao, (app as FolioApplication).linkQueue),
+            RoomLinkLibrary(dao),
             { settings.account() },
             {
                 LinkLabels(
@@ -98,6 +98,15 @@ class FolioLink(context: Context, dao: LibraryDao) {
     fun stop() {
         settings.enabled = false
         app.stopService(Intent(app, FolioLinkService::class.java))
+    }
+
+    /**
+     * The Sync button: the phone starts listening now, even with "Sync automatically" off, and
+     * stops by itself as usual ([LinkLifecycle]). The setting is left as it is.
+     */
+    fun syncNow() {
+        settings.password()
+        if (lifecycle.inForeground) runCatching { startService() }
     }
 
     /** Librillo came to the foreground: Link starts if it is set up and syncs automatically. */

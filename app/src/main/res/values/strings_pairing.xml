@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Settings → Advanced → E-reader over SSH (ConnectionForm.kt). The legacy path. -->
-    <string name="pairing_title">E-reader over SSH</string>
-    <string name="pairing_legacy_line">The older way to send books. Librillo Link needs no setup here.</string>
+    <!-- Settings → Advanced → E-reader SSH login (ConnectionForm.kt): only for installing the plugin. -->
+    <string name="pairing_title">E-reader SSH login</string>
+    <string name="pairing_legacy_line">Only used to install the Librillo plugin. Fill this in if your e-reader needs a key or a password.</string>
 
     <!-- The four steps, in order -->
     <string name="pairing_step_network">Network</string>
@@ -15,7 +15,7 @@
     <string name="pairing_step_todo">Step %1$d, %2$s</string>
 
     <!-- 1 Network -->
-    <string name="pairing_network_hint">Same Wi-Fi or your hotspot, with KOReader\'s SSH server on (Tools → Network).</string>
+    <string name="pairing_network_hint">Same Wi-Fi or your hotspot, with KOReader\'s SSH server on (gear tab → Network → SSH server).</string>
     <string name="pairing_open_network">Open network settings</string>
 
     <!-- 2 Address -->
@@ -24,7 +24,7 @@
     <string name="pairing_port">Port</string>
     <string name="pairing_username">Username</string>
     <string name="pairing_fingerprint_none">Read the fingerprint, then check it against KOReader.</string>
-    <string name="pairing_fingerprint_saved">Trusted. A changed key stops transfers until you accept it.</string>
+    <string name="pairing_fingerprint_saved">Trusted. A changed key stops setup until you accept it.</string>
     <string name="pairing_fingerprint_manual">Enter the fingerprint by hand</string>
     <string name="pairing_fingerprint_manual_hint">If you checked it another way</string>
     <string name="pairing_fingerprint_field">SHA256 fingerprint</string>

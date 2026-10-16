@@ -798,4 +798,90 @@ class SyncPlannerTest {
             )
         assertEquals(listOf(Download("1", A, 100, "Books/Librillo/Ann Lee/Home.epub")), p.kindle)
     }
+
+    // ---- Rule 13: content the phone refused ----
+
+    @Test
+    fun aRefusedKindleFileIsNotUploadedOrMovedAgainUntilItChanges() {
+        val loose = "Documents/scan.epub"
+        val kindle = listOf(file(loose, A, status = "reading", annotations = listOf(ann("k1"))))
+        assertEquals(listOf(Upload(loose)), plan(kindle, emptyList()).kindle.take(1))
+
+        val refused = plan(kindle, emptyList(), ignored = setOf(A))
+        assertTrue("no upload, import or move", refused.isEmpty)
+
+        // A new version of the file is new content: it is offered again.
+        val changed = plan(listOf(file(loose, B)), emptyList(), ignored = setOf(A))
+        assertEquals(Upload(loose), changed.kindle.first())
+        assertEquals(PhoneAction.Import(loose), changed.phone.single())
+    }
+
+    @Test
+    fun aRefusedEditOnTheKindleIsNotSentButEverythingElseSyncs() {
+        val kindle = listOf(file(home, B, status = "finished"))
+        val phone = listOf(book("1", A, title = "Home Again"))
+        val baselines = listOf(base("1", home, A))
+        val p = plan(kindle, phone, baselines, ignored = setOf(B))
+        val to = "Librillo/Ann Lee/Home Again.epub"
+        assertEquals(listOf(Move(home, to)), p.kindle)
+        assertEquals(listOf(PhoneAction.SetStatus("1", "Finished", 0)), p.phone)
+        assertTrue(p.questions.isEmpty())
+        // The phone's own file is never pushed over the Kindle's edit.
+        assertTrue(p.kindle.none { it is Download })
+    }
+
+    @Test
+    fun aRefusedFileForABookWithoutAFileIsNotTakenBack() {
+        val p =
+            plan(
+                listOf(file(home, A)),
+                listOf(book("1", A, hasFile = false)),
+                listOf(base("1", home, A)),
+                ignored = setOf(A),
+            )
+        assertTrue(p.isEmpty)
+    }
+
+    @Test
+    fun aRefusedFileOfAPurgedBookIsLeftAloneWithoutAQuestion() {
+        val p =
+            plan(
+                listOf(file(home, B)),
+                emptyList(),
+                listOf(base("gone", home, A)),
+                ignored = setOf(B),
+            )
+        assertTrue(p.isEmpty)
+        // Unchanged since the baseline, it is still deleted: that content was the phone's own.
+        val unchanged =
+            plan(
+                listOf(file(home, A)),
+                emptyList(),
+                listOf(base("gone", home, A)),
+                ignored = setOf(A),
+            )
+        assertEquals(listOf(Delete(home)), unchanged.kindle)
+    }
+
+    @Test
+    fun keepingARemovedBookWhoseKindleFileWasRefusedOnlyRestoresIt() {
+        val kindle = listOf(file(home, B))
+        val phone = listOf(book("1", A, removed = true))
+        val baselines = listOf(base("1", home, A))
+        val q = plan(kindle, phone, baselines).questions.single()
+        val p = plan(kindle, phone, baselines, mapOf(q.id to "Keep it"), ignored = setOf(B))
+        assertTrue(p.kindle.isEmpty())
+        assertEquals(listOf(PhoneAction.Restore("1")), p.phone)
+    }
+
+    @Test
+    fun refusedContentTheSidesAlreadyShareChangesNothing() {
+        val kindle = listOf(file(home, A, status = "finished"), file("Documents/copy.epub", A))
+        val phone = listOf(book("1", A))
+        val baselines = listOf(base("1", home, A))
+        assertEquals(
+            plan(kindle, phone, baselines),
+            plan(kindle, phone, baselines, ignored = setOf(A)),
+        )
+    }
 }

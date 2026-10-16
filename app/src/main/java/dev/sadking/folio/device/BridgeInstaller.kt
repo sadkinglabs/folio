@@ -1,5 +1,6 @@
 package dev.sadking.folio.device
 
+import android.content.Context
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.link.FolioLink
@@ -58,17 +59,59 @@ internal fun linkSetupJson(
         .toString()
 
 /**
- * Installs Librillo's KOReader plugin over the paired SSH connection: finds where KOReader is
- * installed, copies the plugin (the previous one is kept for recovery) and leaves the Link address
- * and sign-in for the plugin to apply, so nothing has to be typed on the e-reader.
+ * A plain name for the e-reader's library folder, as typed by the owner: one folder under
+ * KOReader's home folder, such as "Librillo" or "Books". Null when it can't be one: empty, a path,
+ * hidden, too long, or with control characters.
+ */
+internal fun libraryFolderName(typed: String): String? =
+    typed.trim().takeIf { name ->
+        name.isNotEmpty() &&
+            name.length <= 64 &&
+            !name.startsWith('.') &&
+            name.none { it == '/' || it == '\\' || it.code < 32 || it.code == 127 }
+    }
+
+/**
+ * What the phone remembers about the last plugin install, in SharedPreferences "librillo-setup":
+ * when it happened and the library folder chosen. The Library and the Device tab use it to tell
+ * "not set up" from "set up, waiting for the first sync".
+ */
+object PluginSetup {
+    private const val PREFS = "librillo-setup"
+    private const val INSTALLED_AT = "installedAt"
+    private const val ROOT = "root"
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** When the plugin was last installed from this phone, in epoch milliseconds; 0 if never. */
+    fun installedAt(context: Context): Long = prefs(context).getLong(INSTALLED_AT, 0)
+
+    /** The library folder chosen at the last install, or the default. */
+    fun root(context: Context): String =
+        prefs(context).getString(ROOT, null) ?: SyncRoutes.DEFAULT_ROOT
+
+    fun record(context: Context, root: String, at: Long = System.currentTimeMillis()) {
+        prefs(context).edit().putLong(INSTALLED_AT, at).putString(ROOT, root).apply()
+    }
+}
+
+/**
+ * Installs Librillo's KOReader plugin over the saved SSH connection: finds where KOReader is
+ * installed, copies the plugin (the previous one is kept for recovery) and leaves the sync address,
+ * sign-in and library folder ([root]) for the plugin to apply on its next start, so nothing has to
+ * be typed on the e-reader.
  */
 class BridgeInstaller(private val app: FolioApplication) {
-    suspend fun install(): String =
+    suspend fun install(root: String = SyncRoutes.DEFAULT_ROOT): String =
         withContext(Dispatchers.IO) {
+            val folder = requireNotNull(libraryFolderName(root)) { "Invalid library folder" }
             val config = app.deviceSettings.load()
             val credential = app.deviceSettings.credential()
+            // `/mnt` holds KOReader on every e-reader in the list, so the search never depends on
+            // the folder saved for the connection.
             val plugins =
-                SftpDevice(config, credential).use { device ->
+                SftpDevice(config.copy(directory = "/mnt"), credential).use { device ->
                     KOREADER_PLUGIN_FOLDERS.firstOrNull { device.isDirectory(it) }
                 } ?: error(app.getString(R.string.msg_companion_no_koreader))
             val local = File(app.cacheDir, "bridge-${UUID.randomUUID()}").apply { mkdirs() }
@@ -100,6 +143,7 @@ class BridgeInstaller(private val app: FolioApplication) {
                                     "http://$address:${link.port}",
                                     account.username,
                                     account.key,
+                                    root = folder,
                                 )
                             )
                         }
@@ -107,7 +151,8 @@ class BridgeInstaller(private val app: FolioApplication) {
                 SftpDevice(config.copy(directory = plugins), credential).use {
                     it.installFolioBridge(files)
                 }
-                // Link is set up now: have it listening for the e-reader's first sync.
+                PluginSetup.record(app, folder)
+                // Set up now: have the phone listening for the e-reader's first sync.
                 if (address != null) app.link.startIfAllowed()
                 app.getString(
                     if (address != null) R.string.msg_companion_installed

@@ -15,7 +15,6 @@
     <string name="progress_device">E-reader</string>
     <string name="progress_hardcover">Hardcover</string>
     <string name="progress_not_started">Not started</string>
-    <string name="progress_refresh">Refresh from e-reader</string>
 
     <!-- Reader -->
     <string name="reader_title_fallback">Reader</string>
@@ -63,14 +62,13 @@
     <string name="reader_external_link">External links are disabled while reading. Open them separately in your browser.</string>
     <string name="reader_save_failed">Could not save your place. Try again before closing.</string>
     <string name="reader_position_save_failed">Position could not be saved. Check phone storage.</string>
-    <string name="reader_kindle_resolve_failed">Could not resolve the queued Kindle position. Your phone position is kept.</string>
-    <string name="reader_kindle_other_revision">This Kindle position belongs to another EPUB revision. Transfer the matching file first.</string>
+    <string name="reader_kindle_resolve_failed">Couldn\'t find the Kindle\'s place in this book. Your phone\'s place is kept.</string>
+    <string name="reader_kindle_other_revision">This Kindle place is for another version of the book. Sync, then try again.</string>
     <string name="reader_kindle_unsupported">This KOReader position format cannot be translated safely. Your phone position is kept.</string>
     <string name="reader_kindle_not_in_reading_order">This Kindle position is in a part of the book the phone reader does not show, such as notes outside the main text. Your phone position is kept.</string>
     <string name="reader_kindle_chapter_failed">Could not open the Kindle chapter.</string>
     <string name="reader_kindle_anchor_failed">This Kindle passage cannot be found in the EPUB. Your phone position is kept.</string>
     <string name="reader_kindle_passage_failed">Could not move to the Kindle passage.</string>
-    <string name="reader_send_failed">Could not prepare this position. Try another text page.</string>
 
     <!-- Reader: appearance panel -->
     <string name="appearance_title">Text</string>
@@ -108,30 +106,6 @@
     <string name="devices_title">Continue elsewhere</string>
     <string name="devices_none">No other device has a place in this book yet.</string>
     <string name="devices_row">%1$d%% · %2$s</string>
-    <string name="devices_legacy">SSH</string>
     <string name="devices_jump">Jump</string>
-    <string name="devices_retrieve">Check e-reader</string>
-    <string name="devices_send">Send my place</string>
-    <string name="devices_working">Working…</string>
-    <string name="transfer_waiting">Waiting to send to your e-reader</string>
-    <string name="transfer_stopping">Stopping after this book…</string>
-    <string name="transfer_sending">Sending %1$d of %2$d to your e-reader</string>
-    <string name="transfer_cancel">Cancel</string>
-    <string name="send_comparing">Checking what your e-reader is missing…</string>
-    <string name="send_pair_first">Connect your e-reader first</string>
-    <string name="send_nothing_missing">Your e-reader already has all of these</string>
-    <plurals name="send_queued">
-        <item quantity="one">%d book is on its way to your e-reader</item>
-        <item quantity="other">%d books are on their way to your e-reader</item>
-    </plurals>
-    <plurals name="send_present">
-        <item quantity="one">%d was already there</item>
-        <item quantity="other">%d were already there</item>
-    </plurals>
-    <plurals name="send_differ">
-        <item quantity="one">%d is different on the e-reader, review it on the Device tab</item>
-        <item quantity="other">%d are different on the e-reader, review them on the Device tab</item>
-    </plurals>
-    <string name="send_list">Send to e-reader</string>
     <string name="action_undo">Undo</string>
 </resources>

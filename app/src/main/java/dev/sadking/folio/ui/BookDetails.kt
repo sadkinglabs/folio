@@ -17,10 +17,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AttachFile
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
@@ -34,7 +32,6 @@ import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Smartphone
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material3.*
@@ -74,14 +71,12 @@ import dev.sadking.folio.reader.opensOnPhone
 import dev.sadking.folio.reader.readerKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 
 internal const val BOOK_PAGE_TAG = "book-page"
 internal const val BOOK_PRIMARY_TAG = "book-primary"
 internal const val BOOK_READ_MENU_TAG = "book-read-menu"
-internal const val BOOK_ACTION_SEND_TAG = "book-action-send"
 internal const val BOOK_ACTION_ATTACH_TAG = "book-action-attach"
 internal const val BOOK_ACTION_EDIT_TAG = "book-action-edit"
 internal const val BOOK_ACTION_PROGRESS_TAG = "book-action-progress"
@@ -97,12 +92,11 @@ internal const val BOOK_CHANGED_OUTSIDE_TAG = "book-changed-outside"
 
 /**
  * The one book page, for books with and without an EPUB. A record ([hasEpub] false) gets the same
- * page with fewer actions: Find EPUB instead of Read, Attach instead of Send, no Share, and a
- * status strip with Hardcover only.
+ * page with fewer actions: Find EPUB instead of Read, Attach, no Share, and a status strip with
+ * Hardcover only. Sync puts every book on the e-reader by itself, so there is no Send.
  *
- * Busy rules: a running library operation ([busy]) disables changes; a transfer ([deviceBusy]) only
- * disables sending and the e-reader refresh. Reading is never blocked. A book whose file is gone
- * says so above Read, and Send and Share wait for the file.
+ * Busy rules: a running library operation ([busy]) disables changes. Reading is never blocked. A
+ * book whose file is gone says so above Read, and Share waits for the file.
  */
 @Composable
 fun BookDetails(
@@ -117,7 +111,6 @@ fun BookDetails(
     annotations: List<BookAnnotation> = emptyList(),
     nextInSeries: Book? = null,
     busy: Boolean = false,
-    deviceBusy: Boolean = busy,
     contentPadding: PaddingValues = PaddingValues(),
     /** The book's file is gone. Null checks the disk off the main thread; previews pass a value. */
     fileMissing: Boolean? = null,
@@ -126,7 +119,6 @@ fun BookDetails(
     onRead: () -> Unit = {},
     /** The Read menu's other starts: from the beginning, read aloud, or an e-reader's place. */
     onReadFrom: (ReaderStart) -> Unit = {},
-    onSend: () -> Unit = {},
     onAttach: () -> Unit = {},
     onEdit: () -> Unit = {},
     onHardcover: () -> Unit = {},
@@ -134,7 +126,6 @@ fun BookDetails(
     onRemove: () -> Unit = {},
     onLists: () -> Unit = {},
     onStatus: (String) -> Unit = {},
-    onRefreshReading: () -> Unit = {},
     onLookup: () -> Unit = {},
     onExport: () -> Unit = {},
     onNext: (Book) -> Unit = {},
@@ -147,15 +138,6 @@ fun BookDetails(
             progressEntries(hasEpub, phoneReading, reading, reports, hardcoverLinked, hardcoverPage)
         }
     var progressSheet by rememberSaveable(book.id) { mutableStateOf(false) }
-    // The Send tile shows a check for a moment after a send is queued.
-    var justSent by remember { mutableStateOf(false) }
-    LaunchedEffect(justSent) {
-        if (justSent) {
-            delay(1500)
-            justSent = false
-        }
-    }
-    val sending = signals?.device in listOf("Sending", "Queued")
     val missing = rememberFileMissing(book, hasEpub, fileMissing)
     val (changed, clearChanged) = rememberChangedOutside(book.id, changedOutside)
     // Opening the book is when the "changed outside Librillo" note has done its job.
@@ -235,21 +217,6 @@ fun BookDetails(
             ActionRow(
                 bookPageActions(hasEpub).map { action ->
                     when (action) {
-                        BookPageAction.SEND ->
-                            IconAction(
-                                if (justSent) Icons.Outlined.Check
-                                else Icons.AutoMirrored.Outlined.Send,
-                                stringResource(
-                                    if (justSent) R.string.rd_action_queued
-                                    else R.string.rd_action_send
-                                ),
-                                enabled = !deviceBusy && !justSent && !missing,
-                                busy = sending,
-                                tag = BOOK_ACTION_SEND_TAG,
-                            ) {
-                                justSent = true
-                                onSend()
-                            }
                         BookPageAction.ATTACH ->
                             IconAction(
                                 Icons.Outlined.AttachFile,
@@ -304,7 +271,7 @@ fun BookDetails(
                 }
             )
             StatusStrip(
-                statusTiles(hasEpub, entries, signals, hardcoverLinked),
+                statusTiles(hasEpub, entries, hardcoverLinked),
                 onClick = { progressSheet = true },
             )
             reading
@@ -321,7 +288,7 @@ fun BookDetails(
             if (book.description.isNotBlank()) Description(book)
             if (nextInSeries != null) NextInSeries(book, nextInSeries) { onNext(nextInSeries) }
             DetailsSection(book, busy, onLookup)
-            if (hasEpub) NotesSection(annotations, busy, deviceBusy, onExport, onRefreshReading)
+            if (hasEpub) NotesSection(annotations, busy, onExport)
             Spacer(Modifier.height(FolioSpace.item))
         }
     }
@@ -330,11 +297,8 @@ fun BookDetails(
             book = book,
             hasEpub = hasEpub,
             entries = entries,
-            signals = signals,
             busy = busy,
-            deviceBusy = deviceBusy,
             onStatus = onStatus,
-            onRefresh = onRefreshReading,
             onDismiss = { progressSheet = false },
         )
 }
@@ -606,7 +570,6 @@ internal const val STATUS_TILE_HARDCOVER_TAG = "status-tile-hardcover"
 private fun statusTiles(
     hasEpub: Boolean,
     entries: List<ProgressEntry>,
-    signals: BookSignals?,
     hardcoverLinked: Boolean,
 ): List<StatusTile> {
     val tiles = mutableListOf<StatusTile>()
@@ -627,7 +590,7 @@ private fun statusTiles(
                 Icons.Outlined.TabletAndroid,
                 ereader?.device ?: stringResource(R.string.progress_device),
                 ereader?.percent?.let { percentText(it) }
-                    ?: ereaderStateLabel(ereaderState(signals?.device ?: "Phone only")),
+                    ?: stringResource(R.string.m9sync_ereader_no_position),
                 ereader?.at?.let { relativeTime(it) },
                 STATUS_TILE_EREADER_TAG,
             )
@@ -648,21 +611,6 @@ private fun statusTiles(
         )
     return tiles
 }
-
-@Composable
-private fun ereaderStateLabel(state: EreaderState): String =
-    stringResource(
-        when (state) {
-            EreaderState.SENT -> R.string.rd_ereader_sent
-            EreaderState.CHANGED -> R.string.rd_ereader_changed
-            EreaderState.NOT_SENT -> R.string.rd_ereader_not_sent
-            EreaderState.QUEUED -> R.string.rd_ereader_queued
-            EreaderState.SENDING -> R.string.rd_ereader_sending
-            EreaderState.PAUSED -> R.string.rd_ereader_paused
-            EreaderState.FAILED -> R.string.rd_ereader_failed
-            EreaderState.NO_EPUB -> R.string.rd_ereader_no_epub
-        }
-    )
 
 @Composable
 private fun percentText(fraction: Double): String =
@@ -686,11 +634,8 @@ internal fun ProgressSheet(
     book: Book,
     hasEpub: Boolean,
     entries: List<ProgressEntry>,
-    signals: BookSignals?,
     busy: Boolean,
-    deviceBusy: Boolean,
     onStatus: (String) -> Unit,
-    onRefresh: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -738,38 +683,17 @@ internal fun ProgressSheet(
                         },
                     detail = entry.at?.let { relativeTime(it) },
                     progress = entry.percent,
-                    trailing =
-                        if (
-                            entry.source == ProgressSource.EREADER &&
-                                entry.device == null &&
-                                hasEpub
-                        ) {
-                            {
-                                IconButton(onClick = onRefresh, enabled = !deviceBusy) {
-                                    Icon(
-                                        Icons.Outlined.Sync,
-                                        stringResource(R.string.progress_refresh),
-                                    )
-                                }
-                            }
-                        } else null,
                 )
             }
-            // An EPUB with no e-reader position: one row with the send state and the refresh.
-            if (
-                hasEpub && entries.none { it.source == ProgressSource.EREADER && it.device == null }
-            )
+            // A book with no e-reader position yet: one row that says so.
+            if (hasEpub && entries.none { it.source == ProgressSource.EREADER })
                 ProgressRow(
                     icon = Icons.Outlined.TabletAndroid,
                     name = stringResource(R.string.progress_device),
-                    value = ereaderStateLabel(ereaderState(signals?.device ?: "Phone only")),
+                    value = stringResource(R.string.m9sync_ereader_no_position),
                     detail = null,
                     progress = null,
-                ) {
-                    IconButton(onClick = onRefresh, enabled = !deviceBusy) {
-                        Icon(Icons.Outlined.Sync, stringResource(R.string.progress_refresh))
-                    }
-                }
+                )
             if (ahead != null)
                 Surface(
                     Modifier.padding(horizontal = FolioSpace.section).fillMaxWidth(),
@@ -955,13 +879,7 @@ private fun DetailsSection(book: Book, busy: Boolean, onLookup: () -> Unit) {
 }
 
 @Composable
-private fun NotesSection(
-    annotations: List<BookAnnotation>,
-    busy: Boolean,
-    deviceBusy: Boolean,
-    onExport: () -> Unit,
-    onRefresh: () -> Unit,
-) {
+private fun NotesSection(annotations: List<BookAnnotation>, busy: Boolean, onExport: () -> Unit) {
     ExpandableSection(
         stringResource(R.string.library_book_notes),
         pluralStringResource(
@@ -976,13 +894,6 @@ private fun NotesSection(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(
-                onClick = onRefresh,
-                enabled = !deviceBusy,
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text(stringResource(R.string.library_book_notes_get))
-            }
         } else {
             TextButton(onClick = onExport, enabled = !busy, contentPadding = PaddingValues(0.dp)) {
                 Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp))

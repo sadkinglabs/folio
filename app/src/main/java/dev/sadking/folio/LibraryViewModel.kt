@@ -43,6 +43,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val transfers =
         dao.transferFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** What each e-reader held after its last sync: the "Not on the e-reader" list rule. */
+    val baselines =
+        app.database
+            .syncBaselines()
+            .all()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val phoneReading =
         dao.phoneReadingFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -52,6 +58,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         dao.annotations().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val statistics =
         dao.statistics().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Offers to finish the Hardcover read of a book the owner marks Finished (M9 step 4). */
+    private val finishPrompts by lazy { dev.sadking.folio.sync.HardcoverFinishPrompts(app) }
 
     /** KOReader document digests by revision hash, so each file is sampled once. */
     private val digests = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -82,9 +91,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val lookupProposal = MutableStateFlow<MetadataProposal?>(null)
     private val lookup = MetadataLookup()
 
-    /** Library work. A transfer job never blocks it: queued transfers re-check revisions. */
+    /** Library work, shown on the shared status line. */
     private fun run(label: String, work: suspend () -> String) =
-        runner.launch(viewModelScope, label, device = false, work)
+        runner.launch(viewModelScope, label, work)
 
     private fun safeError(e: Exception) = dev.sadking.folio.safeError(e, app.resources)
 
@@ -97,7 +106,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     /** Removes books to Recently removed; the message offers Undo, which brings them back. */
     fun removeLocal(ids: Set<String>, onRemoved: () -> Unit = {}) =
-        runner.launchUndoable(viewModelScope, msg(R.string.msg_library_removing), device = false) {
+        runner.launchUndoable(viewModelScope, msg(R.string.msg_library_removing)) {
             val (count, cleaned, groups) = repo.removeLocal(ids)
             withContext(Dispatchers.Main) { onRemoved() }
             withLeftovers(
@@ -146,6 +155,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     ) =
         run(msg(R.string.msg_library_updating_selected)) {
             repo.manageBatch(ids, shelf, add, status)
+            if (status != null) finishPrompts.statusChanged(ids)
             withContext(Dispatchers.Main) { onDone() }
             msg(R.string.msg_library_selected_updated)
         }
@@ -486,6 +496,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun status(book: Book, status: String) =
         run(msg(R.string.msg_library_updating_status)) {
             repo.manageBatch(setOf(book.id), status = status)
+            finishPrompts.statusChanged(setOf(book.id))
             msg(R.string.msg_library_status_updated)
         }
 

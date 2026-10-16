@@ -17,9 +17,8 @@ fun bookPrimary(hasEpub: Boolean, phone: PhoneReading?): BookPrimary =
         else -> BookPrimary.READ
     }
 
-/** The icon actions under a book, in order. A record loses Send and Share and gains Attach. */
+/** The icon actions under a book, in order. A record loses Share and gains Attach. */
 enum class BookPageAction {
-    SEND,
     ATTACH,
     EDIT,
     PROGRESS,
@@ -31,7 +30,6 @@ enum class BookPageAction {
 fun bookPageActions(hasEpub: Boolean): List<BookPageAction> =
     if (hasEpub)
         listOf(
-            BookPageAction.SEND,
             BookPageAction.EDIT,
             BookPageAction.PROGRESS,
             BookPageAction.HARDCOVER,
@@ -66,14 +64,13 @@ fun bookOverflow(hasEpub: Boolean, attached: Boolean, hasNotes: Boolean): List<B
         )
 
 /**
- * The quick actions a long-press on a library cover offers, without opening the page. Six icons,
- * then a row to the page itself.
+ * The quick actions a long-press on a library cover offers, without opening the page: five icons
+ * for a book, six for a record, then a row to the page itself.
  */
 fun quickBookActions(hasEpub: Boolean): List<BookAction> =
     if (hasEpub)
         listOf(
             BookAction.OPEN_READER,
-            BookAction.SEND,
             BookAction.LISTS,
             BookAction.STATUS,
             BookAction.SELECT,
@@ -165,30 +162,6 @@ fun aheadOfPhone(entries: List<ProgressEntry>): ProgressEntry? {
         .filter { it.percent!! > own + 0.005 }
         .maxByOrNull { it.percent!! }
 }
-
-/** The short word a status tile shows for the e-reader when it has no position to show. */
-enum class EreaderState {
-    SENT,
-    CHANGED,
-    NOT_SENT,
-    QUEUED,
-    SENDING,
-    PAUSED,
-    FAILED,
-    NO_EPUB,
-}
-
-fun ereaderState(device: String): EreaderState =
-    when (device) {
-        "On Kindle" -> EreaderState.SENT
-        "Needs update" -> EreaderState.CHANGED
-        "Queued" -> EreaderState.QUEUED
-        "Sending" -> EreaderState.SENDING
-        "Transfer paused" -> EreaderState.PAUSED
-        "Transfer failed" -> EreaderState.FAILED
-        "No EPUB" -> EreaderState.NO_EPUB
-        else -> EreaderState.NOT_SENT
-    }
 
 /**
  * The average of opaque pixels, as ARGB with full alpha, for the glow behind a cover. A 16-pixel

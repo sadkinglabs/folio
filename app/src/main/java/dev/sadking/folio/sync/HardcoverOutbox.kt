@@ -12,7 +12,9 @@ import androidx.work.WorkerParameters
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.data.HardcoverClient
 import dev.sadking.folio.data.HardcoverHttpException
+import dev.sadking.folio.data.HardcoverObservation
 import dev.sadking.folio.data.HardcoverReading
+import dev.sadking.folio.data.LibraryDao
 import dev.sadking.folio.data.estimatedHardcoverPage
 import dev.sadking.folio.device.HardcoverSettings
 import dev.sadking.folio.reader.koreaderDigest
@@ -53,6 +55,32 @@ fun outboxStep(fraction: Double, reading: HardcoverReading, editionPages: Int?):
     val page = estimatedHardcoverPage(fraction.coerceIn(0.0, 1.0) * 100, editionPages)
     return if (reading.pages != null && page <= reading.pages) OutboxStep.AlreadyThere
     else OutboxStep.Send(page)
+}
+
+/**
+ * Keeps the phone's copy of what Hardcover says about book [hardcoverId] for [account] current, as
+ * the reading sheet does: its status, pages and edition, or nothing when the book is not in the
+ * account's library. [HardcoverFinishPrompts] reads it to know a read is "Currently Reading".
+ */
+internal suspend fun recordObservation(
+    dao: LibraryDao,
+    account: Int,
+    hardcoverId: Int,
+    reading: HardcoverReading,
+    at: Long,
+) {
+    if (reading.userBookId != null && reading.status != null)
+        dao.hardcoverObservation(
+            HardcoverObservation(
+                account,
+                hardcoverId,
+                reading.status,
+                reading.pages,
+                reading.editionId,
+                at,
+            )
+        )
+    else dao.deleteHardcoverObservation(account, hardcoverId)
 }
 
 /**
@@ -170,20 +198,28 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                 try {
                     val reading = client.reading(token, hardcoverId, user)
                     val pages = reading.editionId?.let { client.editionPages(token, it) }
-                    when (val step = outboxStep(fraction, reading, pages)) {
-                        is OutboxStep.Send ->
-                            client.progress(
-                                token,
-                                hardcoverId,
-                                reading.editionId!!,
-                                step.page,
-                                reading,
-                                allowNewRead = false,
-                                allowDecrease = false,
-                                userId = user,
-                            )
-                        else -> Unit
-                    }
+                    val step = outboxStep(fraction, reading, pages)
+                    if (step is OutboxStep.Send)
+                        client.progress(
+                            token,
+                            hardcoverId,
+                            reading.editionId!!,
+                            step.page,
+                            reading,
+                            allowNewRead = false,
+                            allowDecrease = false,
+                            userId = user,
+                        )
+                    // What Hardcover now says, so a finish on the phone or e-reader can ask.
+                    if (user != null)
+                        recordObservation(
+                            dao,
+                            user,
+                            hardcoverId,
+                            if (step is OutboxStep.Send) reading.copy(pages = step.page)
+                            else reading,
+                            System.currentTimeMillis(),
+                        )
                     outbox.done(key, fraction)
                 } catch (e: IOException) {
                     retry = true

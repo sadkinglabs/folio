@@ -22,10 +22,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.sadking.folio.R
 import dev.sadking.folio.data.*
 
 /** Shared rhythm, rather than per-screen dimensions and nested decorative cards. */
@@ -170,21 +168,6 @@ internal fun lift(shape: Shape, elevation: Dp = 6.dp): Modifier {
         spotColor = Color.Black.copy(alpha = if (dark) 0.4f else 0.14f),
     )
 }
-
-@Composable
-internal fun displayDeviceState(signals: BookSignals): String =
-    when (signals.device) {
-        "On Kindle" -> stringResource(R.string.shell_device_on_ereader)
-        "Needs update" -> stringResource(R.string.shell_device_needs_update)
-        "Phone only",
-        "Not sent" -> stringResource(R.string.shell_device_not_sent)
-        "Queued" -> stringResource(R.string.shell_device_queued)
-        "Sending" -> stringResource(R.string.shell_device_sending)
-        "Transfer paused" -> stringResource(R.string.shell_device_paused)
-        "Transfer failed" -> stringResource(R.string.shell_device_failed)
-        "No EPUB" -> stringResource(R.string.shell_device_no_epub)
-        else -> signals.device
-    }
 
 internal fun observationDate(time: Long): String =
     java.text.DateFormat.getDateTimeInstance(

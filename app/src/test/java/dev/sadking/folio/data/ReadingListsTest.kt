@@ -24,7 +24,7 @@ class ReadingListsTest {
 
     @Test
     fun observedReadingStateMatchesLibraryFilters() {
-        val signals = BookSignals("On Kindle", "Finished · Kindle", 1.0, null)
+        val signals = BookSignals("Finished · Kindle", 1.0, null)
         assertTrue(ReadingList.FINISHED.contains(book("Want to Read"), signals))
         assertFalse(ReadingList.WANT_TO_READ.contains(book("Want to Read"), signals))
     }
@@ -52,7 +52,7 @@ class ReadingListsTest {
     @Test
     fun attachedFileRetainsWantToReadIntentUntilReading() {
         val wish = WishBook("wish", "key", "Title", "[]")
-        val unread = BookSignals("On Kindle", "Unread", null, null)
+        val unread = BookSignals("Unread", null, null)
         assertTrue(
             ReadingList.WANT_TO_READ.contains(
                 book("Unread"),

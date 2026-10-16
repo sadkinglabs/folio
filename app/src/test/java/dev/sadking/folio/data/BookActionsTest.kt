@@ -24,7 +24,7 @@ class BookActionsTest {
         assertTrue(
             actions.containsAll(
                 listOf(
-                    BookAction.SEND,
+                    BookAction.OPEN_READER,
                     BookAction.PROGRESS,
                     BookAction.EDIT,
                     BookAction.LISTS,
@@ -57,7 +57,7 @@ class BookActionsTest {
             actions.any {
                 it in
                     listOf(
-                        BookAction.SEND,
+                        BookAction.OPEN_READER,
                         BookAction.EXPORT_EPUB,
                         BookAction.EXPORT_NOTES,
                     )

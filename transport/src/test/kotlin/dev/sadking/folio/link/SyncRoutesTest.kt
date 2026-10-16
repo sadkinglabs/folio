@@ -38,6 +38,10 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
     val applied = mutableListOf<List<PhoneAction>>()
     val receivedFiles = mutableListOf<Pair<String, ByteArray>>()
     val synced = mutableListOf<String>()
+    val started = mutableListOf<String>()
+    /** E-reader paths whose upload the phone refuses, and why. */
+    val refuse = HashMap<String, Refusal>()
+    val refusedFiles = HashMap<String, List<RefusedFile>>()
     private var next = 1
 
     fun add(
@@ -72,6 +76,7 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
     override fun bookFile(bookId: String) = files[bookId]
 
     override fun receive(ereaderId: String, kindlePath: String, file: File): String? {
+        refuse[kindlePath]?.let { throw SyncRefusal(it) }
         val bytes = file.readBytes()
         receivedFiles += kindlePath to bytes
         val id = "p${next++}"
@@ -91,6 +96,7 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
         file: File,
     ): String? {
         val book = books[bookId] ?: return null
+        refuse[kindlePath]?.let { throw SyncRefusal(it) }
         val bytes = file.readBytes()
         receivedFiles += kindlePath to bytes
         // A new revision sits beside the old file.
@@ -157,6 +163,16 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
 
     override fun synced(ereaderId: String, deviceName: String, at: Long) {
         synced += ereaderId
+    }
+
+    override fun refused(ereaderId: String) = refusedFiles[ereaderId].orEmpty()
+
+    override fun saveRefused(ereaderId: String, refused: List<RefusedFile>) {
+        refusedFiles[ereaderId] = refused
+    }
+
+    override fun started(ereaderId: String, deviceName: String, at: Long) {
+        started += ereaderId
     }
 }
 
@@ -872,6 +888,107 @@ class SyncRoutesTest {
         } finally {
             server.stop()
         }
+    }
+
+    // ---- Files the phone refuses ----
+
+    @Test
+    fun aFileThePhoneRefusesIsRememberedAndNotUploadedAgainUntilItChanges() {
+        firstSyncLibraries()
+        library.refuse["documents/Dune.epub"] = Refusal.NOT_A_BOOK
+        val plan = kindle.sync()
+        assertEquals(listOf("kindle-1"), library.started)
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertTrue(library.books.values.none { it.title == "Dune" })
+        assertEquals(
+            listOf(RefusedFile(sha256(dune), "documents/Dune.epub", Refusal.NOT_A_BOOK, clock)),
+            library.refused("kindle-1"),
+        )
+        assertEquals("Dune.epub", library.refused("kindle-1").single().name)
+        assertTrue("its temporary upload is gone", uploads().isEmpty())
+
+        // Wherever the Kindle keeps it, the same content is not sent again.
+        val again = kindle.sync()
+        assertEquals(emptyList<String>(), ops(again))
+        assertEquals(200, kindle.finish(again, kindle.run(again)).status)
+        assertEquals(1, library.refused("kindle-1").size)
+
+        // A new version of the file is offered again, and the old refusal is forgotten.
+        val path = kindle.books.keys.single { it.endsWith("Dune.epub") }
+        val fixed = "Dune, repaired".toByteArray()
+        kindle.books[path] = FakeKindle.Book(fixed, "Dune", listOf("Frank Herbert"))
+        library.refuse.clear()
+        val third = kindle.sync()
+        assertEquals(listOf("upload"), ops(third))
+        assertEquals(200, kindle.finish(third, kindle.run(third)).status)
+        assertEquals(sha256(fixed), library.books.values.single { it.title == "Dune" }.sha256)
+        assertTrue(library.refused("kindle-1").isEmpty())
+    }
+
+    @Test
+    fun aRefusedRevisionIsRememberedAndTheBookKeepsItsFile() {
+        val edited = "Emma, scrambled on the Kindle".toByteArray()
+        emmaOnBothSides(kindleBytes = edited, phoneBytes = emma, base = emma)
+        library.refuse["Librillo/Jane Austen/Emma.epub"] = Refusal.OTHER_FORMAT
+        val plan = kindle.sync()
+        assertEquals(listOf("upload"), ops(plan))
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertEquals(sha256(emma), library.books.getValue("b1").sha256)
+        assertEquals(
+            listOf(Refusal.OTHER_FORMAT),
+            library.refused("kindle-1").map { it.reason },
+        )
+        assertEquals(emptyList<String>(), ops(kindle.sync()))
+    }
+
+    @Test
+    fun anOversizeUploadIsRememberedAsTooLarge() {
+        val small = SyncRoutes(library, now = { clock }, maxUpload = 8)
+        val reader =
+            FakeKindle({ request, body ->
+                small.handle(
+                    request,
+                    request.path.removePrefix("/folio/v2").substringBefore('?'),
+                    body,
+                )
+            })
+        reader.books["documents/Dune.epub"] = FakeKindle.Book(dune, "Dune", listOf("Frank Herbert"))
+        val plan = reader.sync()
+        val results = reader.run(plan)
+        assertFalse(results.getJSONObject(action(plan, "upload").getInt("index")).getBoolean("ok"))
+        assertEquals(200, reader.finish(plan, results).status)
+        assertTrue(library.receivedFiles.isEmpty())
+        assertEquals(
+            listOf(Refusal.TOO_LARGE),
+            library.refused("kindle-1").map { it.reason },
+        )
+        assertTrue(ops(reader.sync()).none { it == "upload" })
+    }
+
+    @Test
+    fun aRefusedFileThatLeavesTheKindleIsForgotten() {
+        library.refusedFiles["kindle-1"] =
+            listOf(RefusedFile(sha256(dune), "documents/Dune.epub", Refusal.TOO_LARGE, 1))
+        kindle.books["documents/Dune.epub"] = FakeKindle.Book(dune, "Dune", listOf("Frank Herbert"))
+        val kept = kindle.sync()
+        assertEquals(emptyList<String>(), ops(kept))
+        assertEquals(200, kindle.finish(kept, kindle.run(kept)).status)
+        assertEquals(1, library.refused("kindle-1").size)
+
+        kindle.books.clear()
+        val gone = kindle.sync()
+        assertEquals(200, kindle.finish(gone, kindle.run(gone)).status)
+        assertTrue(library.refused("kindle-1").isEmpty())
+    }
+
+    @Test
+    fun aSyncThatNeverFinishesRemembersNoRefusal() {
+        firstSyncLibraries()
+        library.refuse["documents/Dune.epub"] = Refusal.NOT_A_BOOK
+        val plan = kindle.sync()
+        kindle.run(plan)
+        assertTrue(library.refused("kindle-1").isEmpty())
+        assertTrue(library.synced.isEmpty())
     }
 }
 

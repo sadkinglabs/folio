@@ -3,16 +3,25 @@ package dev.sadking.folio.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.Operation
+import dev.sadking.folio.SetupProgress
+import dev.sadking.folio.core.sync.Question
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceConfig
+import dev.sadking.folio.device.ObservedHostKey
 import dev.sadking.folio.link.LinkLog
+import dev.sadking.folio.link.Refusal
+import dev.sadking.folio.link.RefusedFile
+import dev.sadking.folio.sync.EreaderSync
+import dev.sadking.folio.sync.FinishPrompt
 
 private val sampleBooks =
     listOf(
@@ -91,6 +100,18 @@ internal fun LibraryPreview() {
                         reading.mapIndexed { i, book -> book.id to 0.2 * (i + 1) },
                 currentId = sampleBooks.first().id,
                 missingFiles = setOf("sample2"),
+                syncLine = {
+                    SyncStatusLine(
+                        SyncLineState(
+                            SyncLine.Synced("Kindle Paperwhite", PREVIEW_NOW - 2 * 60_000),
+                            1,
+                        ),
+                        PREVIEW_NOW,
+                        onSync = {},
+                        onSetUp = {},
+                        onDecisions = {},
+                    )
+                },
             )
         }
     }
@@ -110,7 +131,7 @@ internal fun DetailsPreview() {
             BookDetails(
                 sampleBooks[0],
                 lists = listOf("Slow Sundays"),
-                signals = BookSignals("On Kindle", "Reading · phone", 0.41, null),
+                signals = BookSignals("Reading · phone", 0.41, null),
             )
         }
     }
@@ -123,7 +144,7 @@ internal fun DetailsFileMissingPreview() {
         Surface {
             BookDetails(
                 sampleBooks[1],
-                signals = BookSignals("On Kindle", "Reading · phone", 0.41, null),
+                signals = BookSignals("Reading · phone", 0.41, null),
                 fileMissing = true,
             )
         }
@@ -264,7 +285,6 @@ internal fun ListDetailPreview() {
                 onSelect = {},
                 onClearSelection = {},
                 onAddFromLibrary = {},
-                onSend = {},
                 onEdit = {},
                 progress = mapOf(sampleBooks.first().id to 0.37),
                 currentId = sampleBooks.first().id,
@@ -283,7 +303,7 @@ internal fun ListEditorPreview() {
                 takenNames = listSampleShelves.map { it.name },
                 busy = false,
                 error = null,
-                onCreate = { _, _, _, _ -> },
+                onCreate = { _, _, _ -> },
                 onSave = {},
                 onDelete = {},
                 onDismiss = {},
@@ -292,77 +312,116 @@ internal fun ListEditorPreview() {
     }
 }
 
-@Preview(name = "Device · light", widthDp = 412, heightDp = 892)
+/** A fixed clock for previews and screenshots, so "2 min ago" never drifts. */
+internal const val PREVIEW_NOW = 1791750000000L
+
+private val sampleQuestions =
+    listOf(
+        Question(
+            "q-1a2b3c4d5e6f7a8b",
+            "sample1",
+            "Librillo/Alex Rowan/The Orchard.epub",
+            "status",
+            "Reading",
+            "Finished",
+            "The Orchard: Kindle says Finished, phone says Reading. Which is right?",
+            listOf("Finished", "Reading"),
+        ),
+        Question(
+            "q-2b3c4d5e6f7a8b9c",
+            "sample2",
+            "Librillo/Morgan Wells/Letters from the Coast.epub",
+            "file",
+            "",
+            "",
+            "Letters from the Coast was changed on both the phone and the Kindle. Which copy should both keep?",
+            listOf("Kindle copy", "Phone copy"),
+        ),
+    )
+
+private val sampleKindle =
+    EreaderSync(
+        "kindle-7f3a",
+        "Kindle Paperwhite",
+        lastSync = PREVIEW_NOW - 2 * 60_000,
+        questions = sampleQuestions,
+        answers = mapOf("q-2b3c4d5e6f7a8b9c" to "Kindle copy"),
+        refused =
+            listOf(
+                RefusedFile("a".repeat(64), "Downloads/Scan 2024.pdf", Refusal.NOT_A_BOOK, 0),
+                RefusedFile("b".repeat(64), "Comics/Big Atlas.cbz", Refusal.TOO_LARGE, 0),
+            ),
+        books = 412,
+    )
+
+private val sampleActivity =
+    listOf(
+        LinkLog.Entry(
+            PREVIEW_NOW - 2 * 60_000,
+            LinkLog.Kind.REQUEST,
+            "/folio/v2/finish",
+            200,
+            "Kindle Paperwhite",
+        ),
+        LinkLog.Entry(
+            PREVIEW_NOW - 3 * 60_000,
+            LinkLog.Kind.REQUEST,
+            "/folio/v2/sync",
+            200,
+            "Kindle Paperwhite",
+        ),
+        LinkLog.Entry(
+            PREVIEW_NOW - 4 * 60_000,
+            LinkLog.Kind.REQUEST,
+            "/syncs/progress",
+            200,
+            "192.168.1.17",
+        ),
+        LinkLog.Entry(PREVIEW_NOW - 50 * 60_000, LinkLog.Kind.SCREEN_ON),
+        LinkLog.Entry(PREVIEW_NOW - 5 * 3_600_000, LinkLog.Kind.STARTED, port = 8765),
+    )
+
+@Preview(name = "Device · light", widthDp = 412, heightDp = 1400)
 @Preview(
     name = "Device · dark",
     widthDp = 412,
-    heightDp = 892,
+    heightDp = 1400,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
 internal fun KindlePreview() {
-    val now = System.currentTimeMillis()
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
             DeviceScreen(
-                status = LinkStatus.ON,
-                addresses = listOf("192.168.1.42:8765"),
-                onLink = {},
-                onCopy = {},
-                onSignIn = {},
-                ereaders =
-                    listOf(
-                        EreaderSeen(
-                            "kindle-pw5",
-                            "Kindle",
-                            now - 3 * 60_000,
-                            EreaderPosition(sampleBooks[0], 0.41),
-                        ),
-                        EreaderSeen("kobo-clara", "", now - 2 * 86_400_000, null),
-                    ),
-                queue =
-                    listOf(
-                        QueuedBook(sampleBooks[1], false),
-                        QueuedBook(
-                            sampleBooks[2],
-                            true,
-                            "/mnt/us/Books/Librillo/Sam Reed - A Field Guide to Elsewhere.epub",
-                        ),
-                    ),
-                onOpenBook = {},
-                onRemoveQueued = {},
-                activity =
-                    listOf(
-                        LinkLog.Entry(
-                            now - 3 * 60_000,
-                            LinkLog.Kind.REQUEST,
-                            "/syncs/progress",
-                            200,
-                            "192.168.1.17",
-                        ),
-                        LinkLog.Entry(
-                            now - 4 * 60_000,
-                            LinkLog.Kind.REQUEST,
-                            "/users/auth",
-                            200,
-                            "192.168.1.17",
-                        ),
-                        LinkLog.Entry(now - 50 * 60_000, LinkLog.Kind.SCREEN_ON),
-                        LinkLog.Entry(now - 3 * 3_600_000, LinkLog.Kind.SCREEN_OFF),
-                        LinkLog.Entry(now - 5 * 3_600_000, LinkLog.Kind.STARTED, port = 8765),
-                    ),
+                ereaders = listOf(sampleKindle),
+                line =
+                    SyncLineState(SyncLine.Synced("Kindle Paperwhite", sampleKindle.lastSync), 1),
+                requestedAt = 0,
+                now = PREVIEW_NOW,
+                autoSync = true,
+                onAutoSync = {},
+                keepAwake = false,
+                onKeepAwake = {},
+                noWifi = false,
+                onOpenWifi = {},
+                onSync = {},
+                onSetUp = {},
+                onDecisions = {},
+                activity = sampleActivity,
                 onClearActivity = {},
+                onSignIn = {},
                 onSavePlugin = {},
             )
         }
     }
 }
 
-@Preview(name = "Device off · light", widthDp = 412, heightDp = 892)
+/** Set up from this phone, never synced, automatic sync off and no Wi-Fi. */
+@Preview(name = "Device waiting · light", widthDp = 412, heightDp = 1100)
 @Preview(
-    name = "Device off · dark",
+    name = "Device waiting · dark",
     widthDp = 412,
-    heightDp = 892,
+    heightDp = 1100,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
@@ -370,60 +429,178 @@ internal fun DeviceOffPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
             DeviceScreen(
-                status = LinkStatus.OFF,
-                addresses = emptyList(),
-                onLink = {},
-                onCopy = {},
-                onSignIn = {},
                 ereaders = emptyList(),
-                queue = emptyList(),
-                onOpenBook = {},
-                onRemoveQueued = {},
+                line = SyncLineState(SyncLine.NeverSynced(null)),
+                requestedAt = 0,
+                now = PREVIEW_NOW,
+                autoSync = false,
+                onAutoSync = {},
+                keepAwake = false,
+                onKeepAwake = {},
+                noWifi = true,
+                onOpenWifi = {},
+                onSync = {},
+                onSetUp = {},
+                onDecisions = {},
                 activity = emptyList(),
                 onClearActivity = {},
+                onSignIn = {},
                 onSavePlugin = {},
-                sshHost = "192.168.1.42",
-                syncJob =
-                    SyncJob(
-                        "job",
-                        "ssh",
-                        "PAUSED",
-                        totalBooks = 3,
-                        totalBytes = 6_000_000,
-                        completedBooks = 1,
-                        bytesSent = 2_000_000,
-                        currentTitle = sampleBooks[1].title,
-                    ),
             )
         }
     }
 }
 
-@Preview(name = "Device first run · light", widthDp = 412, heightDp = 892)
+@Preview(name = "Device first run · light", widthDp = 412, heightDp = 1000)
 @Composable
 internal fun DeviceFirstRunPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
             DeviceScreen(
-                status = LinkStatus.ON,
-                addresses = listOf("192.168.1.42:8765"),
-                onLink = {},
-                onCopy = {},
-                onSignIn = {},
                 ereaders = emptyList(),
-                queue = emptyList(),
-                onOpenBook = {},
-                onRemoveQueued = {},
-                activity =
-                    listOf(
-                        LinkLog.Entry(
-                            System.currentTimeMillis(),
-                            LinkLog.Kind.STARTED,
-                            port = 8765,
-                        )
-                    ),
+                line = SyncLineState(SyncLine.NotSetUp),
+                requestedAt = 0,
+                now = PREVIEW_NOW,
+                autoSync = true,
+                onAutoSync = {},
+                keepAwake = false,
+                onKeepAwake = {},
+                noWifi = false,
+                onOpenWifi = {},
+                onSync = {},
+                onSetUp = {},
+                onDecisions = {},
+                activity = listOf(LinkLog.Entry(PREVIEW_NOW, LinkLog.Kind.STARTED, port = 8765)),
                 onClearActivity = {},
+                onSignIn = {},
                 onSavePlugin = {},
+            )
+        }
+    }
+}
+
+/** Every sentence the Library's sync line can say, top to bottom. */
+@Preview(name = "Sync line · light", widthDp = 412, heightDp = 600)
+@Preview(
+    name = "Sync line · dark",
+    widthDp = 412,
+    heightDp = 600,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun SyncLinePreview() {
+    // Inspection mode, as in Android Studio: the "Syncing" ring stands still, so the screenshot
+    // test can settle.
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalInspectionMode provides true) {
+        SyncLineRows()
+    }
+}
+
+@Composable
+private fun SyncLineRows() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                listOf(
+                        SyncLineState(SyncLine.NotSetUp),
+                        SyncLineState(SyncLine.NeverSynced(null)),
+                        SyncLineState(SyncLine.Syncing("Kindle Paperwhite")),
+                        SyncLineState(SyncLine.Requested("Kindle Paperwhite")),
+                        SyncLineState(
+                            SyncLine.Synced("Kindle Paperwhite", PREVIEW_NOW - 2 * 60_000)
+                        ),
+                        SyncLineState(SyncLine.Synced(null, PREVIEW_NOW - 26 * 3_600_000), 2),
+                    )
+                    .forEach { state ->
+                        SyncStatusLine(
+                            state,
+                            PREVIEW_NOW,
+                            onSync = {},
+                            onSetUp = {},
+                            onDecisions = {},
+                        )
+                    }
+            }
+        }
+    }
+}
+
+@Preview(name = "Decisions · light", widthDp = 412, heightDp = 892)
+@Preview(
+    name = "Decisions · dark",
+    widthDp = 412,
+    heightDp = 892,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun DecisionsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DecisionsContent(
+                decisions(listOf(sampleKindle)),
+                listOf(FinishPrompt("sample3", "A Field Guide to Elsewhere")),
+                onAnswer = { _, _ -> },
+                onMarkRead = {},
+                onNotNow = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Setup · light", widthDp = 412, heightDp = 1200)
+@Preview(
+    name = "Setup · dark",
+    widthDp = 412,
+    heightDp = 1200,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun SetupPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            PluginSetupContent(
+                reinstall = false,
+                savedHost = "192.168.1.30",
+                savedPort = 2222,
+                savedFingerprint = "",
+                folder = "Librillo",
+                observed =
+                    ObservedHostKey(
+                        "192.168.1.30",
+                        2222,
+                        "ssh-ed25519",
+                        "SHA256:Xq3r0pXyZ1c2V4bN5m6L7k8J9h0G1f2D3s4A5q6W7e8",
+                    ),
+                probe = Operation(),
+                progress = SetupProgress(),
+                onFind = { _, _ -> },
+                onInstall = { _, _, _, _ -> },
+                onDone = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Setup done · light", widthDp = 412, heightDp = 700)
+@Composable
+internal fun SetupDonePreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            PluginSetupContent(
+                reinstall = true,
+                savedHost = "192.168.1.30",
+                savedPort = 2222,
+                savedFingerprint = "",
+                folder = "Librillo",
+                observed = null,
+                probe = Operation(),
+                progress = SetupProgress(SetupProgress.Stage.DONE),
+                onFind = { _, _ -> },
+                onInstall = { _, _, _, _ -> },
+                onDone = {},
             )
         }
     }
@@ -496,9 +673,6 @@ internal fun SettingsPreview() {
                 onDynamic = {},
                 reading = ReadingDefaults(),
                 statistics = sampleStatistics,
-                linkStatus = LinkStatus.ON,
-                linkAddress = "192.168.1.42:8765",
-                keepAwake = true,
                 hardcoverAutomatic = false,
                 hardcoverUsername = "alex",
                 count = 9,
@@ -542,7 +716,7 @@ internal fun ReadingDefaultsPreview() {
 internal fun ReadingTimePreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReadingTimeContent(sampleStatistics, onStatistics = {}, enabled = true)
+            ReadingTimeContent(sampleStatistics)
         }
     }
 }
@@ -639,7 +813,7 @@ internal fun BarPreview() {
                     current = CurrentBook(sampleBooks[0], 0.37, 1791750000000),
                     onContinue = {},
                     onOptions = {},
-                    transferActive = false,
+                    deviceBadge = false,
                     hazeState = null,
                 )
                 FolioBar(
@@ -648,13 +822,11 @@ internal fun BarPreview() {
                     current = null,
                     onContinue = {},
                     onOptions = {},
-                    transferActive = true,
+                    deviceBadge = true,
                     hazeState = null,
                 )
                 SelectionActionBar(
                     enabled = true,
-                    sendEnabled = false,
-                    onSend = {},
                     onLists = {},
                     onStatus = {},
                     onRemove = {},
@@ -765,13 +937,8 @@ internal fun HardcoverReadingPreview() {
                     ),
                 phonePercent = 0.37,
                 reports = emptyList(),
-                deviceFetch = true,
-                deviceFetchEnabled = true,
-                deviceFetchBusy = false,
-                deviceError = null,
                 onConnect = {},
                 onRefresh = {},
-                onFetchDevice = {},
                 onSearch = {},
                 onLink = {},
                 onMarkReading = {},
@@ -801,13 +968,8 @@ internal fun HardcoverLinkPreview() {
                 snapshot = null,
                 phonePercent = null,
                 reports = emptyList(),
-                deviceFetch = false,
-                deviceFetchEnabled = false,
-                deviceFetchBusy = false,
-                deviceError = null,
                 onConnect = {},
                 onRefresh = {},
-                onFetchDevice = {},
                 onSearch = {},
                 onLink = {},
                 onMarkReading = {},
@@ -833,13 +995,8 @@ internal fun HardcoverConnectPreview() {
                 snapshot = null,
                 phonePercent = null,
                 reports = emptyList(),
-                deviceFetch = false,
-                deviceFetchEnabled = false,
-                deviceFetchBusy = false,
-                deviceError = null,
                 onConnect = {},
                 onRefresh = {},
-                onFetchDevice = {},
                 onSearch = {},
                 onLink = {},
                 onMarkReading = {},

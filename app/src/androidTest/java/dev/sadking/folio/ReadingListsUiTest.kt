@@ -54,14 +54,12 @@ class ReadingListsUiTest {
     }
 
     @Test
-    fun sendControlsAreInTheLongPressMenu() {
-        var sent: Shelf? = null
-        var policy: Pair<Shelf, Boolean>? = null
+    fun theLongPressMenuEditsAndDeletesWithoutSending() {
+        var edited: Shelf? = null
         val shelf = Shelf("shelf", "Summer")
         compose.setContent {
             FolioTheme(dynamic = false) {
                 ListsScreen(
-                    // Send is only offered for a list with books in it.
                     listCards(
                         listOf(shelf),
                         library(
@@ -72,18 +70,17 @@ class ReadingListsUiTest {
                     busy = false,
                     onOpen = {},
                     onNew = {},
-                    onSend = { sent = it },
-                    onPolicy = { s, on -> policy = s to on },
+                    onEdit = { edited = it },
                 )
             }
         }
+        // Lists reach the e-reader as KOReader collections by sync; nothing is sent by hand.
+        compose.onNodeWithTag(listCardTag("shelf")).performTouchInput { longClick() }
+        compose.onNodeWithText("Delete list").assertIsDisplayed()
         compose.onNodeWithText("Send to e-reader").assertDoesNotExist()
-        compose.onNodeWithTag(listCardTag("shelf")).performTouchInput { longClick() }
-        compose.onNodeWithText("Include in sends").assertIsDisplayed().performClick()
-        compose.runOnIdle { assertEquals(shelf to true, policy) }
-        compose.onNodeWithTag(listCardTag("shelf")).performTouchInput { longClick() }
-        compose.onNodeWithText("Send to e-reader").assertIsDisplayed().performClick()
-        compose.runOnIdle { assertEquals(shelf, sent) }
+        compose.onNodeWithText("Include in sends").assertDoesNotExist()
+        compose.onNodeWithText("Edit").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(shelf, edited) }
     }
 
     @Test

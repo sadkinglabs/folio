@@ -548,6 +548,13 @@ interface LibraryDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun annotation(value: BookAnnotation)
 
+    /** One book's highlights, notes and bookmarks from every device, oldest first. */
+    @Query("SELECT * FROM annotations WHERE bookId = :bookId ORDER BY date, id")
+    fun bookAnnotations(bookId: String): Flow<List<BookAnnotation>>
+
+    @Query("SELECT * FROM annotations WHERE id = :id")
+    suspend fun annotationById(id: String): BookAnnotation?
+
     @Update suspend fun updateShelf(shelf: Shelf)
 
     @Insert suspend fun insertShelf(shelf: Shelf)
@@ -596,6 +603,9 @@ interface SyncBaselineDao {
 
     @Query("SELECT * FROM sync_baseline WHERE ereaderId = :ereaderId")
     fun forEreader(ereaderId: String): List<SyncBaseline>
+
+    /** Every e-reader's baselines, as they change. */
+    @Query("SELECT * FROM sync_baseline") fun all(): Flow<List<SyncBaseline>>
 
     @Query("DELETE FROM sync_baseline WHERE bookId = :bookId AND ereaderId = :ereaderId")
     fun delete(bookId: String, ereaderId: String)

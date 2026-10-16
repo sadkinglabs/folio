@@ -272,12 +272,18 @@ class ProductJourneyTest {
         // Advanced sits below the fold on a phone; scroll to it before checking it is there.
         compose.onNodeWithTag(SETTINGS_SSH_TAG).performScrollTo().assertIsDisplayed()
         tab("Library")
+        // No e-reader is set up in this run: the sync line says so and offers Set up.
+        compose.onNodeWithTag(SYNC_LINE_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Your e-reader isn't set up yet").assertIsDisplayed()
+        compose.onNodeWithTag(SYNC_LINE_BUTTON_TAG).assertTextEquals("Set up")
         capture("library-light")
         // Pride and Prejudice is being read, so it leads the Reading shelf.
         compose.onNodeWithTag(LIBRARY_SHELF_TAG).assertIsDisplayed()
         cover("Pride and Prejudice, Jane Austen, 37%").performClick()
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Continue · 37%")
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsDisplayed()
+        // Sync puts every book on the e-reader: the page offers Share, never Send.
+        compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_PROGRESS_TAG).assertIsDisplayed()
         compose.onNodeWithTag(BOOK_LISTS_ADD_TAG).performClick()
         compose.onNode(isToggleable() and hasAnySibling(hasText("Slow Sundays"))).performClick()
@@ -293,7 +299,7 @@ class ProductJourneyTest {
                 .fetchSemanticsNodes()
                 .isEmpty()
         }
-        waitTag(BOOK_ACTION_SEND_TAG)
+        waitTag(BOOK_ACTION_SHARE_TAG)
         // The list the book was just added to shows as a chip.
         compose.onNodeWithText("Slow Sundays").assertIsDisplayed()
         capture("book-light")
@@ -376,7 +382,7 @@ class ProductJourneyTest {
             .assert(hasStateDescription("No EPUB yet"))
             .performClick()
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertDoesNotExist()
         capture("catalogue-light")
         val input = epub("A Room of One’s Own", "Virginia Woolf", Color.rgb(223, 202, 215))
         val values =
@@ -400,7 +406,7 @@ class ProductJourneyTest {
         assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
         waitText("Attach to A Room of One’s Own?")
         compose.onNodeWithTag(CONFIRM_SHEET_CONFIRM_TAG).performClick()
-        waitTag(BOOK_ACTION_SEND_TAG)
+        waitTag(BOOK_ACTION_SHARE_TAG)
         compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).assertDoesNotExist()
         app.contentResolver.delete(uri, null, null)
         compose.onNodeWithContentDescription("Back").performClick()
@@ -420,11 +426,12 @@ class ProductJourneyTest {
         // The layout is remembered across launches; leave the grid for the tests that follow.
         compose.onNodeWithContentDescription("Show grid").performClick()
         tab("Device")
-        // The Device tab opens on the Folio Link card; Link is off in this run, so the queue and
-        // e-readers stay out of the way and the one line says what to do.
-        waitTag(DEVICE_LINK_CARD_TAG)
-        compose.onNodeWithTag(DEVICE_LINK_SWITCH_TAG).assertIsOff()
-        compose.onNodeWithText("Turn on Librillo Link to sync and send.").assertIsDisplayed()
+        // No e-reader is set up in this run: the Device tab opens on the setup card, with the
+        // Sync automatically switch below it. Nothing about sending.
+        waitTag(DEVICE_SETUP_TAG)
+        compose.onNodeWithText("Set up your e-reader").assertIsDisplayed()
+        compose.onNodeWithTag(DEVICE_AUTO_SYNC_TAG).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Send", substring = true).assertDoesNotExist()
         capture("kindle-dark")
         // The centre tile: Pride and Prejudice was read last on the phone (37%). Long-press opens
         // the Now Reading sheet; its "Open book page" row leads to the book.
@@ -437,7 +444,7 @@ class ProductJourneyTest {
         waitText("Continue · 37%")
         capture("now-reading-dark")
         compose.onNodeWithText("Open book page").performClick()
-        waitTag(BOOK_ACTION_SEND_TAG)
+        waitTag(BOOK_ACTION_SHARE_TAG)
         compose.onNodeWithContentDescription("Back").performClick()
         // Hamlet is read without an EPUB; it sits on the Library's Reading shelf all the same.
         tab("Library")

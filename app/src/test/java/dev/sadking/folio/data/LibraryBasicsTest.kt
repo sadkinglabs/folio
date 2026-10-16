@@ -67,7 +67,7 @@ class LibraryBasicsTest {
     fun catalogueEditingAndStatusDoNotImplyEpubOwnership() {
         val actions = availableBookActions(false)
         assertTrue(BookAction.EDIT in actions && BookAction.STATUS in actions)
-        assertFalse(BookAction.EXPORT_EPUB in actions || BookAction.SEND in actions)
+        assertFalse(BookAction.EXPORT_EPUB in actions || BookAction.OPEN_READER in actions)
     }
 
     @Test

@@ -2,13 +2,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The Books folder (M8) holds the only copy of each EPUB; the reader, KOReader's fingerprint,
-         sending and backups use plain file paths. The app is installed directly, not from Play. -->
+         sync and backups use plain file paths. The app is installed directly, not from Play. -->
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Folio Link: a connectedDevice service needs one of these on Android 14+; both are normal
          permissions. Multicast is also what the plugin's discovery will use. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -20,8 +19,6 @@
     <!-- Read-aloud keeps speaking with the screen off. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:name=".FolioApplication" android:enableOnBackInvokedCallback="true" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Folio" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true" android:usesCleartextTraffic="false">
-        <service android:name=".sync.SyncService" android:exported="false" android:foregroundServiceType="dataSync" />
-        <receiver android:name=".sync.CancelSyncReceiver" android:exported="false" />
         <service android:name=".link.FolioLinkService" android:exported="false" android:foregroundServiceType="connectedDevice" />
         <!-- Exported so the lock screen, notification and headphones can control read-aloud. -->
         <service android:name=".reader.ListenService" android:exported="true" android:foregroundServiceType="mediaPlayback">

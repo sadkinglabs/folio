@@ -86,7 +86,7 @@ class BookActionsUiTest {
                 BookActionsSheet(book, false, false, onAction = { chosen = it }, onDismiss = {})
             }
         }
-        compose.onNodeWithTag(bookActionTag(BookAction.SEND)).assertDoesNotExist()
+        compose.onNodeWithText("Send", substring = true).assertDoesNotExist()
         compose.onNodeWithTag(bookActionTag(BookAction.ATTACH)).assertHasClickAction()
         compose.onNodeWithTag(bookActionTag(BookAction.REMOVE)).performClick()
         compose.runOnIdle { assertEquals(BookAction.REMOVE, chosen) }
@@ -95,14 +95,15 @@ class BookActionsUiTest {
     }
 
     @Test
-    fun epubQuickActionsOfferSendAndReadAndStayOpenWhileBusyOnlyForSelecting() {
+    fun epubQuickActionsOfferReadWithoutSendAndStayOpenWhileBusyOnlyForSelecting() {
         var chosen: BookAction? = null
         compose.setContent {
             FolioTheme(dynamic = false) {
                 BookActionsSheet(book, true, true, onAction = { chosen = it }, onDismiss = {})
             }
         }
-        compose.onNodeWithTag(bookActionTag(BookAction.SEND)).assertIsNotEnabled()
+        // Sync puts every book on the e-reader: there is no Send.
+        compose.onNodeWithText("Send", substring = true).assertDoesNotExist()
         compose.onNodeWithTag(bookActionTag(BookAction.OPEN_READER)).assertIsNotEnabled()
         compose.onNodeWithTag(bookActionTag(BookAction.SELECT)).assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(BookAction.SELECT, chosen) }
@@ -128,26 +129,27 @@ class BookActionsUiTest {
     @Test
     fun bookPageActionsAndOverflow() {
         var hardcover = false
-        var send = false
+        var shared = false
         var lists = false
         compose.setContent {
             FolioTheme(dynamic = false) {
                 BookDetails(
                     book,
                     lists = listOf("Slow Sundays"),
-                    onSend = { send = true },
+                    onShare = { shared = true },
                     onHardcover = { hardcover = true },
                     onLists = { lists = true },
                     fileMissing = false,
                 )
             }
         }
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).performClick()
+        compose.onNodeWithText("Send").assertDoesNotExist()
+        compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).performClick()
         compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).performClick()
         compose.onNodeWithText("Slow Sundays").assertIsDisplayed()
         compose.onNodeWithTag(BOOK_LISTS_ADD_TAG).performClick()
         compose.runOnIdle {
-            assertTrue(send)
+            assertTrue(shared)
             assertTrue(hardcover)
             assertTrue(lists)
         }
@@ -176,7 +178,7 @@ class BookActionsUiTest {
             }
         }
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertDoesNotExist()
+        compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).assertHasClickAction()
         compose.onNodeWithTag(STATUS_TILE_PHONE_TAG).assertDoesNotExist()

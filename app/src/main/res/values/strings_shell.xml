@@ -20,13 +20,6 @@
     <!-- Content description used by UI tests. -->
     <string name="shell_book_actions">Book actions</string>
 
-    <!-- Shell: KOReader plugin install (the folder must be on a Kindle) -->
-    <string name="shell_companion_title">Install the KOReader plugin</string>
-    <string name="shell_companion_body">Installs Librillo\'s plugin into KOReader over SSH and sets up Librillo Link, so there is nothing to type on the e-reader. The previous plugin is kept.</string>
-    <string name="shell_companion_install">Install</string>
-
-    <!-- Shell: what a sync sends -->
-
     <!-- Shell: unsaved edits -->
     <string name="shell_discard_title">Discard unsaved changes?</string>
     <string name="shell_discard_body">Nothing has been saved to this book yet. Keep editing, or discard your changes.</string>
@@ -41,10 +34,6 @@
 
     <!-- Shell: book search -->
     <string name="shell_no_browser">Install a browser to search for this book</string>
-
-    <!-- Shell: paired folder conflicts -->
-    <string name="shell_folder_review_title">Sync needs your review</string>
-    <string name="shell_folder_review_body">Both copies were kept. No reading data was overwritten.</string>
 
     <!-- Shell: lists and status sheets -->
     <string name="shell_lists_for_book">Lists · %1$s</string>
@@ -72,14 +61,6 @@
     <string name="shell_add_to_list">Add to list</string>
 
     <!-- Shell: where a book is, relative to the e-reader -->
-    <string name="shell_device_on_ereader">On your e-reader</string>
-    <string name="shell_device_needs_update">Changed since it was sent</string>
-    <string name="shell_device_not_sent">Not on your e-reader yet</string>
-    <string name="shell_device_queued">Waiting to send</string>
-    <string name="shell_device_sending">Sending to your e-reader…</string>
-    <string name="shell_device_sending_badge">Sending to your e-reader</string>
-    <string name="shell_device_paused">Sending paused</string>
-    <string name="shell_device_failed">Sending failed</string>
     <string name="shell_device_no_epub">No EPUB yet</string>
 
     <!-- Shell: book summary -->

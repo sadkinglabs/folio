@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Redesign: the bottom bar's centre item -->
     <!-- TalkBack: the centre item with a book and a saved place. -->
     <string name="rd_continue_reading_progress">Continue reading %1$s, %2$d%%</string>
     <!-- TalkBack: the centre item with a book but no saved place yet. -->
@@ -12,7 +11,6 @@
     <!-- Redesign: Now Reading sheet -->
     <string name="rd_continue">Continue</string>
     <string name="rd_continue_percent">Continue · %1$d%%</string>
-    <string name="rd_action_send">Send</string>
     <string name="rd_action_edit">Edit</string>
     <string name="rd_action_progress">Progress</string>
     <string name="rd_action_hardcover">Hardcover</string>
@@ -35,16 +33,7 @@
     <string name="rd_action_find">Find</string>
     <string name="rd_action_select">Select</string>
     <!-- TalkBack and the Send tile for 1.5 s after a send is queued. -->
-    <string name="rd_action_queued">Queued</string>
     <string name="rd_strip_phone">Phone</string>
-    <string name="rd_ereader_sent">Sent</string>
-    <string name="rd_ereader_changed">Changed</string>
-    <string name="rd_ereader_not_sent">Not sent</string>
-    <string name="rd_ereader_queued">Queued</string>
-    <string name="rd_ereader_sending">Sending</string>
-    <string name="rd_ereader_paused">Paused</string>
-    <string name="rd_ereader_failed">Failed</string>
-    <string name="rd_ereader_no_epub">No EPUB</string>
     <string name="rd_hardcover_page">Page %1$d</string>
     <string name="rd_hardcover_linked">Linked</string>
     <string name="rd_hardcover_not_linked">Not linked</string>

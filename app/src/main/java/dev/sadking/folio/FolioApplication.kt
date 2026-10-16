@@ -7,7 +7,6 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.room.Room
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceSettings
-import kotlinx.coroutines.flow.first
 
 class FolioApplication : Application() {
     val database by lazy {
@@ -25,14 +24,11 @@ class FolioApplication : Application() {
             canRead = { BooksFolder(this).hasAccess },
         )
     }
-    val syncCoordinator by lazy { dev.sadking.folio.sync.SyncCoordinator(this) }
     val deviceSettings by lazy { DeviceSettings(this) }
-    val linkQueue by lazy { dev.sadking.folio.link.LinkQueue(this) }
     val hardcoverOutbox by lazy { dev.sadking.folio.sync.HardcoverOutbox(this) }
     val link by lazy { dev.sadking.folio.link.FolioLink(this, database.library()) }
     val operations by lazy {
         OperationRunner(
-            transferActive = { database.library().jobs().first().any { it.active } },
             authentication = { deviceSettings.load().authentication },
             text = { resources.failureText() },
         )

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M9 sync UI: the Library's sync line, the Device tab, the decisions sheet and the e-reader
+         setup sheet. "e-reader" is the generic word; the e-reader's own name replaces it when
+         known (for example "Kindle Paperwhite"). -->
+    <string name="m9sync_your_ereader">Your e-reader</string>
+    <string name="m9sync_set_up">Set up</string>
+    <string name="m9sync_sync">Sync</string>
+    <string name="m9sync_sync_now">Sync now</string>
+
+    <!-- How long ago, after "synced": "Kindle synced 2 min ago". -->
+    <string name="m9sync_ago_now">just now</string>
+    <plurals name="m9sync_ago_minutes">
+        <item quantity="one">%d min ago</item>
+        <item quantity="other">%d min ago</item>
+    </plurals>
+    <plurals name="m9sync_ago_hours">
+        <item quantity="one">%d hour ago</item>
+        <item quantity="other">%d hours ago</item>
+    </plurals>
+    <string name="m9sync_ago_yesterday">yesterday</string>
+    <plurals name="m9sync_ago_days">
+        <item quantity="one">%d day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+
+    <!-- The sync line. %1$s is the e-reader's name or "Your e-reader". -->
+    <string name="m9sync_line_not_set_up">Your e-reader isn\'t set up yet</string>
+    <string name="m9sync_line_never">%1$s hasn\'t synced yet</string>
+    <string name="m9sync_line_syncing">Syncing…</string>
+    <string name="m9sync_line_syncing_with">Syncing with %1$s…</string>
+    <string name="m9sync_line_requested">%1$s will sync within 5 minutes while its Wi-Fi is on</string>
+    <!-- %2$s is how long ago: "Kindle synced 2 min ago". -->
+    <string name="m9sync_line_synced">%1$s synced %2$s</string>
+    <!-- The same, on the e-reader's own card, under its name. -->
+    <string name="m9sync_card_never">Hasn\'t synced yet</string>
+    <string name="m9sync_card_requested">Will sync within 5 minutes while its Wi-Fi is on</string>
+    <!-- %1$s is how long ago: "Synced 2 min ago". -->
+    <string name="m9sync_card_synced">Synced %1$s</string>
+    <plurals name="m9sync_decisions">
+        <item quantity="one">%d decision needed</item>
+        <item quantity="other">%d decisions needed</item>
+    </plurals>
+
+    <!-- Needs your decision -->
+    <string name="m9sync_decisions_title">Needs your decision</string>
+    <string name="m9sync_decisions_none">Nothing needs your decision.</string>
+    <string name="m9sync_decisions_body">%1$s uses your answer at its next sync.</string>
+    <string name="m9sync_decisions_row">Things sync can\'t settle on its own</string>
+    <string name="m9sync_decision_answered">Saved. %1$s uses it at its next sync.</string>
+    <string name="m9sync_finish_prompt">You finished %1$s. Mark it as read on Hardcover?</string>
+    <string name="m9sync_finish_mark">Mark as read</string>
+    <string name="m9sync_finish_not_now">Not now</string>
+
+    <!-- Device tab -->
+    <string name="m9sync_settings">Sync</string>
+    <string name="m9sync_auto">Sync automatically</string>
+    <string name="m9sync_auto_hint">While Librillo is open and for 30 minutes after.</string>
+    <string name="m9sync_reinstall">Reinstall the Librillo plugin</string>
+    <string name="m9sync_reinstall_hint">Over Wi-Fi, with KOReader\'s SSH server</string>
+    <string name="m9sync_by_hand">Set up by hand</string>
+    <string name="m9sync_sign_in_hint">The address and password for KOReader\'s Progress sync</string>
+    <string name="m9sync_setup_card_body">Librillo keeps the same library on your phone and your e-reader: books, highlights, reading status and lists. You set it up once, over Wi-Fi.</string>
+    <plurals name="m9sync_books">
+        <item quantity="one">%d book on both</item>
+        <item quantity="other">%d books on both</item>
+    </plurals>
+    <string name="m9sync_first_sync_hint">On the e-reader, tap Librillo → Sync now.</string>
+    <string name="m9sync_no_wifi">This phone isn\'t on Wi-Fi. Join the e-reader\'s Wi-Fi or turn on your hotspot.</string>
+    <string name="m9sync_refused_title">Couldn\'t take</string>
+    <!-- "Couldn't take: Scan.pdf — not a book Librillo can open" -->
+    <string name="m9sync_refused_line">Couldn\'t take: %1$s — %2$s</string>
+    <string name="m9sync_refused_not_a_book">not a book Librillo can open</string>
+    <string name="m9sync_refused_too_large">larger than 256 MB, the most Librillo takes</string>
+    <string name="m9sync_refused_other_format">a different kind of file than the book on the phone</string>
+    <string name="m9sync_refused_body">These stay on the e-reader. Librillo tries again if a file changes.</string>
+    <string name="m9sync_log_sync_started">%1$s started a sync</string>
+    <string name="m9sync_log_sync_finished">%1$s finished a sync</string>
+    <string name="m9sync_log_uploaded">%1$s sent a book to the phone</string>
+
+    <!-- Book page: the e-reader tile when it has no position for the book. -->
+    <string name="m9sync_ereader_no_position">Not opened</string>
+    <!-- Settings: under "Update Hardcover automatically". -->
+    <string name="m9sync_hardcover_automatic_hint">Reading progress only. Finishing a book always asks first.</string>
+
+    <!-- Setting the e-reader up over SSH (PluginSetupSheet.kt) -->
+    <string name="m9sync_setup_title">Set up your e-reader</string>
+    <string name="m9sync_setup_reinstall_title">Reinstall the Librillo plugin</string>
+    <string name="m9sync_setup_intro">Librillo puts its plugin on your e-reader over Wi-Fi. You only do this once. Keep both on the same Wi-Fi.</string>
+    <string name="m9sync_setup_step_ssh">Turn on SSH in KOReader</string>
+    <string name="m9sync_setup_step_ssh_body">On the e-reader, open KOReader\'s top menu, then the gear tab → Network → SSH server. Turn on Login without password, then start the SSH server. It shows the e-reader\'s address.</string>
+    <string name="m9sync_setup_step_find">Find the e-reader</string>
+    <string name="m9sync_setup_find">Find it</string>
+    <string name="m9sync_setup_found">Found the e-reader at %1$s.</string>
+    <string name="m9sync_setup_key">Key: %1$s</string>
+    <string name="m9sync_setup_key_changed">This isn\'t the key Librillo saw last time. Go on only if you reset or replaced the e-reader.</string>
+    <string name="m9sync_setup_step_folder">Name the library folder</string>
+    <string name="m9sync_setup_folder_label">Folder on the e-reader</string>
+    <string name="m9sync_setup_folder_hint">Your books go in this folder, by author.</string>
+    <string name="m9sync_setup_folder_invalid">Use a plain folder name, like Librillo.</string>
+    <string name="m9sync_setup_install">Install</string>
+    <string name="m9sync_setup_installing">Installing…</string>
+    <string name="m9sync_setup_done">The plugin is on your e-reader. Three steps there:</string>
+    <string name="m9sync_setup_done_restart">Restart KOReader. If it says to, restart it once more.</string>
+    <string name="m9sync_setup_done_sync">Tap Librillo → Sync now.</string>
+    <string name="m9sync_setup_done_ssh_off">Turn KOReader\'s SSH server off: gear tab → Network → SSH server.</string>
+</resources>

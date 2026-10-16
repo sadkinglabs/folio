@@ -156,7 +156,7 @@ private val sampleDevices =
 internal fun ReaderDevicesPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReaderDevicesSheet(sampleDevices, busy = false, {}, {}, {})
+            ReaderDevicesSheet(sampleDevices, busy = false, {})
         }
     }
 }
@@ -166,7 +166,7 @@ internal fun ReaderDevicesPreview() {
 internal fun ReaderDevicesEmptyPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReaderDevicesSheet(emptyList(), busy = false, {}, {}, {})
+            ReaderDevicesSheet(emptyList(), busy = false, {})
         }
     }
 }

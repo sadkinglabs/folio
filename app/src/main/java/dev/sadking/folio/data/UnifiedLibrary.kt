@@ -47,7 +47,6 @@ fun hardcoverStatus(status: Int): String =
 
 fun catalogueSignals(wish: WishBook, observation: HardcoverObservation?): BookSignals =
     BookSignals(
-        "No EPUB",
         if (wish.status.isNotBlank()) "${wish.status} · phone"
         else observation?.let { "${hardcoverStatus(it.status)} · Hardcover" } ?: "Want to Read",
         null,
@@ -89,7 +88,6 @@ fun localRemovalPlan(
 enum class BookAction {
     OPEN,
     SELECT,
-    SEND,
     PROGRESS,
     EDIT,
     LISTS,
@@ -111,7 +109,6 @@ fun availableBookActions(hasEpub: Boolean, hasAnnotations: Boolean = false): Lis
             BookAction.OPEN,
             BookAction.OPEN_READER,
             BookAction.SELECT,
-            BookAction.SEND,
             BookAction.PROGRESS,
             BookAction.EDIT,
             BookAction.LISTS,

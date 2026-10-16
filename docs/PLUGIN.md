@@ -9,14 +9,16 @@ It only talks to the phone over your local network: home Wi-Fi or the phone's ho
 ## Set up (once)
 
 1. On the e-reader, turn on KOReader's SSH server (Network → SSH server).
-2. On the phone, open Librillo and set up the e-reader. Librillo installs the plugin over SSH and leaves a one-time setup file beside it.
+2. On the phone, open Librillo, go to the Device tab and tap **Set up**. Choose the name of the library folder on the e-reader (default `Librillo`). Librillo installs the plugin over SSH and leaves a one-time setup file beside it.
 3. Restart KOReader. The plugin reads the setup file, then deletes it:
    - Progress sync is pointed at Librillo, with your sign-in, set to sync automatically and to ask before jumping to another place ("Continue from…?"). Choices you already made in Progress sync are kept.
-   - Librillo's library folder and "Sync automatically" are set.
-4. KOReader says "Librillo is set up". Restart KOReader once more so Progress sync picks it up.
-5. Turn KOReader's SSH server off again.
+   - Librillo's library folder and **Sync automatically** are set.
+4. KOReader says "Librillo is set up". Restart KOReader once more so Progress sync picks it up, then tap **Librillo → Sync now**.
+5. Turn KOReader's SSH server off again. SSH is only needed for setup.
 
-The plugin also reads setup files from older Librillo versions (format version 1).
+To update the plugin, tap **Reinstall** on the phone's Device tab the same way.
+
+The plugin also reads setup files from older Librillo versions (format version 1). Those only set up Progress sync.
 
 ## The Librillo menu
 
@@ -25,9 +27,12 @@ In KOReader's main menu (the tools tab), **Librillo**:
 - **Sync now**: syncs right away. If Wi-Fi is off, KOReader may offer to turn it on.
 - **Sync automatically**: on after setup. See below.
 - **Library folder**: the folder inside KOReader's home folder where your books live. Default: `Librillo`.
-- **Questions (n)**: when the last sync found something only you can decide. Each question shows its choices; pick one, or **Later**. Your answers are sent with the next sync, which starts as soon as you've answered.
+- **Questions (n)**: only there when the last sync found something only you can decide. Each question shows its choices; pick one, or **Later**. Your answers are sent with the next sync, which starts as soon as you've answered. You can also answer on the phone.
+- **About**: one line on what the plugin does.
 
-The older items (Get books from Librillo, Find Librillo on this network, reading positions, collection additions and statistics export) still work for now. A later update removes them.
+That is the whole menu. If the phone's address changed, a sync finds it on the network by itself.
+
+The older items (Get books from Librillo, Find Librillo on this network, Continue from Librillo automatically, Review phone reading position, Review collection additions and Export reading statistics) are gone. Sync does what they did. Settings they left behind (`folio_folder`, `folio_auto_fetch`, `folio_auto_positions`, `folio_applied_positions`) are no longer read.
 
 ## What a sync does
 

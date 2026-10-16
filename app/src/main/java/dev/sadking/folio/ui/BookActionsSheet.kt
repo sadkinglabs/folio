@@ -5,7 +5,6 @@ package dev.sadking.folio.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bookmark
@@ -33,8 +32,9 @@ internal const val BOOK_ACTIONS_SHEET_TAG = "book-actions-sheet"
 internal fun bookActionTag(action: BookAction) = "book-actions-${action.name.lowercase()}"
 
 /**
- * Quick actions for a book from the library, without opening its page: the cover and title, six
- * icon actions and a row to the page. A record offers Find and Attach instead of Read and Send.
+ * Quick actions for a book from the library, without opening its page: the cover and title, five
+ * icon actions and a row to the page. A record offers Find and Attach instead of Read. Sync puts
+ * every book on the e-reader, so there is no Send.
  */
 @Composable
 fun BookActionsSheet(
@@ -85,8 +85,6 @@ fun BookActionsSheet(
                             BookAction.OPEN_READER ->
                                 Icons.Outlined.AutoStories to R.string.rd_action_read
                             BookAction.SEARCH -> Icons.Outlined.Search to R.string.rd_action_find
-                            BookAction.SEND ->
-                                Icons.AutoMirrored.Outlined.Send to R.string.rd_action_send
                             BookAction.ATTACH ->
                                 Icons.Outlined.AttachFile to R.string.rd_action_attach
                             BookAction.LISTS ->
@@ -99,7 +97,8 @@ fun BookActionsSheet(
                                 Icons.Outlined.DeleteOutline to R.string.rd_action_remove
                             else -> Icons.Outlined.AutoStories to R.string.rd_open_book_page
                         }
-                    // Selecting and searching start nothing on the phone, so a running operation
+                    // Selecting and searching start nothing on the phone, so a running
+                    // operation
                     // does not block them.
                     IconAction(
                         icon,

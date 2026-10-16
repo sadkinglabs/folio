@@ -21,6 +21,9 @@ import dev.sadking.folio.data.WishBook
 import dev.sadking.folio.data.encode
 import dev.sadking.folio.link.KosyncRequest
 import dev.sadking.folio.link.LinkResponse
+import dev.sadking.folio.link.Refusal
+import dev.sadking.folio.link.RefusedFile
+import dev.sadking.folio.link.SyncRefusal
 import dev.sadking.folio.link.SyncRoutes
 import java.io.File
 import java.util.UUID
@@ -266,12 +269,38 @@ class RoomSyncLibraryTest {
         assertNotNull(db.library().removedEntry(home.id))
     }
 
+    /** The reason [block] refused its file. */
+    private fun refusal(block: () -> Unit): Refusal =
+        assertThrows(SyncRefusal::class.java) { block() }.reason
+
     @Test
     fun receiveRefusesAFileThatIsNotABook() = runBlocking {
         val junk =
             File(library.uploadDir(), "librillo-junk.upload").apply { writeText("not a book") }
-        assertNull(library.receive("kindle", "Downloads/notes.epub", junk))
+        assertEquals(
+            Refusal.NOT_A_BOOK,
+            refusal { library.receive("kindle", "Downloads/notes.epub", junk) },
+        )
         assertTrue(db.library().allStoredBooks().isEmpty())
+    }
+
+    @Test
+    fun receiveRefusesAFileLargerThanLibrilloTakes() = runBlocking {
+        val huge =
+            File(library.uploadDir(), "librillo-huge.upload").apply {
+                // Sparse: it takes no room on disk.
+                java.io.RandomAccessFile(this, "rw").use { it.setLength(Epub.MAX_FILE + 1) }
+            }
+        assertEquals(
+            Refusal.TOO_LARGE,
+            refusal { library.receive("kindle", "Downloads/huge.pdf", huge) },
+        )
+        assertTrue(db.library().allStoredBooks().isEmpty())
+    }
+
+    @Test
+    fun receiveOfAFileThatIsGoneIsNotARefusal() {
+        assertNull(library.receive("kindle", "Downloads/x.epub", File(base, "missing.upload")))
     }
 
     @Test
@@ -352,9 +381,25 @@ class RoomSyncLibraryTest {
                 writeText("%PDF-1.4\n%%EOF\n")
             }
 
-        assertNull(library.revise("kindle", home.id, "Librillo/Ann Lee/Home.pdf", pdf))
+        assertEquals(
+            Refusal.OTHER_FORMAT,
+            refusal { library.revise("kindle", home.id, "Librillo/Ann Lee/Home.pdf", pdf) },
+        )
         assertEquals(home, book(home.id))
         assertArrayEquals(bytes, File(home.currentPath).readBytes())
+    }
+
+    @Test
+    fun reviseRefusesAFileThatIsNotABook() = runBlocking {
+        val home = addToFolder("Home", "Ann Lee")
+        val junk =
+            File(library.uploadDir(), "librillo-junk.upload").apply { writeText("not a book") }
+        assertEquals(
+            Refusal.NOT_A_BOOK,
+            refusal { library.revise("kindle", home.id, "Librillo/Ann Lee/Home.epub", junk) },
+        )
+        assertEquals(home, book(home.id))
+        assertNull("An unknown book is not a refusal", library.revise("kindle", "nope", "a", junk))
     }
 
     @Test
@@ -403,6 +448,28 @@ class RoomSyncLibraryTest {
         assertEquals("2026-02-02 09:00:00", row.date)
         assertEquals("note", row.kind)
         assertEquals(listOf("Sundays"), library.phoneBooks().single().lists)
+    }
+
+    @Test
+    fun statusesSetBySyncAreReportedForTheHardcoverPrompt() = runBlocking {
+        val changed = mutableListOf<Collection<String>>()
+        val reporting = RoomSyncLibrary(repo, state, cache, { changed += it }) { clock }
+        val home = addToFolder("Home", "Ann Lee")
+        val id =
+            reporting.receive("kindle", "Downloads/dune.epub", upload("Dune", "Frank Herbert"))!!
+        reporting.apply(
+            "kindle",
+            listOf(
+                PhoneAction.Import("Downloads/dune.epub", status = "Finished", statusAt = 5),
+                PhoneAction.SetStatus(home.id, "Finished", 6),
+                PhoneAction.AddAnnotations(home.id, listOf(syncNote("k1"))),
+            ),
+            mapOf("Downloads/dune.epub" to id),
+        )
+        assertEquals(listOf(setOf(id, home.id)), changed.map { it.toSet() })
+
+        reporting.apply("kindle", listOf(PhoneAction.SetLists(home.id, listOf("A"))), emptyMap())
+        assertEquals("Nothing to report without a status", 1, changed.size)
     }
 
     @Test
@@ -532,6 +599,26 @@ class RoomSyncLibraryTest {
         assertTrue("An answer is used at the next sync", library.pending("kindle"))
     }
 
+    @Test
+    fun theSyncButtonMakesEveryEreaderSyncUntilItHasSynced() = runBlocking {
+        val home = addToFolder("Home", "Ann Lee")
+        val agreed = Baseline(home.id, "Librillo/Ann Lee/Home.epub", home.currentHash, "unread", 0)
+        library.commit("kindle", listOf(agreed))
+        library.synced("kindle", "Kindle", clock)
+        assertFalse(library.pending("kindle"))
+        assertFalse(state.syncRequested("kindle"))
+
+        state.requestSync(clock + 10)
+        assertEquals(clock + 10, state.syncRequestedAt.value)
+        assertTrue(library.pending("kindle"))
+        assertTrue("An e-reader that never synced", library.pending("kobo"))
+        assertEquals("Kept across restarts", clock + 10, SyncState(prefs).syncRequestedAt.value)
+
+        library.synced("kindle", "Kindle", clock + 20)
+        assertFalse(library.pending("kindle"))
+        assertTrue(library.pending("kobo"))
+    }
+
     // ---- Questions ----
 
     @Test
@@ -561,6 +648,54 @@ class RoomSyncLibraryTest {
         library.synced("kindle", "", 100)
         assertEquals("Kindle Paperwhite", state.ereaders.value.getValue("kindle").name)
         assertEquals(100L, state.ereaders.value.getValue("kindle").lastSync)
+    }
+
+    @Test
+    fun refusedFilesAndSyncProgressAreKeptPerEreader() {
+        val refused = RefusedFile("a".repeat(64), "Downloads/notes.epub", Refusal.NOT_A_BOOK, 5)
+        library.saveRefused("kindle", listOf(refused))
+        assertEquals(listOf(refused), library.refused("kindle"))
+        assertEquals("notes.epub", state.get("kindle").refused.single().name)
+        assertTrue(library.refused("kobo").isEmpty())
+        assertEquals(listOf(refused), SyncState(prefs).get("kindle").refused)
+
+        library.started("kindle", "Kindle Paperwhite", clock)
+        assertTrue(state.get("kindle").syncing(clock + 1))
+        assertFalse(
+            "A sync that never finished",
+            state.get("kindle").syncing(clock + SyncState.SYNCING_MS),
+        )
+        assertEquals("Kindle Paperwhite", state.get("kindle").name)
+        assertEquals("Not kept across restarts", 0L, SyncState(prefs).get("kindle").syncingSince)
+
+        library.commit(
+            "kindle",
+            listOf(Baseline("b1", "Librillo/A/B.epub", "b".repeat(64), "unread", 0)),
+        )
+        library.synced("kindle", "", clock + 5)
+        val after = state.get("kindle")
+        assertFalse(after.syncing(clock + 6))
+        assertEquals(1, after.books)
+        assertEquals(clock + 5, after.lastSync)
+        assertEquals(listOf(refused), after.refused)
+    }
+
+    @Test
+    fun stateSavedBeforeStepFourStillLoads() {
+        val old =
+            SyncState.decode(
+                JSONArray(
+                    """[{"id":"kindle","name":"Kindle","lastSync":5,"questions":[],"answers":{}}]"""
+                )
+            )
+        assertEquals(listOf(EreaderSync("kindle", "Kindle", 5)), old)
+        val unknownReason =
+            SyncState.decode(
+                JSONArray(
+                    """[{"id":"kindle","questions":[],"refused":[{"sha256":"a","path":"x","reason":"LATER","at":1}]}]"""
+                )
+            )
+        assertTrue(unknownReason.single().refused.isEmpty())
     }
 
     // ---- Files ----
@@ -684,5 +819,75 @@ class RoomSyncLibraryTest {
             "The upload's temporary file is gone",
             library.uploadDir().listFiles()!!.none { it.isFile },
         )
+    }
+
+    @Test
+    fun aFileThePhoneRefusesThroughTheRoutesIsListedAndNotSentAgain() = runBlocking {
+        val junk =
+            File(base, "kindle/notes.epub").apply {
+                parentFile!!.mkdirs()
+                writeText("not a book")
+            }
+        val routes = SyncRoutes(library, now = { clock })
+        fun call(
+            method: String,
+            route: String,
+            body: String? = null,
+            upload: java.io.InputStream? = null,
+        ) =
+            routes.handle(
+                KosyncRequest(method, "/folio/v2$route", mapOf("x-folio-device" to "kindle"), body),
+                route.substringBefore('?'),
+                upload,
+            )
+        val path = "Librillo/Unknown author/notes.epub"
+        val manifest =
+            JSONObject()
+                .put("device", JSONObject().put("id", "kindle").put("name", "Kindle"))
+                .put("home", "/mnt/us/koreader")
+                .put("root", "Librillo")
+                .put(
+                    "files",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("path", path)
+                                .put("size", junk.length())
+                                .put("sha256", Epub.sha256(junk))
+                                .put("format", "epub")
+                        ),
+                )
+                .toString()
+        val plan = JSONObject((call("POST", "/sync", manifest) as LinkResponse.Text).body)
+        assertTrue(state.get("kindle").syncing(clock))
+        val session = plan.getString("session")
+        val actions = plan.getJSONArray("kindle")
+        assertEquals(1, actions.length())
+        assertEquals("upload", actions.getJSONObject(0).getString("op"))
+        val put =
+            call(
+                "PUT",
+                "/upload?session=$session&path=" + java.net.URLEncoder.encode(path, "UTF-8"),
+                upload = junk.inputStream(),
+            )
+        assertEquals(200, put.status)
+        val results = JSONArray().put(JSONObject().put("index", 0).put("ok", true))
+        val finish =
+            call(
+                "POST",
+                "/finish",
+                JSONObject().put("session", session).put("results", results).toString(),
+            )
+        assertEquals(200, finish.status)
+
+        assertTrue(db.library().allStoredBooks().isEmpty())
+        val refused = state.get("kindle").refused.single()
+        assertEquals("notes.epub", refused.name)
+        assertEquals(Refusal.NOT_A_BOOK, refused.reason)
+        assertEquals(Epub.sha256(junk), refused.sha256)
+        assertFalse(state.get("kindle").syncing(clock))
+
+        val again = JSONObject((call("POST", "/sync", manifest) as LinkResponse.Text).body)
+        assertEquals(0, again.getJSONArray("kindle").length())
     }
 }

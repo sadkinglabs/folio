@@ -8,7 +8,6 @@ package dev.sadking.folio.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
@@ -36,7 +35,6 @@ import dev.sadking.folio.data.CurrentBook
 
 /** What the Now Reading sheet can do with the current book besides continuing. */
 internal enum class NowReadingAction {
-    SEND,
     EDIT,
     PROGRESS,
     HARDCOVER,
@@ -46,8 +44,8 @@ internal enum class NowReadingAction {
 }
 
 /**
- * One of the six icon actions under a book: a 56 dp tonal icon button with a short label. While
- * [busy], a ring replaces the icon and the button is disabled. [tag] is for tests.
+ * One of the icon actions under a book: a 56 dp tonal icon button with a short label. While [busy],
+ * a ring replaces the icon and the button is disabled. [tag] is for tests.
  */
 internal class IconAction(
     val icon: ImageVector,
@@ -115,7 +113,7 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
 }
 
 /**
- * The Now Reading sheet, from the centre tile's long-press: the current book with Continue, six
+ * The Now Reading sheet, from the centre tile's long-press: the current book with Continue, five
  * icon actions and a way to its page. With no current book it shows the empty form: the most recent
  * books marked Reading, and a way to the Library.
  */
@@ -192,13 +190,6 @@ internal fun NowReadingSheet(
                 }
                 ActionRow(
                     listOf(
-                        IconAction(
-                            Icons.AutoMirrored.Outlined.Send,
-                            stringResource(R.string.rd_action_send),
-                            enabled = !busy,
-                        ) {
-                            onAction(NowReadingAction.SEND)
-                        },
                         IconAction(
                             Icons.Outlined.Edit,
                             stringResource(R.string.rd_action_edit),

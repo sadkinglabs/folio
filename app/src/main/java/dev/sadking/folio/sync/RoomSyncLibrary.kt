@@ -2,6 +2,8 @@ package dev.sadking.folio.sync
 
 import androidx.room.withTransaction
 import dev.sadking.folio.FolioApplication
+import dev.sadking.folio.core.BookFormats
+import dev.sadking.folio.core.Comic
 import dev.sadking.folio.core.Epub
 import dev.sadking.folio.core.sync.Baseline
 import dev.sadking.folio.core.sync.PhoneAction
@@ -11,12 +13,17 @@ import dev.sadking.folio.core.sync.SyncAnnotation
 import dev.sadking.folio.core.sync.SyncPending
 import dev.sadking.folio.data.LibraryRepository
 import dev.sadking.folio.data.Membership
+import dev.sadking.folio.data.NotABook
 import dev.sadking.folio.data.Shelf
 import dev.sadking.folio.data.SyncBaseline
+import dev.sadking.folio.data.UnreadableBook
 import dev.sadking.folio.data.WishMembership
 import dev.sadking.folio.data.decode
 import dev.sadking.folio.data.encode
+import dev.sadking.folio.link.Refusal
+import dev.sadking.folio.link.RefusedFile
 import dev.sadking.folio.link.SyncLibrary
+import dev.sadking.folio.link.SyncRefusal
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -38,9 +45,21 @@ internal constructor(
     val state: SyncState,
     /** Where uploads wait when the Books folder can't be used. */
     private val cacheDir: File,
+    /**
+     * Told which books' status sync may have changed, so a book that became Finished can offer to
+     * finish its Hardcover read ([HardcoverFinishPrompts.statusChanged]).
+     */
+    private val statusChanged: suspend (Collection<String>) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) : SyncLibrary {
-    constructor(app: FolioApplication) : this(app.repository, SyncState.of(app), app.cacheDir)
+    constructor(
+        app: FolioApplication
+    ) : this(
+        app.repository,
+        SyncState.of(app),
+        app.cacheDir,
+        HardcoverFinishPrompts(app)::statusChanged,
+    )
 
     private val dao = repo.dao
     private val baselineDao = repo.database.syncBaselines()
@@ -102,26 +121,49 @@ internal constructor(
      * Adds the upload as a new book the way an import does: its format read from its bytes, filed
      * at `Author/Title.ext` in the Books folder when it can be used, else in private storage, next
      * to existing files and never over one. Content the library already has returns that book,
-     * without restoring it from Recently removed: only a Restore action does that.
+     * without restoring it from Recently removed: only a Restore action does that. A file that is
+     * too large or not a book Librillo can read is refused ([SyncRefusal]) and not sent again.
      */
     override fun receive(ereaderId: String, kindlePath: String, file: File): String? = attempt {
         io {
             repo.lock.withLock {
-                if (!file.isFile || file.length() > Epub.MAX_FILE) return@withLock null
+                if (!file.isFile) return@withLock null
+                if (file.length() > Epub.MAX_FILE) throw SyncRefusal(Refusal.TOO_LARGE)
                 dao.duplicate(Epub.sha256(file))?.id
-                    ?: repo.addLocked(file, fileName(kindlePath), repo.folderReady()).first.id
+                    ?: try {
+                        repo.addLocked(file, fileName(kindlePath), repo.folderReady()).first.id
+                    } catch (e: NotABook) {
+                        throw SyncRefusal(Refusal.NOT_A_BOOK)
+                    } catch (e: UnreadableBook) {
+                        throw SyncRefusal(Refusal.NOT_A_BOOK)
+                    }
             }
         }
     }
 
-    /** Takes the upload as the book's new revision; the old file is kept (see reviseLocked). */
+    /**
+     * Takes the upload as the book's new revision; the old file is kept (see reviseLocked). A file
+     * that is too large, not a book, or another kind of file than the book is refused.
+     */
     override fun revise(
         ereaderId: String,
         bookId: String,
         kindlePath: String,
         file: File,
     ): String? = attempt {
-        io { repo.lock.withLock { repo.reviseLocked(bookId, file, fileName(kindlePath))?.id } }
+        io {
+            repo.lock.withLock {
+                val book = dao.book(bookId) ?: return@withLock null
+                if (!file.isFile) return@withLock null
+                if (file.length() > Epub.MAX_FILE) throw SyncRefusal(Refusal.TOO_LARGE)
+                when (formatOf(file, fileName(kindlePath))) {
+                    null -> throw SyncRefusal(Refusal.NOT_A_BOOK)
+                    book.format -> Unit
+                    else -> throw SyncRefusal(Refusal.OTHER_FORMAT)
+                }
+                repo.reviseLocked(bookId, file, fileName(kindlePath))?.id
+            }
+        }
     }
 
     /** Each action on its own: one that fails is skipped, and the next sync tries it again. */
@@ -131,6 +173,15 @@ internal constructor(
         received: Map<String, String>,
     ) {
         for (action in actions) attempt { io { applyOne(ereaderId, action, received) } }
+        // Books whose status sync set: one that became Finished may offer the Hardcover prompt.
+        val statuses = actions.mapNotNull {
+            when (it) {
+                is PhoneAction.SetStatus -> it.bookId
+                is PhoneAction.Import -> if (it.status != null) received[it.path] else null
+                else -> null
+            }
+        }
+        if (statuses.isNotEmpty()) attempt { io { statusChanged(statuses.distinct()) } }
     }
 
     private suspend fun applyOne(
@@ -213,6 +264,8 @@ internal constructor(
 
     override fun pending(ereaderId: String): Boolean {
         val ereader = state.get(ereaderId)
+        // The owner tapped Sync since this e-reader's last sync.
+        if (state.syncRequested(ereaderId)) return true
         // An answer given on the phone is used at the next sync.
         if (ereader.answers.isNotEmpty()) return true
         return SyncPending.pending(
@@ -229,8 +282,16 @@ internal constructor(
 
     override fun phoneAnswers(ereaderId: String): Map<String, String> = state.get(ereaderId).answers
 
+    override fun refused(ereaderId: String): List<RefusedFile> = state.get(ereaderId).refused
+
+    override fun saveRefused(ereaderId: String, refused: List<RefusedFile>) =
+        state.saveRefused(ereaderId, refused)
+
+    override fun started(ereaderId: String, deviceName: String, at: Long) =
+        state.started(ereaderId, deviceName, at)
+
     override fun synced(ereaderId: String, deviceName: String, at: Long) =
-        state.synced(ereaderId, deviceName, at)
+        state.synced(ereaderId, deviceName, at, books = baselineDao.forEreader(ereaderId).size)
 
     /**
      * On the Books folder's volume when it can be used, so filing an upload is a rename; else in
@@ -256,13 +317,24 @@ internal constructor(
 
     private fun <T> io(block: suspend () -> T): T = runBlocking(Dispatchers.IO) { block() }
 
-    /** Runs [block]; a failure leaves this step undone, for the next sync to try again. */
+    /**
+     * Runs [block]; a failure leaves this step undone, for the next sync to try again. A
+     * [SyncRefusal] is not a failure: it goes on to the routes, which remember the file.
+     */
     private inline fun <T> attempt(block: () -> T?): T? =
         try {
             block()
+        } catch (e: SyncRefusal) {
+            throw e
         } catch (e: Exception) {
             null
         }
+
+    /** The book format of [file], as an import reads it, or null when it isn't a book. */
+    private fun formatOf(file: File, name: String): String? {
+        val header = file.inputStream().use { it.readNBytes(BookFormats.HEADER_BYTES) }
+        return BookFormats.detect(header, name) ?: Comic.zipKind(file)
+    }
 
     companion object {
         const val MANUAL = "Manual"

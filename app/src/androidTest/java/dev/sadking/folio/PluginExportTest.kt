@@ -28,7 +28,7 @@ class PluginExportTest {
                 listOf(
                     "folio.koplugin/main.lua",
                     "folio.koplugin/link.lua",
-                    "folio.koplugin/bridge.lua",
+                    "folio.koplugin/sync.lua",
                     "folio.koplugin/_meta.lua",
                     "folio.koplugin/LICENSE",
                     "folio.koplugin/licenses/AGPL-3.0.txt",

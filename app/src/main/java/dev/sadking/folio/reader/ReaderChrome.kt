@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.TabletAndroid
@@ -745,7 +744,10 @@ private fun BookmarkRow(mark: PhoneBookmark, onOpen: () -> Unit, onDelete: () ->
     }
 }
 
-/** Another device's place in this book. [legacy] rows come over SSH rather than Folio Link. */
+/**
+ * Another device's place in this book. [legacy] rows are the e-reader's place saved by an older
+ * Librillo.
+ */
 internal data class DeviceRow(
     val id: String,
     val name: String,
@@ -755,17 +757,11 @@ internal data class DeviceRow(
 )
 
 /**
- * The Devices sheet, "Continue elsewhere": each device's place with a Jump button, then the legacy
- * SSH actions: check the e-reader's saved place, and send the phone's for review.
+ * The Devices sheet, "Continue elsewhere": each device's place with a Jump button. Positions arrive
+ * by themselves through Progress sync, so there is nothing to fetch or send here.
  */
 @Composable
-internal fun ReaderDevicesSheet(
-    rows: List<DeviceRow>,
-    busy: Boolean,
-    onJump: (DeviceRow) -> Unit,
-    onCheck: () -> Unit,
-    onSend: () -> Unit,
-) {
+internal fun ReaderDevicesSheet(rows: List<DeviceRow>, busy: Boolean, onJump: (DeviceRow) -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(bottom = 32.dp).testTag(READER_DEVICES_SHEET_TAG),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
@@ -779,29 +775,12 @@ internal fun ReaderDevicesSheet(
         rows.forEach { row ->
             ListItem(
                 headlineContent = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
-                    ) {
-                        Text(
-                            row.name,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        if (row.legacy)
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                            ) {
-                                Text(
-                                    stringResource(R.string.devices_legacy).uppercase(),
-                                    Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                )
-                            }
-                    }
+                    Text(
+                        row.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 },
                 supportingContent = {
                     Text(
@@ -827,19 +806,6 @@ internal fun ReaderDevicesSheet(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier.padding(horizontal = FolioSpace.small),
             )
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
-            horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
-        ) {
-            OutlinedButton(onClick = onCheck, enabled = !busy, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(FolioSpace.small))
-                Text(stringResource(R.string.devices_retrieve))
-            }
-            Button(onClick = onSend, enabled = !busy, modifier = Modifier.weight(1f)) {
-                Text(stringResource(if (busy) R.string.devices_working else R.string.devices_send))
-            }
         }
     }
 }

@@ -34,13 +34,13 @@ class SftpIntegrationTest {
         File(old, "main.lua").writeText("old plugin")
         File(pluginRoot, "unrelated.koplugin").mkdirs()
         val source =
-            File.createTempFile("folio-bridge", ".lua").apply { writeText("new plugin bytes") }
+            File.createTempFile("folio-plugin", ".lua").apply { writeText("new plugin bytes") }
         try {
             // The one-time Link setup travels with the plugin files.
             val files =
                 listOf(
                         "main.lua",
-                        "bridge.lua",
+                        "sync.lua",
                         "link.lua",
                         "_meta.lua",
                         "LICENSE",

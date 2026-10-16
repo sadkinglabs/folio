@@ -27,20 +27,16 @@ class FailureText(
     val fileTransfer: String,
     val incomplete: String,
     val generic: String,
-    /** Shown when device work is asked for while a transfer runs. */
-    val transferBusy: String,
 )
 
 /**
  * Runs user-visible work one item at a time and reports it. Held by the application so every
  * screen's ViewModel shares one status line and one queue.
  *
- * @param transferActive whether a transfer job is running; device work refuses to start during one.
  * @param authentication the paired device's sign-in method, used to explain SSH failures.
  * @param text the words used to explain failures, read when one happens.
  */
 class OperationRunner(
-    private val transferActive: suspend () -> Boolean,
     private val authentication: () -> String,
     private val text: () -> FailureText,
 ) {
@@ -48,25 +44,20 @@ class OperationRunner(
     val notices = MutableSharedFlow<Operation>(extraBufferCapacity = 8)
     private val lock = Mutex()
 
-    fun launch(scope: CoroutineScope, label: String, device: Boolean, work: suspend () -> String) =
-        launchUndoable(scope, label, device) { work() to null }
+    fun launch(scope: CoroutineScope, label: String, work: suspend () -> String) =
+        launchUndoable(scope, label) { work() to null }
 
     /** As [launch], for work that can be reversed: it returns its message and how to undo it. */
     fun launchUndoable(
         scope: CoroutineScope,
         label: String,
-        device: Boolean,
         work: suspend () -> Pair<String, (() -> Unit)?>,
     ) {
         scope.launch {
             lock.withLock {
                 state.value = Operation(true, label)
                 try {
-                    val (result, undo) =
-                        withContext(Dispatchers.IO) {
-                            if (device) check(!transferActive()) { text().transferBusy }
-                            work()
-                        }
+                    val (result, undo) = withContext(Dispatchers.IO) { work() }
                     state.value = Operation(message = result, undo = undo)
                     notices.emit(state.value)
                 } catch (e: CancellationException) {

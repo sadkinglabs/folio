@@ -23,7 +23,7 @@ class LibraryTabsTest {
         )
 
     private fun signals(reading: String, progress: Double? = null, fetchedAt: Long? = null) =
-        BookSignals("Phone only", reading, progress, null, readingFetchedAt = fetchedAt)
+        BookSignals(reading, progress, null, readingFetchedAt = fetchedAt)
 
     @Test
     fun wantedBooksAreNewestFirstWhateverTheEntryOrder() {

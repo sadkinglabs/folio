@@ -91,7 +91,7 @@ class LibraryPresentationTest {
     @Test
     fun filteringUsesObservedStatusWithoutChangingPhoneData() {
         val b = book()
-        val signals = mapOf(b.id to BookSignals("On Kindle", "Finished · Kindle", 1.0, null))
+        val signals = mapOf(b.id to BookSignals("Finished · Kindle", 1.0, null))
         assertEquals(
             listOf(b),
             searchLibrary(
@@ -130,11 +130,8 @@ class LibraryPresentationTest {
                 emptyList(),
                 emptyList(),
                 emptyList(),
-                emptyList(),
                 7,
                 "device",
-                true,
-                null,
             )
         assertEquals(1, p.entries.size)
         assertEquals(listOf(b.id), p.shelfEntries.getValue("list").map { it.id })
@@ -168,59 +165,55 @@ class LibraryPresentationTest {
                         b.currentHash,
                     )
                 ),
-                emptyList(),
                 listOf(HardcoverObservation(8, 1, 3, 100, 1, 1000)),
                 7,
                 "device",
-                true,
-                null,
             )
-        assertEquals("Not sent", p.signals.getValue(b.id).device)
         assertEquals("Want to Read", p.signals.getValue(b.id).reading)
+        assertNull(p.signals.getValue(b.id).progress)
     }
 
     @Test
-    fun aBookTheLibrilloPluginConfirmedIsOnTheEreader() {
+    fun theNotOnTheEreaderRuleFollowsTheLastSyncAndOlderConfirmations() {
         val b = book()
-        fun device(transfers: List<Transfer>, paired: Boolean = false) =
+        val shelf = Shelf("shelf", "Missing", "Missing on Kindle", "")
+        fun missing(transfers: List<Transfer>, baselines: List<SyncBaseline> = emptyList()) =
             presentLibrary(
                     listOf(b),
                     emptyList(),
-                    emptyList(),
+                    listOf(shelf),
                     emptyList(),
                     emptyList(),
                     transfers,
                     emptyList(),
                     emptyList(),
-                    emptyList(),
                     7,
                     "ssh-device",
-                    paired,
-                    null,
+                    baselines,
                 )
-                .signals
-                .getValue(b.id)
-                .device
-        // Sent through the plugin only, with no SSH pairing at all.
+                .shelfEntries
+                .getValue(shelf.id)
+                .map { it.id }
+        fun baseline(hash: String) =
+            SyncBaseline(b.id, "kindle", "Librillo/A/T.epub", hash, "Reading", 0, syncedAt = 1)
+        // Nothing known: the book is not on the e-reader.
+        assertEquals(listOf(b.id), missing(emptyList()))
+        // The last sync left the current file there.
+        assertEquals(emptyList<String>(), missing(emptyList(), listOf(baseline(b.currentHash))))
+        // The e-reader has an older file of it: not the current book.
+        assertEquals(listOf(b.id), missing(emptyList(), listOf(baseline("old"))))
+        // Confirmed by the first plugin or sent over SSH before sync existed.
         assertEquals(
-            "On Kindle",
-            device(listOf(Transfer(b.id, "link:kindle", "/b.epub", b.currentHash, 5))),
+            emptyList<String>(),
+            missing(listOf(Transfer(b.id, "link:kindle", "/b.epub", b.currentHash, 5))),
         )
-        // An old SSH copy does not hide that the plugin has the current file.
         assertEquals(
-            "On Kindle",
-            device(
-                listOf(
-                    Transfer(b.id, "ssh-device", "/old.epub", "old", 9),
-                    Transfer(b.id, "link:kindle", "/b.epub", b.currentHash, 5),
-                ),
-                paired = true,
-            ),
+            emptyList<String>(),
+            missing(listOf(Transfer(b.id, "ssh-device", "/b.epub", b.currentHash, 5))),
         )
-        // Only an older file anywhere: it needs updating.
         assertEquals(
-            "Needs update",
-            device(listOf(Transfer(b.id, "link:kindle", "/b.epub", "old", 5))),
+            listOf(b.id),
+            missing(listOf(Transfer(b.id, "other", "/b.epub", b.currentHash, 5))),
         )
     }
 
@@ -238,29 +231,16 @@ class LibraryPresentationTest {
                 emptyList(),
                 emptyList(),
                 emptyList(),
-                emptyList(),
                 7,
                 "device",
-                true,
-                null,
             )
         assertTrue(p.shelfEntries.getValue(shelf.id).isEmpty())
         assertTrue(p.fileIds.isEmpty())
     }
 
     @Test
-    fun verifiedLabelsHaveHistoricalObservationTime() {
-        val b = book()
-        val signals =
-            bookSignals(
-                b,
-                true,
-                Transfer(b.id, "device", "book.epub", b.currentHash, 500),
-                null,
-                null,
-                true,
-            )
-        assertEquals(500L, signals.deviceVerifiedAt)
+    fun signalsKeepTheReadingTimeAndTheHardcoverMatch() {
+        val signals = bookSignals(book(), null, true)
         assertNull(signals.readingFetchedAt)
         assertEquals("Hardcover matched", signals.hardcover)
     }

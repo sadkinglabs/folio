@@ -17,17 +17,14 @@ import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Save
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TextFields
@@ -47,23 +44,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BooksFolder
 import dev.sadking.folio.data.BooksFolderMove
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.FolderScanNotes
-import dev.sadking.folio.data.LinkStatus
-import dev.sadking.folio.data.linkStatus
-import dev.sadking.folio.link.FolioLink
 import dev.sadking.folio.reader.ReaderDefaults
 import dev.sadking.folio.reader.ReaderTextActions
 import dev.sadking.folio.reader.ReaderTextSheet
 import dev.sadking.folio.reader.ReaderTextState
 import dev.sadking.folio.reader.ReaderTypography
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 internal const val SETTINGS_TAG = "settings"
@@ -72,9 +64,6 @@ internal const val SETTINGS_WALLPAPER_TAG = "settings-wallpaper"
 internal const val SETTINGS_TEXT_TAG = "settings-text"
 internal const val SETTINGS_VOLUME_TAG = "settings-volume"
 internal const val SETTINGS_READING_TIME_TAG = "settings-reading-time"
-internal const val SETTINGS_REFRESH_TAG = "settings-refresh"
-internal const val SETTINGS_LINK_TAG = "settings-link"
-internal const val SETTINGS_KEEP_AWAKE_TAG = "settings-keep-awake"
 internal const val SETTINGS_HARDCOVER_AUTOMATIC_TAG = "settings-hardcover-automatic"
 internal const val SETTINGS_HARDCOVER_TAG = "settings-hardcover"
 internal const val SETTINGS_HARDCOVER_IMPORT_TAG = "settings-hardcover-import"
@@ -88,7 +77,6 @@ internal const val BOOKS_FOLDER_ALLOW_TAG = "books-folder-allow"
 internal const val BOOKS_FOLDER_MOVE_TAG = "books-folder-move"
 internal const val BOOKS_FOLDER_INBOX_TAG = "books-folder-inbox"
 internal const val BOOKS_FOLDER_LAST_SCAN_TAG = "books-folder-last-scan"
-internal const val SETTINGS_PLUGIN_TAG = "settings-plugin"
 internal const val TEXT_SHEET_TAG = "settings-text-sheet"
 internal const val BACKUP_EXPORT_TAG = "settings-backup-export"
 internal const val BACKUP_RESTORE_TAG = "settings-backup-restore"
@@ -112,8 +100,6 @@ internal fun SettingsTab(
     onTheme: (String) -> Unit,
     onDynamic: (Boolean) -> Unit,
     statistics: DeviceStatistics?,
-    onStatistics: () -> Unit,
-    onRefreshReading: () -> Unit,
     hardcoverUsername: String,
     onHardcover: () -> Unit,
     onImportHardcover: () -> Unit,
@@ -130,25 +116,11 @@ internal fun SettingsTab(
     onPhoneFolder: () -> Unit,
     onRefreshFolder: () -> Unit,
     onForgetFolder: () -> Unit,
-    onInstallCompanion: () -> Unit,
     busy: Boolean,
     onMoveBooks: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
-    val link = app.link
-    val port by link.port.collectAsStateWithLifecycle()
-    var linkEnabled by remember { mutableStateOf(link.settings.enabled) }
-    // The notification's "Turn off" changes the setting outside this screen; follow the port.
-    LaunchedEffect(port) { linkEnabled = link.settings.enabled }
-    var addresses by remember { mutableStateOf(FolioLink.addresses()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(5_000)
-            addresses = FolioLink.addresses()
-        }
-    }
-    var keepAwake by remember { mutableStateOf(link.settings.keepAwake) }
     var automatic by remember { mutableStateOf(app.hardcoverOutbox.automatic) }
     val readerPrefs = remember { context.getSharedPreferences(ReaderDefaults.PREFERENCES, 0) }
     var reading by remember {
@@ -173,24 +145,6 @@ internal fun SettingsTab(
             ReaderDefaults.saveVolumeKeys(readerPrefs, value.volumeKeys)
         },
         statistics = statistics,
-        onStatistics = onStatistics,
-        onRefreshReading = onRefreshReading,
-        linkStatus = linkStatus(linkEnabled, port, addresses),
-        linkAddress = port?.let { p -> addresses.firstOrNull()?.let { "$it:$p" } } ?: "",
-        onLink = { on ->
-            linkEnabled = on
-            if (on) link.start() else link.stop()
-        },
-        keepAwake = keepAwake,
-        onKeepAwake = { on ->
-            keepAwake = on
-            link.settings.keepAwake = on
-            // The lock is taken when Link starts; restart it to apply the change.
-            if (link.settings.enabled) {
-                link.stop()
-                link.start()
-            }
-        },
         hardcoverAutomatic = automatic,
         onHardcoverAutomatic = {
             automatic = it
@@ -212,7 +166,6 @@ internal fun SettingsTab(
         onPhoneFolder = onPhoneFolder,
         onRefreshFolder = onRefreshFolder,
         onForgetFolder = onForgetFolder,
-        onInstallCompanion = onInstallCompanion,
         busy = busy,
         onMoveBooks = onMoveBooks,
     )
@@ -231,13 +184,6 @@ internal fun SettingsScreen(
     reading: ReadingDefaults = ReadingDefaults(),
     onReading: (ReadingDefaults) -> Unit = {},
     statistics: DeviceStatistics? = null,
-    onStatistics: () -> Unit = {},
-    onRefreshReading: () -> Unit = {},
-    linkStatus: LinkStatus = LinkStatus.OFF,
-    linkAddress: String = "",
-    onLink: (Boolean) -> Unit = {},
-    keepAwake: Boolean = false,
-    onKeepAwake: (Boolean) -> Unit = {},
     hardcoverAutomatic: Boolean = false,
     onHardcoverAutomatic: (Boolean) -> Unit = {},
     hardcoverUsername: String = "",
@@ -256,7 +202,6 @@ internal fun SettingsScreen(
     onPhoneFolder: () -> Unit = {},
     onRefreshFolder: () -> Unit = {},
     onForgetFolder: () -> Unit = {},
-    onInstallCompanion: () -> Unit = {},
     onMoveBooks: () -> Unit = {},
     busy: Boolean = false,
 ) {
@@ -315,53 +260,15 @@ internal fun SettingsScreen(
                 { onReading(reading.copy(volumeKeys = it)) },
                 Modifier.testTag(SETTINGS_VOLUME_TAG),
             )
-            SettingsRow(
-                Icons.Outlined.Timer,
-                stringResource(R.string.reading_time_title),
-                readingTimeSummary(statistics),
-                Modifier.testTag(SETTINGS_READING_TIME_TAG),
-                onClick = { showReadingTime = true },
-            )
-            SettingsRow(
-                Icons.Outlined.Sync,
-                stringResource(R.string.reading_refresh),
-                stringResource(R.string.settings_refresh_value),
-                Modifier.testTag(SETTINGS_REFRESH_TAG),
-                onClick = onRefreshReading,
-                enabled = !busy && paired,
-            )
-        }
-        SettingsGroup(stringResource(R.string.settings_link)) {
-            SettingsSwitchRow(
-                Icons.Outlined.Link,
-                stringResource(R.string.link_title),
-                linkStatus != LinkStatus.OFF,
-                onLink,
-                Modifier.testTag(SETTINGS_LINK_TAG),
-                value =
-                    when (linkStatus) {
-                        LinkStatus.OFF -> stringResource(R.string.device_link_off)
-                        LinkStatus.STARTING -> stringResource(R.string.link_starting)
-                        LinkStatus.WAITING_FOR_NETWORK ->
-                            stringResource(R.string.device_link_waiting_network)
-                        LinkStatus.ON -> linkAddress
-                    },
-            )
-            SettingsSwitchRow(
-                Icons.Outlined.Schedule,
-                stringResource(R.string.link_keep_awake),
-                keepAwake,
-                onKeepAwake,
-                Modifier.testTag(SETTINGS_KEEP_AWAKE_TAG),
-                value = stringResource(R.string.link_keep_awake_hint),
-            )
-            SettingsSwitchRow(
-                Icons.Outlined.Sync,
-                stringResource(R.string.hardcover_automatic),
-                hardcoverAutomatic,
-                onHardcoverAutomatic,
-                Modifier.testTag(SETTINGS_HARDCOVER_AUTOMATIC_TAG),
-            )
+            // Reading time came from the old plugin over SSH; what was fetched stays readable.
+            if (statistics != null)
+                SettingsRow(
+                    Icons.Outlined.Timer,
+                    stringResource(R.string.reading_time_title),
+                    readingTimeSummary(statistics),
+                    Modifier.testTag(SETTINGS_READING_TIME_TAG),
+                    onClick = { showReadingTime = true },
+                )
         }
         SettingsGroup(stringResource(R.string.settings_hardcover)) {
             SettingsRow(
@@ -381,6 +288,14 @@ internal fun SettingsScreen(
                 Modifier.testTag(SETTINGS_HARDCOVER_IMPORT_TAG),
                 onClick = onImportHardcover,
                 enabled = !busy,
+            )
+            SettingsSwitchRow(
+                Icons.Outlined.Sync,
+                stringResource(R.string.hardcover_automatic),
+                hardcoverAutomatic,
+                onHardcoverAutomatic,
+                Modifier.testTag(SETTINGS_HARDCOVER_AUTOMATIC_TAG),
+                value = stringResource(R.string.m9sync_hardcover_automatic_hint),
             )
         }
         SettingsGroup(stringResource(R.string.settings_library)) {
@@ -448,7 +363,6 @@ internal fun SettingsScreen(
                 Modifier.testTag(SETTINGS_SSH_TAG),
                 onClick = onConnection,
                 enabled = !busy,
-                badge = stringResource(R.string.settings_ssh_legacy),
             )
             SettingsRow(
                 Icons.Outlined.FolderOpen,
@@ -457,14 +371,6 @@ internal fun SettingsScreen(
                 Modifier.testTag(SETTINGS_FOLDER_TAG),
                 onClick = { showFolder = true },
                 enabled = !busy,
-            )
-            SettingsRow(
-                Icons.Outlined.Extension,
-                stringResource(R.string.settings_plugin_install),
-                stringResource(R.string.settings_plugin_value),
-                Modifier.testTag(SETTINGS_PLUGIN_TAG),
-                onClick = onInstallCompanion,
-                enabled = !busy && paired,
             )
         }
         SettingsGroup(stringResource(R.string.settings_about)) {
@@ -479,10 +385,7 @@ internal fun SettingsScreen(
         }
     }
     if (showText) ReadingDefaultsSheet(reading, onReading) { showText = false }
-    if (showReadingTime)
-        ReadingTimeSheet(statistics, onStatistics, enabled = !busy && paired) {
-            showReadingTime = false
-        }
+    if (showReadingTime) ReadingTimeSheet(statistics) { showReadingTime = false }
     if (showBackup)
         BackupSheet(
             onExport = {
@@ -673,23 +576,14 @@ internal fun ReadingDefaultsContent(
     )
 }
 
-/** KOReader's reading statistics, fetched over the e-reader connection. */
+/** KOReader's reading statistics, as last fetched from the old plugin. Read only. */
 @Composable
-internal fun ReadingTimeSheet(
-    statistics: DeviceStatistics?,
-    onStatistics: () -> Unit,
-    enabled: Boolean,
-    onDismiss: () -> Unit,
-) {
-    SettingsSheet(onDismiss) { ReadingTimeContent(statistics, onStatistics, enabled) }
+internal fun ReadingTimeSheet(statistics: DeviceStatistics?, onDismiss: () -> Unit) {
+    SettingsSheet(onDismiss) { ReadingTimeContent(statistics) }
 }
 
 @Composable
-internal fun ReadingTimeContent(
-    statistics: DeviceStatistics?,
-    onStatistics: () -> Unit,
-    enabled: Boolean,
-) {
+internal fun ReadingTimeContent(statistics: DeviceStatistics?) {
     Column(
         Modifier.fillMaxWidth().padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
@@ -707,20 +601,6 @@ internal fun ReadingTimeContent(
                 modifier = Modifier.padding(horizontal = FolioSpace.section),
             )
         }
-        FilledTonalButton(
-            onClick = onStatistics,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
-        ) {
-            Text(stringResource(R.string.reading_time_get))
-        }
-        if (statistics == null)
-            Text(
-                stringResource(R.string.reading_time_hint),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = FolioSpace.section),
-            )
         statistics?.let { stats ->
             val days = org.json.JSONArray(stats.days)
             Column(Modifier.padding(horizontal = FolioSpace.section)) {

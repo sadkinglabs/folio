@@ -12,15 +12,18 @@ import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.core.Epub
 import dev.sadking.folio.data.*
+import dev.sadking.folio.sync.SyncAnnotations
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.time.LocalDateTime
 import java.util.UUID
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -92,6 +95,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     var busy by mutableStateOf(false)
+        private set
+
+    /**
+     * This book's highlights and notes from every device, each once (see
+     * [SyncAnnotations.visible]). EPUB only; empty until the book opens.
+     */
+    var highlights by mutableStateOf<List<BookAnnotation>>(emptyList())
         private set
 
     var fontSize by mutableDoubleStateOf(settings.getFloat("fontSize", 110f).toDouble())
@@ -324,6 +334,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 book = loaded.first
                 kind = openedKind
                 publication = opened
+                if (openedKind == ReaderKind.EPUB) watchHighlights(id)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
@@ -607,6 +618,50 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun bookmarks() = book?.let { dao.phoneBookmarks(it.id, it.currentHash) }
 
+    private fun watchHighlights(bookId: String) {
+        viewModelScope.launch {
+            dao.bookAnnotations(bookId)
+                .map { SyncAnnotations.visible(it) }
+                .flowOn(Dispatchers.Default)
+                .collect { highlights = it }
+        }
+    }
+
+    /**
+     * Saves a highlight made on the phone, or a note when [note] has text. It goes to the e-reader
+     * at the next sync and is never edited or deleted afterwards.
+     */
+    fun addHighlight(passage: SelectedPassage, note: String, chapter: String) {
+        val current = book ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val datetime = annotationDatetime(LocalDateTime.now())
+                    val plainId = annotationId(PHONE_ANNOTATION_DEVICE, datetime, passage.pos0)
+                    dao.annotation(
+                        phoneAnnotation(
+                            current.id,
+                            passage,
+                            note,
+                            chapter,
+                            datetime,
+                            sameStartTaken = dao.annotationById(plainId) != null,
+                        )
+                    )
+                }
+                message =
+                    app.getString(
+                        if (note.isBlank()) R.string.reader_highlight_saved
+                        else R.string.reader_highlight_note_saved
+                    )
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_highlight_save_failed)
+            }
+        }
+    }
+
     fun deleteBookmark(id: String) {
         viewModelScope.launch { dao.deletePhoneBookmark(id) }
     }
@@ -632,42 +687,6 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissMessage() {
         message = null
-    }
-
-    suspend fun refreshKindle() {
-        val current = book ?: return
-        busy = true
-        try {
-            val snapshot = ReaderHandoff(app).retrieve(current)
-            kindle = snapshot
-            message =
-                app.getString(
-                    R.string.msg_reader_device_position,
-                    app.getString(R.string.devices_jump),
-                )
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (failure: Exception) {
-            message = failure.message ?: app.getString(R.string.msg_reader_device_position_failed)
-        } finally {
-            busy = false
-        }
-    }
-
-    suspend fun sendPosition() {
-        val current = book ?: return
-        val saved = lastPhone ?: error(app.getString(R.string.msg_reader_turn_page_first))
-        busy = true
-        try {
-            ReaderHandoff(app).send(current, saved)
-            message = app.getString(R.string.msg_reader_position_sent)
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (failure: Exception) {
-            message = failure.message ?: app.getString(R.string.msg_reader_position_send_failed)
-        } finally {
-            busy = false
-        }
     }
 
     override fun onCleared() {

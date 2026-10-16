@@ -85,7 +85,7 @@ class LibraryBasicsUiTest {
                     takenNames = listOf("Old name", "Taken"),
                     busy = false,
                     error = null,
-                    onCreate = { _, _, _, _ -> },
+                    onCreate = { _, _, _ -> },
                     onSave = { saved = it },
                     onDelete = { deleted = true },
                     onDismiss = {},
@@ -97,12 +97,13 @@ class LibraryBasicsUiTest {
         compose.onNodeWithText("A list with this name already exists").assertIsDisplayed()
         compose.onNodeWithText("List name").performTextClearance()
         compose.onNodeWithText("List name").performTextInput("New name")
-        compose.onNodeWithText("Include in sends").performScrollTo().performClick()
+        // Lists sync with KOReader collections by themselves: no "Include in sends" switch.
+        compose.onNodeWithText("Include in sends").assertDoesNotExist()
         compose.onNodeWithText("Save list").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals("New name", saved!!.name)
             assertEquals("Manual", saved!!.ruleField)
-            assertTrue(saved!!.syncEnabled)
+            assertFalse(saved!!.syncEnabled)
             assertFalse(deleted)
         }
         // Delete is an icon in the title row; it only asks, the confirm lives outside the sheet.

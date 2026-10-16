@@ -30,16 +30,16 @@ class UsabilityUiTest {
         )
 
     @Test
-    fun bookHasOnePrimaryActionAndSixIconActions() {
+    fun bookHasOnePrimaryActionAndFiveIconActions() {
         var read = false
-        var send = false
+        var shared = false
         var hardcover = false
         compose.setContent {
             FolioTheme(dynamic = false) {
                 BookDetails(
                     book,
                     onRead = { read = true },
-                    onSend = { send = true },
+                    onShare = { shared = true },
                     onHardcover = { hardcover = true },
                     fileMissing = false,
                 )
@@ -48,12 +48,13 @@ class UsabilityUiTest {
         // The title shows twice: in the hero and on the generated cover.
         compose.onAllNodesWithText("The Orchard").onFirst().assertIsDisplayed()
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Read").performClick()
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsDisplayed().performClick()
+        compose.onNodeWithText("Send").assertDoesNotExist()
+        compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertIsDisplayed().performClick()
         compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).assertIsDisplayed().performClick()
         compose.onNodeWithTag(BOOK_ACTION_REMOVE_TAG).assertHasClickAction()
         compose.runOnIdle {
             assertTrue(read)
-            assertTrue(send)
+            assertTrue(shared)
             assertTrue(hardcover)
         }
     }
@@ -125,7 +126,8 @@ class UsabilityUiTest {
         compose.onAllNodesWithText("The Orchard").onFirst().assertIsDisplayed()
         compose.onNodeWithText("37%").assertIsDisplayed()
         compose.onNodeWithText("Continue · 37%").assertIsDisplayed().performClick()
-        compose.onNodeWithContentDescription("Send").assertHasClickAction()
+        compose.onNodeWithContentDescription("Send").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Edit").assertHasClickAction()
         compose.onNodeWithText("Open book page").performClick()
         compose.runOnIdle {
             assertTrue(continued)
@@ -173,7 +175,7 @@ class UsabilityUiTest {
                     current = CurrentBook(book, 0.37, 1L),
                     onContinue = { continued = true },
                     onOptions = { options++ },
-                    transferActive = false,
+                    deviceBadge = false,
                     hazeState = null,
                 )
             }
@@ -209,7 +211,7 @@ class UsabilityUiTest {
                         emptyList(),
                         busy = false,
                         error = null,
-                        onCreate = { _, _, _, _ -> },
+                        onCreate = { _, _, _ -> },
                         onSave = {},
                         onDelete = null,
                         onDismiss = { creating = false },

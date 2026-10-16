@@ -1,48 +1,26 @@
 #!/usr/bin/env python3
-"""Tests independent bridge validation/membership logic with Lua; does not emulate KOReader."""
-import importlib, os
+"""Tests the KOReader plugin's logic with Lua (lupa): setup, finding the phone, sync and the menu.
+
+KOReader itself is not run; its pieces, the phone and the file system are faked or temporary."""
+import importlib, json, os, hashlib, shutil, stat, tempfile, time
 from pathlib import Path
 # KOReader runs LuaJIT 2.1 (Lua 5.1); FOLIO_LUA=luajit21 runs these tests on that engine.
 LuaRuntime=importlib.import_module('lupa.'+os.environ['FOLIO_LUA'] if os.environ.get('FOLIO_LUA') else 'lupa').LuaRuntime
 root=Path(__file__).resolve().parents[1]
+plugin_files=sorted(p.name for p in (root/'koreader/folio.koplugin').glob('*.lua'))
+# The old book fetch, collection requests, reading handoff and statistics export are gone.
+assert plugin_files==['_meta.lua','link.lua','main.lua','sync.lua'], plugin_files
 lua=LuaRuntime(unpack_returned_tuples=True)
-bridge=lua.execute((root/'koreader/folio.koplugin/bridge.lua').read_text())
-lua.globals().Bridge=bridge
 # Compile all plugin Lua files, without loading KOReader-only require calls.
-for file in (root/'koreader/folio.koplugin').glob('*.lua'):
-    lua.execute('assert(load(...))',file.read_text())
-lua.execute('''
-local realpath = function(path) return path end
-local attributes = function(path) return {mode="file"} end
-local request = { format="folio-collections",version=1,shelves={{name="Travel",paths={"/books/one.epub"}}} }
-local plan = Bridge.validate(request,"/books",realpath,attributes)
-assert(plan[1].name == "Folio: Travel" and plan[1].paths["/books/one.epub"])
-local collection={coll={unrelated={old=true}},coll_settings={},writes=0}
-function collection:addCollection(name) self.coll[name]={} end
-function collection:addItemsMultiple(files,names) for name in pairs(names) do for path in pairs(files) do self.coll[name][path]=true end end end
-function collection:write(changed) self.writes=self.writes+1 end
-Bridge.apply(plan,collection)
-Bridge.apply(plan,collection)
-assert(collection.coll.unrelated.old and collection.coll["Folio: Travel"]["/books/one.epub"])
--- Existing managed members survive subsequent additions.
-collection.coll["Folio: Travel"]["/books/previous.epub"]=true
-Bridge.apply(plan,collection)
-assert(collection.coll["Folio: Travel"]["/books/previous.epub"])
-local function rejects(req, resolver, attrs)
-    assert(not pcall(Bridge.validate,req,"/books",resolver or realpath,attrs or attributes))
-end
-rejects({format="other",version=1,shelves={}})
-rejects({format="folio-collections",version=1,shelves={{name="Travel",paths={"/private/one.epub"}}}})
-rejects({format="folio-collections",version=1,shelves={{name="Travel",paths={"/books/one.epub"}}}},function() return "/private/one.epub" end)
-rejects({format="folio-collections",version=1,shelves={{name="Travel",paths={"/books/one.epub"}}}},nil,function() return {mode="directory"} end)
-rejects({format="folio-collections",version=1,shelves={{name="Bad\\nName",paths={}}}})
-rejects({format="folio-collections",version=1,shelves={{name="Travel",paths={}},{name="Travel",paths={}}}})
-''')
-print('Plugin Lua syntax and 9 bridge scenarios passed; KOReader runtime remains untested.')
+for file in plugin_files:
+    lua.execute('assert(load(...))',(root/'koreader/folio.koplugin'/file).read_text())
+print('Plugin Lua compiles: '+', '.join(plugin_files)+'.')
 
-# Folio Link fetch: the real link.lua against an in-memory phone and folder.
+# Setup and finding the phone: the real link.lua.
 link=lua.execute((root/'koreader/folio.koplugin/link.lua').read_text())
 lua.globals().Link=link
+for gone in ['fetch','summary','unique','url','headers']:
+    assert lua.eval('Link.'+gone) is None, 'removed: Link.'+gone
 lua.execute(r"""
 -- The installer's one-time setup: data only, applied to Progress sync, anything odd ignored.
 local function decode(fields) return function() return fields end end
@@ -52,7 +30,8 @@ local kosync, options = Link.setup("x", decode(base), { custom_server = "old", s
 assert(kosync.custom_server == "http://192.168.1.42:8765" and kosync.username == "folio")
 assert(kosync.userkey == "0123abcdef" and kosync.sync_forward == 2, "a choice made on the e-reader is kept")
 assert(kosync.sync_backward == 1 and kosync.auto_sync == true)
-assert(options.version == 1 and options.auto_fetch == true and options.auto_sync == false and options.root == "Librillo")
+assert(options.version == 1 and options.auto_sync == false and options.root == "Librillo")
+assert(options.auto_fetch == nil, "the old automatic fetch is gone")
 local function copy(changes) local t = {} for k, v in pairs(base) do t[k] = v end
   for k, v in pairs(changes) do t[k] = v end return t end
 assert(Link.setup("x", decode(copy({ format = "other" })), {}) == nil)
@@ -66,7 +45,7 @@ local v2 = { format = "librillo-link-setup", version = 2, server = "http://10.0.
   userkey = "abc123", root = "Books/Librillo", auto_sync = true, sync_forward = "prompt", device_name = "Paperwhite" }
 local fresh, opts = Link.setup("x", decode(v2), nil)
 assert(fresh.sync_forward == 1 and fresh.sync_backward == 1 and fresh.auto_sync == true)
-assert(opts.version == 2 and opts.auto_sync == true and opts.auto_fetch == false)
+assert(opts.version == 2 and opts.auto_sync == true and opts.auto_fetch == nil)
 assert(opts.root == "Books/Librillo" and opts.device_name == "Paperwhite")
 local function v2with(changes) local t = {} for k, v in pairs(v2) do t[k] = v end
   for k, v in pairs(changes) do t[k] = v end return t end
@@ -95,155 +74,13 @@ written = {}
 assert(Link.install("x", store) == nil and written.file == nil and written.legacy == nil, "nothing written")
 """)
 print('Setup: version 1 and 2, unsafe values ignored, both Progress sync places written, own choices kept.')
-lua.execute(r"""
-local H = {} for i = 1, 64 do H[i] = "a" end
-local SHA_A = table.concat(H)
-local function sha(c) return (c:rep(64)) end
-local files = {
-  ["/books/Old - B.epub"] = { content = "B", sha = sha("b") },
-  ["/books/Clash - C.epub"] = { content = "mine", sha = sha("x") },
-}
-local served = { a = "A", b = "B", c = "C", e = "E-corrupt" }
-local acks = {}
-local queue = {
-  { id = "a", filename = "New - A.epub", sha256 = sha("a"), size = 1 },
-  { id = "b", filename = "Old - B.epub", sha256 = sha("b"), size = 1 },
-  { id = "c", filename = "Clash - C.epub", sha256 = sha("c"), size = 1 },
-  { id = "d", filename = "../escape.epub", sha256 = sha("d"), size = 1 },
-  { id = "e", filename = "Bad - E.epub", sha256 = sha("e"), size = 1 },
-  { id = "f", filename = "Unacked - F.epub", sha256 = sha("f"), size = 1 },
-}
-served.f = "F"
-local api = 1
-local deps = {
-  request = function(method, url, headers)
-    assert(headers["x-auth-user"] == "folio" and headers["x-auth-key"] == "k" and headers["x-folio-device"] == "kobo")
-    if url:match("/hello$") then return 200, { api = api } end
-    if url:match("/queue$") then return 200, { books = queue } end
-    if url:match("/ack$") then return (acks.next == "f" and 500 or 200) end
-    return 404
-  end,
-  download = function(url, headers, path)
-    local id = url:match("/books/(%w+)%.epub$")
-    files[path] = { content = served[id], sha = (id == "e") and sha("z") or sha(id) }
-    return 200
-  end,
-  exists = function(path) return files[path] ~= nil end,
-  size = function(path) return files[path] and #files[path].content end,
-  sha256 = function(path) return files[path] and files[path].sha end,
-  rename = function(from, to) files[to] = files[from]; files[from] = nil; return true end,
-  remove = function(path) files[path] = nil end,
-  decode = function(value) return value end,
-  encode = function(value) acks[#acks + 1] = value.id .. "@" .. value.path; acks.next = queue[#acks + 1] and queue[#acks + 1].id; return value end,
-}
--- Ack the next book in line; "f" is refused by the phone and must count as failed.
-local real_request = deps.request
-deps.request = function(method, url, headers, body)
-  if url:match("/ack$") then return (body and body.id == "f") and 500 or 200 end
-  return real_request(method, url, headers, body)
-end
-local cfg = { server = "http://phone:8765/", username = "folio", key = "k", device = "kobo", folder = "/books" }
-local result = Link.fetch(cfg, deps)
-assert(result.fetched == 2, "fetched " .. result.fetched)       -- a, c (beside the clash)
-assert(result.already == 1, "already " .. result.already)       -- b
-assert(result.failed == 3, "failed " .. result.failed)          -- d (bad name), e (corrupt), f (no ack)
-assert(files["/books/New - A.epub"].content == "A")
-assert(files["/books/Clash - C.epub"].content == "mine", "never overwrite")
-assert(files["/books/Clash - C (2).epub"].content == "C")
-assert(not files["/books/Bad - E.epub"] and not files["/books/Bad - E.epub.part"], "corrupt download removed")
-assert(not files["/escape.epub"] and not files["/books/../escape.epub"])
-assert(Link.url("http://phone:8765/", "/folio/v1/hello") == "http://phone:8765/folio/v1/hello")
--- A different API version stops before anything is touched.
-api = 2
-assert(not pcall(Link.fetch, cfg, deps))
--- Without Progress sync set up there is nothing to call.
-assert(not pcall(Link.fetch, { folder = "/books" }, deps))
-""")
-# The phone's record is checked, never trusted: a book is found where it was saved, or anywhere
-# in the folder under another name; a book received before and deleted since is left deleted.
-lua.execute(r"""
-local function sha(c) return (string.format("%02x", c:byte()):rep(32)) end
-local files = { ["/old/place/Kept.epub"] = { content = "K", sha = sha("k") } }
-local downloads, acks = 0, {}
-local queue = {
-  { id = "k", title = "Kept", filename = "A - Kept.epub", sha256 = sha("k"), size = 1, saved_path = "/old/place/Kept.epub" },
-  { id = "g", title = "Salem's Lot", filename = "Stephen King - Salem's Lot.epub", sha256 = sha("g"), size = 1, saved_path = "/elsewhere/Gone.epub" },
-  { id = "h", title = "Hostile", filename = "B - Hostile.epub", sha256 = sha("h"), size = 1, saved_path = "/books/../../etc/passwd.epub" },
-}
-local d = {
-  request = function(method, url, headers, body)
-    if url:match("/hello$") then return 200, { api = 1 } end
-    if url:match("/queue$") then return 200, { books = queue } end
-    if url:match("/ack$") then acks[body.id] = body.path; return 200 end
-    return 404
-  end,
-  download = function(url, headers, path)
-    downloads = downloads + 1
-    local id = url:match("/books/(%w+)%.epub$")
-    files[path] = { content = id, sha = sha(id) }
-    return 200
-  end,
-  exists = function(path) return files[path] ~= nil end,
-  size = function(path) return files[path] and #files[path].content end,
-  sha256 = function(path) return files[path] and files[path].sha end,
-  rename = function(from, to) files[to] = files[from]; files[from] = nil; return true end,
-  remove = function(path) files[path] = nil end,
-  decode = function(value) return value end,
-  encode = function(value) return value end,
-}
-local cfg = { server = "http://phone:8765", username = "u", key = "k", device = "kindle", folder = "/books" }
-local result = Link.fetch(cfg, d)
-assert(result.already == 1 and result.fetched == 1 and result.gone == 1,
-  result.already .. " " .. result.fetched .. " " .. result.gone)
-assert(acks.k == "/old/place/Kept.epub", "found where it was saved, not copied again")
-assert(not files["/books/Stephen King - Salem's Lot.epub"] and acks.g == nil,
-  "a book received before and deleted since is not fetched again")
-assert(files["/books/B - Hostile.epub"], "a hostile saved path is ignored, the book still arrives")
-assert(downloads == 1)
--- The message names each book and where it went, and says how to get a deleted one back.
-local text = Link.summary(result, false)
-assert(text:find("Saved to /books:", 1, true) and text:find("Hostile", 1, true), text)
-assert(text:find("Already on this e-reader:", 1, true) and text:find("/old/place/Kept.epub", 1, true), text)
-assert(text:find("No longer on this e-reader", 1, true) and text:find("Salem's Lot", 1, true)
-  and text:find("send it again", 1, true), text)
--- A copy that arrived another way, under another name in a subfolder, is used, not duplicated.
-files = { ["/books/to_read/0b9e.epub"] = { content = "G", sha = sha("g") } }
-queue = { { id = "g", title = "Salem's Lot", filename = "Stephen King - Salem's Lot.epub", sha256 = sha("g"), size = 1 } }
-acks, downloads = {}, 0
-local listed = {}
-for k, v in pairs(d) do listed[k] = v end
-listed.list = function(folder)
-  local out = {}
-  for path in pairs(files) do if path:sub(1, #folder + 1) == folder .. "/" then out[#out + 1] = path end end
-  return out
-end
-local other = Link.fetch(cfg, listed)
-assert(other.already == 1 and downloads == 0, "matched by content, not by name")
-assert(acks.g == "/books/to_read/0b9e.epub" and not files["/books/Stephen King - Salem's Lot.epub"])
--- An automatic fetch only speaks when something arrived or failed.
-assert(Link.summary({ books = { fetched = {}, already = { { title = "x" } }, failed = {} }, folder = "/b" }, true) == "")
-assert(Link.summary({ books = { fetched = {}, already = {}, failed = {} }, folder = "/b" }, false)
-  :find("Send a book from Librillo", 1, true))
--- Without SHA-256 in this KOReader, a same-size file already in the folder is not copied twice.
-local nosha = {}
-for k, v in pairs(d) do nosha[k] = v end
-nosha.sha256 = function() return nil end
-files = { ["/books/A - Kept.epub"] = { content = "K" } }
-queue = { { id = "k", title = "Kept", filename = "A - Kept.epub", sha256 = sha("k"), size = 1 } }
-downloads = 0
-local again = Link.fetch(cfg, nosha)
-assert(again.already == 1 and downloads == 0 and not files["/books/A - Kept (2).epub"])
-""")
-print('Folio Link fetch: saved path checked, deleted book left deleted, copy under another name used, hostile path ignored, messages, no-SHA devices.')
 
-# Discovery: only a phone that proves it knows the key is trusted.
+# Finding the phone: only a phone that proves it knows the key is trusted.
 lua.execute(r"""
 local function md5(text) return text == "kn1" and "abc123" or "ffff00" end
-local base = { nonce = function() return "n1" end, md5 = md5 }
 local function with(replies)
-  local d = { nonce = base.nonce, md5 = base.md5, broadcast = function(text)
+  return { nonce = function() return "n1" end, md5 = md5, broadcast = function(text)
     assert(text == "FOLIO-DISCOVER n1") return replies end }
-  return d
 end
 local cfg = { key = "k" }
 assert(Link.discover(cfg, with({ { ip = "192.168.1.20", text = "FOLIO 8765 1 beef" } })) == nil, "wrong proof")
@@ -254,146 +91,16 @@ local found = Link.discover(cfg, with({
 }))
 assert(found == "http://192.168.1.20:8765", tostring(found))
 assert(Link.discover(cfg, with({ { ip = "bad host", text = "FOLIO 8765 1 abc123" } })) == nil, "bad ip")
-assert(Link.discover(cfg, with({ { ip = "192.168.1.20", text = "FOLIO 8765 2 abc123" } })) == nil, "other api")
-
--- A fetch whose saved address is dead finds the phone, uses it and remembers it.
-local saved
-local d = with({ { ip = "192.168.1.21", text = "FOLIO 8765 1 abc123" } })
-d.request = function(method, url)
-  if url:find("old%-address") then error("timeout") end
-  if url:match("/hello$") then return 200, { api = 1 } end
-  if url:match("/queue$") then return 200, { books = {} } end
-end
-d.decode = function(v) return v end
-d.save_server = function(url) saved = url end
-local result = Link.fetch({ server = "http://old-address:8765", username = "folio", key = "k", device = "kobo", folder = "/b" }, d)
-assert(result.fetched == 0 and saved == "http://192.168.1.21:8765", tostring(saved))
--- With no phone answering, the fetch fails with a plain message and saves nothing.
-saved = nil
-d.broadcast = function() return {} end
-assert(not pcall(Link.fetch, { server = "http://old-address:8765", username = "folio", key = "k", device = "kobo", folder = "/b" }, d))
-assert(saved == nil)
+assert(Link.discover(cfg, with({ { ip = "192.168.1.20", text = "FOLIO 8765 2 abc123" } })) == nil, "other version")
+assert(Link.discover(cfg, with({})) == nil and Link.discover(cfg, with(nil)) == nil, "nobody answered")
+local ok, err = pcall(Link.discover, {}, with({}))
+assert(not ok and tostring(err):find("Set up Librillo from your phone first.", 1, true), tostring(err))
 """)
-print('Folio Link discovery: 6 scenarios passed (wrong proof, impostor first, bad address, other version, fallback saves the new address, nothing found).')
-print('Folio Link fetch: 9 scenarios passed (new, already there, name clash, bad name, corrupt download, refused ack, URL, version mismatch, not set up).')
-
-# Exercise the plugin's actual statistics SQL against a real WAL-enabled SQLite fixture.
-import json,sqlite3,tempfile,hashlib
-with tempfile.TemporaryDirectory(prefix='folio-plugin-sql-') as tmp:
-    folder=Path(tmp);books=folder/'books';books.mkdir();settings=folder/'settings';settings.mkdir()
-    db=settings/'statistics.sqlite3'
-    conn=sqlite3.connect(db);conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('CREATE TABLE page_stat_data(id_book INTEGER,page INTEGER,start_time INTEGER,duration INTEGER)')
-    conn.executemany('INSERT INTO page_stat_data VALUES(?,?,?,?)',[(1,1,1791676800,60),(1,2,1791676860,120),(2,1,1791763200,180)])
-    conn.commit()
-    def as_python(value):
-        if hasattr(value,'items'):
-            items=list(value.items())
-            if items and all(isinstance(k,int) for k,v in items):return [as_python(value[i]) for i in range(1,len(items)+1)]
-            return {str(k):as_python(v) for k,v in items}
-        return value
-    def open_db(path):
-        c=sqlite3.connect(path,isolation_level=None)
-        def execute(self,sql):
-            cursor=c.execute(sql)
-            if not cursor.description:return lua.table()
-            data=cursor.fetchall();result=lua.table()
-            for i,column in enumerate(cursor.description):
-                values=lua.table_from([r[i] for r in data]);result[i+1]=values;result[column[0]]=values
-            return result
-        return lua.table_from({'exec':execute,'rowexec':lambda self,sql:c.execute(sql).fetchone()[0],'close':lambda self:c.close()})
-    lua.globals().py_open=open_db
-    lua.globals().py_encode=lambda value:json.dumps(as_python(value))
-    lua.globals().py_root=str(books)
-    lua.globals().py_settings=str(settings)
-    lua.globals().py_realpath=lambda path:str(Path(path).resolve()) if Path(path).exists() else None
-    lua.globals().py_attributes=lambda path,field=None: ('directory' if Path(path).is_dir() else 'file') if field=='mode' else lua.table_from({'mode':'directory' if Path(path).is_dir() else 'file'})
-    lua.execute('''
-      messages={}
-      local modules={
-        ["ui/widget/container/widgetcontainer"]={extend=function(self,t) return t end},
-        ["ui/uimanager"]={show=function(self,w) messages[#messages+1]=w.text end},
-        ["ui/widget/infomessage"]={new=function(self,t) return t end},
-        ["ui/event"]={new=function(self,...) return {...} end},
-        ["ui/widget/confirmbox"]={},["ui/widget/inputdialog"]={},
-        ["datastorage"]={getSettingsDir=function() return py_settings end},["readcollection"]={},
-        ["lua-ljsqlite3/init"]={open=py_open},
-        ["rapidjson"]={encode=py_encode,array=function() return {} end},
-        ["libs/libkoreader-lfs"]={attributes=py_attributes,symlinkattributes=function(path) if py_realpath(path) then return py_attributes(path) end end},["ffi/util"]={realpath=py_realpath}
-      }
-      require=function(name) return assert(modules[name],name) end
-      G_reader_settings={readSetting=function(self,key,default) return py_root end}
-    ''')
-    plugin=lua.execute((root/'koreader/folio.koplugin/main.lua').read_text())
-    plugin.statistics(plugin)
-    snapshot=json.loads((books/'.folio-statistics.json').read_text())
-    assert snapshot['seconds']==360 and sum(day['seconds'] for day in snapshot['days'])==360
-    assert conn.execute('SELECT SUM(duration) FROM page_stat_data').fetchone()[0]==360
-    conn.close()
-    print('Plugin statistics export passed against a real WAL SQLite fixture; no database writes.')
-
-lua.execute('''
-local now=1000000
-local req={format="folio-reading",version=1,id="12345678-1234-1234-1234-123456789abc",createdAt=now*1000,path="/books/one.epub",digest=string.rep("a",32),revision=string.rep("b",64),position="/body/DocFragment/body/p/text().3"}
-local resolver=function(path) return path end
-local attrs=function(path) return {mode="file"} end
-assert(Bridge.reading(req,"/books","/books/one.epub",string.rep("a",32),resolver,attrs,now)==req)
-local function reject(field,value)
- local copy={};for k,v in pairs(req) do copy[k]=v end;copy[field]=value
- assert(not pcall(Bridge.reading,copy,"/books","/books/one.epub",string.rep("a",32),resolver,attrs,now))
-end
-reject("path","/private/one.epub");reject("path","/books/another.epub")
-reject("digest",string.rep("c",32));reject("position","percentage:20")
-reject("createdAt",(now-8*86400)*1000);reject("createdAt",(now+600)*1000)
-reject("revision","bad");reject("id","../../elsewhere");reject("position",string.rep("x",5000))
-assert(not pcall(Bridge.reading,req,"/books","/books/one.epub",string.rep("a",32),function() return "/private/one.epub" end,attrs,now))
-''')
-print('11 reading handoff validation cases passed; wrong edition, escaping path, stale and malformed requests rejected.')
-
-# Exercise actual menu-driven and automatic application, including intervening Kindle reading.
-import tempfile
-with tempfile.TemporaryDirectory(prefix='folio-reading-') as tmp:
-    folder=Path(tmp); epub=folder/'one.epub';epub.write_bytes(b'fixture')
-    now=1791990000
-    request={'format':'folio-reading','version':1,'id':'12345678-1234-1234-1234-123456789abc','createdAt':now*1000,'path':str(epub),'digest':'a'*32,'revision':'b'*64,'position':'/body/DocFragment/body/p/text().3','expectedKindle':'old'}
-    filename='.folio-reading-'+request['id']+'.json'
-    (folder/filename).write_text(json.dumps(request))
-    def convert(value):
-        if isinstance(value,dict):return lua.table_from({k:convert(v) for k,v in value.items()})
-        if isinstance(value,list):return lua.table_from([convert(v) for v in value])
-        return value
-    lua.globals().py_decode=lambda value:convert(json.loads(value))
-    lua.globals().py_root=str(folder)
-    lua.globals().py_epub=str(epub)
-    lua.globals().py_names=lua.table_from(['.','..',filename])
-    lua.execute('''
-    local state={folio_folder=py_root};local last='old';applied_count=0
-    local modules={
-      ["ui/widget/container/widgetcontainer"]={extend=function(self,t) return t end},
-      ["ui/uimanager"]={show=function(self,w) if w.ok_callback then w.ok_callback() end end,nextTick=function(self,f) f() end},
-      ["ui/widget/infomessage"]={new=function(self,t) return t end},
-      ["ui/widget/confirmbox"]={new=function(self,t) return t end},["ui/widget/inputdialog"]={},
-      ["datastorage"]={},["readcollection"]={},["lua-ljsqlite3/init"]={},
-      ["rapidjson"]={decode=py_decode},["ffi/util"]={realpath=function(path) return path end},
-      ["ui/event"]={new=function(self,name,xpointer) return {name=name,xpointer=xpointer} end},
-      ["libs/libkoreader-lfs"]={dir=function(path) local i=0;return function() i=i+1;return py_names[i] end end,attributes=function(path,field) local mode=path==py_root and "directory" or "file"; if field=="mode" then return mode end; return {mode=mode} end,symlinkattributes=function(path,field) return 'file' end}
-    }
-    require=function(name) return assert(modules[name],name) end
-    G_reader_settings={readSetting=function(self,key,default) if state[key]~=nil then return state[key] end;return default end,saveSetting=function(self,key,value) state[key]=value end}
-    os.time=function() return 1791990000 end
-    test_ui={document={file=py_epub,info={has_pages=false},isXPointerInDocument=function() return true end},rolling={},doc_settings={readSetting=function(self,key) if key=='partial_md5_checksum' then return string.rep('a',32) elseif key=='last_xpointer' then return last end end},menu={registerToMainMenu=function() end},handleEvent=function(self,event) applied_count=applied_count+1;self.rolling.xpointer=event.xpointer end}
-    function change_last(value) last=value end
-    ''')
-    plugin=lua.execute((root/'koreader/folio.koplugin/main.lua').read_text());plugin['path']=str(root/'koreader/folio.koplugin');plugin['ui']=lua.globals().test_ui;plugin.init(plugin)
-    lua.globals().change_last('newer-kindle-position');plugin.reading(plugin,True);assert lua.globals().applied_count==0
-    lua.globals().change_last('old');plugin.reading(plugin,True);assert lua.globals().applied_count==1
-    plugin.reading(plugin,True);assert lua.globals().applied_count==1
-    print('Actual bridge auto-apply fixture passed: intervening Kindle progress preserved, expected position applied once, retry idempotent. KOReader runtime remains untested.')
+print('Finding the phone: 6 scenarios passed (wrong proof, impostor first, bad address, other version, nobody answered, not set up).')
 
 # ---- Sync protocol v2 (sync.lua): real files in a temporary home folder, KOReader's data and the
 # phone faked in memory. Tests the logic only; KOReader itself is not run here.
-import os, stat, time
-# A fresh Lua: the tests above replace os.time and require.
+# A fresh Lua for the sync tests.
 lua=LuaRuntime(unpack_returned_tuples=True)
 sync=lua.execute((root/'koreader/folio.koplugin/sync.lua').read_text())
 lua.globals().Sync=sync
@@ -887,8 +594,10 @@ with tempfile.TemporaryDirectory(prefix='folio-sync-names-') as tmp:
     ''')
 print('Sync names and messages: " (n)" numbering, library folder and path checks, quiet automatic syncs, plain summaries.')
 
+
 # main.lua glue: a version 2 setup file applied at start, the menu, and the sync settings.
-import shutil
+# KOReader modules the plugin no longer needs (confirm box, collections, SQLite, events) are not
+# provided: loading them would fail here.
 with tempfile.TemporaryDirectory(prefix='folio-main-') as tmp:
     plugin_dir=Path(tmp)/'folio.koplugin'
     shutil.copytree(root/'koreader/folio.koplugin', plugin_dir)
@@ -903,16 +612,22 @@ with tempfile.TemporaryDirectory(prefix='folio-main-') as tmp:
     G.py_exists=lambda p: os.path.exists(p)
     G.py_isdir=lambda p: os.path.isdir(p)
     main_lua.execute(r'''
-    stored, messages, scheduled, reader = {}, {}, {}, {}
+    stored, messages, shown, scheduled, unscheduled, sync_requests = {}, {}, {}, {}, 0, 0
+    typed = "Books/Librillo"
     local modules = {
       ["ui/widget/container/widgetcontainer"] = { extend = function(self, t) return t end },
-      ["ui/uimanager"] = { show = function(self, w) messages[#messages + 1] = w.text end,
+      ["ui/uimanager"] = { show = function(self, w) shown[#shown + 1] = w; if w.text then messages[#messages + 1] = w.text end end,
+        close = function() end,
         scheduleIn = function(self, seconds, f) scheduled[#scheduled + 1] = { seconds = seconds, f = f } end,
-        unschedule = function() end, nextTick = function(self, f) f() end },
+        unschedule = function() unscheduled = unscheduled + 1 end, nextTick = function(self, f) f() end },
       ["ui/widget/infomessage"] = { new = function(self, t) return t end },
-      ["ui/widget/confirmbox"] = {}, ["ui/widget/inputdialog"] = {}, ["ui/event"] = {},
+      ["ui/widget/inputdialog"] = { new = function(self, t)
+        t.getInputText = function() return typed end
+        t.onShowKeyboard = function() end
+        return t end },
+      ["ui/widget/multiconfirmbox"] = { new = function(self, t) return t end },
+      ["ui/network/manager"] = { runWhenConnected = function(self, f) sync_requests = sync_requests + 1 end },
       ["datastorage"] = { getSettingsDir = function() return "/settings" end, getDataDir = function() return "/koreader" end },
-      ["readcollection"] = {}, ["lua-ljsqlite3/init"] = {},
       ["rapidjson"] = { decode = py_decode },
       ["libs/libkoreader-lfs"] = { attributes = function(path, field)
         local mode = py_isdir(path) and "directory" or (py_exists(path) and "file" or nil)
@@ -937,6 +652,7 @@ with tempfile.TemporaryDirectory(prefix='folio-main-') as tmp:
     plugin['path']=str(plugin_dir)
     plugin['ui']=main_lua.eval('{ menu = { registerToMainMenu = function() end } }')
     plugin.init(plugin)
+    G.plugin=plugin
     assert not (plugin_dir/'link-setup.json').exists(), 'the setup file with the key is removed'
     main_lua.execute(r'''
     local file = stored["/settings/kosync.lua"].settings
@@ -946,26 +662,114 @@ with tempfile.TemporaryDirectory(prefix='folio-main-') as tmp:
     assert(legacy.custom_server == "http://192.168.1.42:8765" and legacy.sync_forward == 2, "the older place keeps its own choice")
     local mine = reader_values.folio_sync
     assert(mine.root == "Books/Librillo" and mine.auto_sync == true and mine.device_name == "Paperwhite" and mine.set_up == 2)
-    assert(reader_values.folio_auto_fetch == false, "the old automatic fetch is replaced by sync")
+    assert(reader_values.folio_auto_fetch == nil, "nothing written for the old book fetch")
     local every5, told = false, false
     for _, s in ipairs(scheduled) do
       if s.seconds == 300 then every5 = true end
       if s.seconds == 1 then s.f() end
     end
     assert(every5, "automatic sync checks every 5 minutes")
-    for _, m in ipairs(messages) do if m:find("Restart KOReader once", 1, true) then told = true end end
-    assert(told, "the person is told to restart once")
+    for _, m in ipairs(messages) do
+      if m:find("Restart KOReader once", 1, true) and m:find("Librillo > Sync now", 1, true) then told = true end
+    end
+    assert(told, "the person is told to restart, then sync")
+    -- The old flows are gone.
+    for _, name in ipairs({ "fetchBooks", "findPhone", "reading", "collections", "statistics", "configure",
+        "linkConfig", "defaultFolder", "root", "onReaderReady" }) do
+      assert(plugin[name] == nil, "removed: " .. name)
+    end
     ''')
-    items=main_lua.eval('{}')
-    plugin.addToMainMenu(plugin, items)
-    menu=items['folio_bridge']['sub_item_table']
-    assert menu[1]['text']=='Sync now' and menu[2]['text']=='Sync automatically' and menu[2]['checked_func']()
-    assert menu[3]['text_func']()=='Library folder: Books/Librillo'
-    assert menu[4]['text_func']()=='Questions (0)' and not menu[4]['enabled_func']()
-    assert menu[5]['text']=='Get books from Librillo', 'version 1 kept for now'
-    main_lua.execute('reader_values.folio_sync.questions = { { id = "q-1", text = "Which?", options = { "A", "B" } }, { id = "q-2", text = "Which?", options = { "A", "B" } } }; reader_values.folio_sync.answers = { ["q-2"] = "A" }')
-    assert menu[4]['text_func']()=='Questions (1)' and menu[4]['enabled_func']()
+    print('Plugin start: setup version 2 applied to both Progress sync places and the plugin settings, file removed, nothing for the old fetch, 5-minute checks, restart then Sync now; old flows gone.')
+
+    main_lua.execute(r'''
+    function menu_texts()
+      local items = {}
+      plugin:addToMainMenu(items)
+      local entry = items.folio_bridge
+      assert(entry.text == "Librillo" and entry.sub_item_table == nil and entry.sub_item_table_func)
+      local menu = entry.sub_item_table_func()
+      local texts = {}
+      for i, item in ipairs(menu) do texts[i] = item.text or item.text_func() end
+      return menu, texts
+    end
+    local menu, texts = menu_texts()
+    assert(#texts == 4 and texts[1] == "Sync now" and texts[2] == "Sync automatically"
+      and texts[3] == "Library folder: Books/Librillo" and texts[4] == "About", table.concat(texts, " | "))
+    assert(menu[2].checked_func() == true)
+    -- About: one plain line, and the menu stays open.
+    local before = #messages
+    assert(menu[4].keep_menu_open)
+    menu[4].callback()
+    local about = messages[#messages]
+    assert(#messages == before + 1 and not about:find("\n") and about:find("Librillo on your phone", 1, true), about)
+    -- No words the owner found meaningless, and no jargon.
+    for _, text in ipairs(texts) do about = about .. " " .. text end
+    for _, word in ipairs({ "Get books", "Find Librillo", "Continue from", "Review", "statistics", "Link",
+        "kosync", "manifest", "baseline", "Folio" }) do
+      assert(not about:find(word, 1, true), "menu says " .. word)
+    end
+    -- Sync automatically: off stops the checks, on starts them again.
+    local stops, checks = unscheduled, #scheduled
+    menu[2].callback()
+    assert(reader_values.folio_sync.auto_sync == false and unscheduled == stops + 1 and menu[2].checked_func() == false)
+    menu[2].callback()
+    assert(reader_values.folio_sync.auto_sync == true and #scheduled == checks + 1 and scheduled[#scheduled].seconds == 300)
+    ''')
+    print('Menu: Sync now, Sync automatically, Library folder, About (one plain line); no old items or jargon; the switch stops and starts the 5-minute checks.')
+
+    main_lua.execute(r'''
+    -- Library folder: a plain name is saved and the open menu shows it; a path outside is refused.
+    local menu = menu_texts()
+    local refreshed = 0
+    local touchmenu = { updateItems = function() refreshed = refreshed + 1 end }
+    assert(menu[3].keep_menu_open)
+    typed = "Kindle Books"
+    menu[3].callback(touchmenu)
+    local dialog = shown[#shown]
+    assert(dialog.title == "Library folder" and dialog.input == "Books/Librillo")
+    dialog.buttons[1][2].callback()
+    assert(reader_values.folio_sync.root == "Kindle Books" and refreshed == 1)
+    assert(messages[#messages] == "Books will move to Kindle Books at the next sync.", messages[#messages])
+    local _, texts = menu_texts()
+    assert(texts[3] == "Library folder: Kindle Books")
+    typed = "/mnt/us"
+    menu[3].callback(touchmenu)
+    shown[#shown].buttons[1][2].callback()
+    assert(reader_values.folio_sync.root == "Kindle Books" and refreshed == 1)
+    assert(messages[#messages] == "Type a folder name, like Librillo.")
+    ''')
+    print('Library folder: a plain name saved and shown at once; a path outside the home folder refused.')
+
+    main_lua.execute(r'''
+    -- Questions: only listed when one is open; answering keeps the answer and asks for a sync.
+    reader_values.folio_sync.questions = { { id = "q-1", text = "Which?", options = { "A", "B" } },
+      { id = "q-2", text = "Which?", options = { "A", "B" } } }
+    reader_values.folio_sync.answers = { ["q-2"] = "A" }
+    local menu, texts = menu_texts()
+    assert(#texts == 5 and texts[4] == "Questions (1)" and texts[5] == "About", table.concat(texts, " | "))
+    assert(menu[4].enabled_func())
+    menu[4].callback()
+    local ask = shown[#shown]
+    assert(ask.text == "Which?" and ask.choice1_text == "A" and ask.choice2_text == "B" and ask.cancel_text == "Later")
+    ask.choice1_callback()
+    assert(reader_values.folio_sync.answers["q-1"] == "A" and reader_values.folio_sync.answers["q-2"] == "A")
+    assert(sync_requests == 1, "a sync starts once the last question is answered")
+    local _, after = menu_texts()
+    assert(#after == 4 and after[4] == "About", "no Questions item without questions")
+    ''')
+    print('Questions: shown only while one is open; an answer is kept and a sync starts.')
+
+    main_lua.execute(r'''
+    -- Wi-Fi connects: only the sync check runs, even where the old automatic fetch was switched on.
+    reader_values.folio_auto_fetch = true
+    reader_values.folio_auto_positions = true
+    local count = #scheduled
+    plugin:onNetworkConnected()
+    assert(#scheduled == count + 1 and scheduled[#scheduled].seconds == 3, "one check, 3 seconds later")
+    plugin:onCloseDocument()
+    assert(#scheduled == count + 2 and scheduled[#scheduled].seconds == 3)
+    ''')
     cfg=plugin.syncConfig()
     assert cfg['server']=='http://192.168.1.42:8765' and cfg['username']=='folio' and cfg['key']=='abc123'
-    assert cfg['device']=='dev1' and cfg['name']=='Paperwhite' and cfg['home']==str(books) and cfg['root']=='Books/Librillo'
-    print('Plugin start: setup version 2 applied to both Progress sync places and the plugin settings, file removed, 5-minute checks, menu (Sync now, Sync automatically, Library folder, Questions), sync settings.')
+    assert cfg['device']=='dev1' and cfg['name']=='Paperwhite' and cfg['home']==str(books) and cfg['root']=='Kindle Books'
+    print('Plugin events and settings: Wi-Fi connect and closing a book schedule one sync check (old fetch settings ignored); sync settings read back.')

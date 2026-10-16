@@ -32,7 +32,7 @@ Exact file hashes detect duplicates; they are not book identities. Different fil
 ## Independent sync domains
 
 1. **Files, implemented:** bounded remote inventory, exact-byte comparison and new-file verified upload. Stable phone UUID and device path are separate values. Existing identical files under arbitrary filenames can be recognized using size then full hash. Cached transfer records represent verified historical presence, not a continuously live connection.
-2. **Library metadata, partially implemented:** phone canonical fields are edited into a new EPUB revision. Phone collection membership is persistent. The optional bridge accepts versioned additive collection requests and uses KOReader ReadCollection APIs after Kindle confirmation. Existing membership is never removed. Replacement of transferred EPUBs remains deferred.
+2. **Library metadata, partially implemented:** phone canonical fields are edited into a new EPUB revision. Phone collection membership is persistent. Lists and KOReader collections are kept in step by sync (see `SYNC_PROTOCOL.md`). Existing membership is never removed by the phone. Replacement of transferred EPUBs remains deferred.
 3. **Reading data, implemented read-only:** adjacent sidecars are read twice with bounds and accepted only if bytes agree. A restricted Lua literal parser rejects executable expressions, deep tables, duplicate keys and oversized input. Reading pointers and source-document hashes stay attached to their transferred revision; no position writes occur. Latest snapshots can move backwards; phone status is independent. Annotation changes add observations and missing annotations never imply deletion. Statistics arrive as JSON exported inside a consistent reader-side SQLite read transaction, not a raw live database copy.
 
 ## Manual sync sequence
@@ -58,23 +58,7 @@ SFTP rename behavior varies. New destination checks and SFTP v3 rename provide t
 
 ## Supported background behavior
 
-Uploads use an app-scoped coordinator and user-started `dataSync` foreground service. Room schema 4 stores ordered revision snapshots in `sync_tasks` under `sync_jobs`. Enqueue is atomic; only one unfinished job is accepted. State moves QUEUED → RUNNING → COMPLETE, FAILED or PAUSED; cancellation moves through CANCELLING to CANCELLED. On process recovery queued/running jobs become PAUSED and cancelling jobs become CANCELLED. Verified task records survive. Only an explicit user Resume reconnects, and each pending task checks the library's current revision and destination bytes. The repository mutex prevents changing source files during execution. The independent JVM BatchTransfer exercises cancellation and revision checks.
-
-Cancellation is observed while hashing/uploading/verifying and between files; after entering publication the current file rename, readback and persistence finish before cancellation is observed again. Interrupted rename responses reconcile by exact destination hash on retry. The current app does not journal remote temporary filenames, so process death may leave hidden staging files. No deletion, forced overwrite, background reconnect or guaranteed OS survival is claimed.
-
-A run has a 30-minute bound, while Android 15+ can limit dataSync service time to six hours per 24 hours. Service timeout stops execution; process-death recovery pauses. Android notification permission is requested at the first user upload, but denial still permits foreground execution under platform rules. Activity recreation does not run recovery against a still-live service. Reading retrieval/preview/lookups remain ViewModel operations.
-
-WorkManager 2.11.2 was evaluated. Android 16 long-running foreground workers consume JobScheduler quota; official Android guidance suggests a direct foreground service for appropriate user-triggered operations. This avoids adding a scheduler for transfers that must never reconnect without a user action. References: https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running and https://developer.android.com/develop/background-work/services/fgs/timeout.
-
-## Cooperative KOReader bridge, implemented but awaiting hardware acceptance
-
-`koreader/folio.koplugin` is independently implemented and separately licensed AGPL-3.0-or-later. The Android APK exchanges only versioned JSON over pinned SFTP. It does not link or include the plugin or KOReader implementation.
-
-Collections: the phone verifies every selected book's actual remote hash before publishing a unique `.folio-collections-<UUID>.json` request. The plugin reads the newest request from its user-configured folder, validates paths through realpath against that root and builds a full plan before showing confirmation. It adds members to `Folio: <name>` collections through ReadCollection and writes using its API. Reapplying is idempotent; existing memberships and unrelated collections are retained. This is additive collection delivery, not exact mirroring or automatic bidirectional conflict resolution. There is no application acknowledgement channel yet; the phone reports that application is pending in KOReader.
-
-Statistics: a device-side user action opens the existing statistics database, enables query_only, starts a read transaction, queries total duration and up to 366 daily aggregates, closes the connection and publishes JSON by same-directory rename. The phone double-reads, validates and caches that export. Current-book buffered data must be flushed by closing the book first. The plugin has independent Lua/SQLite tests with mocks for host APIs, but installed-version API compatibility still needs KOReader testing.
-
-Central/hashed sidecar retrieval, stronger snapshot generations, automatic request processing, per-device capability negotiation, exact collection mirroring and safe EPUB replacement are deferred.
+Removed in M9 step 5 (2026-10-16). The SSH upload job (`SyncCoordinator`, the `dataSync` `SyncService`) and the cooperative bridge (`bridge.lua`: `.folio-collections-*.json` requests, the statistics export and the `.folio-reading-*.json` reading handoff) are gone. Sync with the e-reader is the plugin-driven protocol in `SYNC_PROTOCOL.md`, over the phone's own server; SSH is used only to install the plugin and write its setup. The `sync_jobs`, `sync_tasks`, `sync_journal` and `transfers` tables stay in the schema, because Room migrations are additive only; nothing writes them any more. Old `transfers` rows still count towards the "Not on your e-reader" list rule, together with the sync baselines.
 
 ## Portable backups
 

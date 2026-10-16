@@ -112,7 +112,7 @@ class FolioLinkServiceTest {
     }
 
     @Test
-    fun anEreaderFetchesQueuedBooksAndConfirmsThem() {
+    fun theFirstPluginFindsNothingQueuedButCanStillDownloadABook() {
         val id = java.util.UUID.randomUUID().toString()
         val dir = java.io.File(app.repository.root, id).apply { mkdirs() }
         val file =
@@ -135,62 +135,17 @@ class FolioLinkServiceTest {
         }
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
-                app.linkQueue.add(listOf(id))
                 app.link.start()
                 val port = runBlocking {
                     withTimeout(15_000) { app.link.port.first { it != null }!! }
                 }
                 val device = mapOf("x-folio-device" to "emulated-kobo")
-
+                // Sync puts every book on the e-reader; nothing is queued for sending any more.
                 val queue = JSONObject(call(port, "GET", "/folio/v1/queue", extra = device).second)
-                val entry =
-                    (0 until queue.getJSONArray("books").length())
-                        .map { queue.getJSONArray("books").getJSONObject(it) }
-                        .single { it.getString("id") == id }
-                assertEquals("QA Author - Queued Fixture.epub", entry.getString("filename"))
-                assertEquals(hash, entry.getString("sha256"))
-
+                assertEquals(0, queue.getJSONArray("books").length())
                 val (status, body) = call(port, "GET", "/folio/v1/books/$id.epub", extra = device)
                 assertEquals(200, status)
                 assertEquals(file.readText(), body)
-
-                val ack =
-                    JSONObject()
-                        .put("id", id)
-                        .put("sha256", hash)
-                        .put("path", "/mnt/onboard/Folio/x.epub")
-                assertEquals(
-                    200,
-                    call(port, "POST", "/folio/v1/ack", ack.toString(), extra = device).first,
-                )
-                // The book stays listed with where this e-reader saved it, so the plugin can check
-                // the file is still there and fetch it again if it is not.
-                val after = JSONObject(call(port, "GET", "/folio/v1/queue", extra = device).second)
-                val saved =
-                    (0 until after.getJSONArray("books").length())
-                        .map { after.getJSONArray("books").getJSONObject(it) }
-                        .single { it.getString("id") == id }
-                assertEquals("/mnt/onboard/Folio/x.epub", saved.getString("saved_path"))
-                // Another e-reader still gets it.
-                val other =
-                    call(
-                        port,
-                        "GET",
-                        "/folio/v1/queue",
-                        extra = mapOf("x-folio-device" to "kindle"),
-                    )
-                assertTrue(other.second.contains(id))
-                // Taking the book out of the queue on the Device tab stops further downloads.
-                app.linkQueue.remove(id)
-                assertTrue(app.linkQueue.queued.value.none { it == id })
-                val gone =
-                    call(
-                        port,
-                        "GET",
-                        "/folio/v1/queue",
-                        extra = mapOf("x-folio-device" to "kindle"),
-                    )
-                assertTrue(gone.second, !gone.second.contains(id))
             }
         } finally {
             runBlocking { app.database.library().deleteLocalBook(id) }

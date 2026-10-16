@@ -3,72 +3,19 @@
     <!-- Device tab (DeviceScreen.kt) -->
     <string name="device_title">Device</string>
 
-    <!-- Device tab: the Librillo Link card -->
-    <string name="device_link_on">On</string>
-    <string name="device_link_off">Off</string>
-    <string name="device_link_waiting_network">Waiting for Wi-Fi</string>
-    <string name="device_link_waiting_ereader">Waiting for your e-reader</string>
-    <string name="device_link_off_line">Turn on Librillo Link to sync and send.</string>
-    <string name="device_copy_address">Copy address</string>
+    <!-- Device tab -->
     <string name="device_open_wifi">Open Wi-Fi settings</string>
-    <string name="device_sign_in">Sign-in details</string>
+    <string name="device_sign_in">Progress sync sign-in</string>
 
     <!-- Device tab: e-readers seen -->
-    <string name="device_ereaders">E-readers</string>
     <string name="device_ereader_default">E-reader</string>
-    <string name="device_ereader_seen">Seen %1$s</string>
-    <string name="device_ereader_seen_position">Seen %1$s · %2$d%% of %3$s</string>
 
-    <!-- Device tab: first time, before any e-reader has connected -->
+    <!-- Device tab: first time, before any e-reader is set up -->
     <string name="device_setup_title">Set up your e-reader</string>
-    <string name="device_setup_step1">Save the plugin and unzip it into KOReader\'s plugins folder.</string>
-    <string name="device_setup_step2">In KOReader: Tools → Progress sync → Custom sync server. Enter the address, then log in.</string>
-    <string name="device_setup_step3">Keep both on the same Wi-Fi. Books you send download on their own.</string>
-
-    <!-- Device tab: the send queue -->
-    <string name="device_queue">Sent to your e-reader</string>
-    <string name="device_queue_empty">Nothing sent yet. Send a book from its page.</string>
-    <string name="device_queue_waiting">Waiting for your e-reader. In KOReader: Librillo → Get books from Librillo.</string>
-    <!-- %1$s is the full path on the e-reader. -->
-    <string name="device_queue_saved">On your e-reader: %1$s</string>
-    <string name="device_queue_remove">Remove %1$s from this list</string>
 
     <!-- Device tab: activity -->
     <string name="device_activity">Activity</string>
     <string name="device_activity_all">All activity</string>
-
-    <!-- Device tab: the e-reader paired over SSH (legacy) -->
-    <string name="device_legacy">Legacy</string>
-    <string name="device_legacy_ssh">Over SSH</string>
-    <string name="device_send_missing">Send missing books</string>
-
-    <!-- Device tab: sending in progress -->
-    <string name="device_job_complete">Books sent</string>
-    <string name="device_job_failed">Sending didn\'t finish</string>
-    <string name="device_job_paused">Sending paused</string>
-    <string name="device_job_cancelled">Sending cancelled</string>
-    <string name="device_job_cancelling">Cancelling…</string>
-    <string name="device_job_sending">Sending your books</string>
-    <plurals name="device_job_progress">
-        <item quantity="one">%1$d of %2$d book sent · %3$d of %4$d MB</item>
-        <item quantity="other">%1$d of %2$d books sent · %3$d of %4$d MB</item>
-    </plurals>
-    <string name="device_job_resume">Send the rest</string>
-    <string name="device_job_cancel">Cancel sending</string>
-
-    <!-- Device tab: transfer states (stored values mapped to display text) -->
-    <string name="device_state_waiting">Waiting</string>
-    <string name="device_state_connecting">Connecting</string>
-    <string name="device_state_sending">Sending</string>
-    <string name="device_state_checking">Checking the copy</string>
-    <string name="device_state_finishing">Finishing</string>
-    <string name="device_state_comparing">Comparing</string>
-    <string name="device_state_complete">Sent</string>
-    <string name="device_state_failed">Failed</string>
-    <string name="device_state_paused">Paused</string>
-    <string name="device_state_cancelled">Cancelled</string>
-    <string name="device_state_cancelling">Cancelling</string>
-    <string name="device_state_interrupted">Interrupted</string>
 
     <!-- Lists (ListsScreen.kt) -->
     <string name="lists_title">Lists</string>
@@ -78,17 +25,14 @@
         <item quantity="other">%1$d books</item>
     </plurals>
     <string name="lists_rule">%1$s: %2$s</string>
-    <string name="lists_in_sync">Included in sends</string>
     <!-- TalkBack: the long-press menu of a list card. -->
     <string name="lists_manage">Options for %1$s</string>
-    <string name="lists_sync_toggle">Include in sends</string>
-    <string name="lists_sync_toggle_hint">Its books with an EPUB go along when you send to your e-reader.</string>
     <string name="lists_new_title">New list</string>
     <string name="lists_name_taken">A list with this name already exists</string>
     <string name="lists_rule_value_status">Unread, Reading, Finished or Abandoned</string>
     <string name="lists_rule_value_language">A language code, such as en or es</string>
     <string name="lists_rule_value_other">Must match the book\'s details exactly</string>
-    <string name="lists_rule_missing_hint">Based on the last check of your e-reader. Sync checks again before sending.</string>
+    <string name="lists_rule_missing_hint">Based on what Librillo last knew about your e-reader.</string>
 
     <!-- Settings (SettingsScreen.kt) -->
     <string name="settings_title">Settings</string>
@@ -100,8 +44,6 @@
     <!-- Text size, then the font: "110% · Serif". -->
     <string name="settings_text_summary">%1$d%% · %2$s</string>
     <string name="settings_text_body">Defaults for every book. A book with its own settings keeps them.</string>
-    <string name="settings_refresh_value">From your e-reader over SSH</string>
-    <string name="settings_link">Librillo Link</string>
     <string name="settings_hardcover">Hardcover</string>
     <string name="settings_hardcover_account">Account</string>
     <string name="settings_hardcover_connected">Connected as @%1$s</string>
@@ -133,18 +75,16 @@
     <string name="settings_last_import">Last import</string>
     <string name="settings_last_import_value">What happened to the files you added</string>
     <string name="settings_advanced">Advanced</string>
-    <string name="settings_ssh">E-reader over SSH</string>
-    <string name="settings_ssh_legacy">Legacy</string>
+    <string name="settings_ssh">E-reader SSH login</string>
+    <string name="settings_ssh_legacy">For setup</string>
     <string name="settings_ssh_not_set_up">Not set up</string>
     <string name="settings_folder">Phone folder</string>
     <string name="settings_folder_none">Not set</string>
-    <string name="settings_folder_body">Librillo imports EPUBs from this folder and swaps new books with your e-reader. Nothing is deleted on either side.</string>
+    <string name="settings_folder_body">Librillo imports EPUBs from this folder. Nothing in it is deleted.</string>
     <string name="settings_folder_choose">Choose folder</string>
     <string name="settings_folder_change">Change folder</string>
     <string name="settings_folder_refresh">Check for new books</string>
     <string name="settings_folder_disconnect">Disconnect folder</string>
-    <string name="settings_plugin_install">Install the KOReader plugin</string>
-    <string name="settings_plugin_value">Over SSH, onto your e-reader</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">Librillo %1$s</string>
     <string name="settings_about_line">No account and no analytics.</string>
@@ -153,13 +93,10 @@
     <string name="settings_forget_body">Its address and sign-in details are removed. Books stay where they are.</string>
     <string name="settings_forget_confirm">Forget</string>
 
-    <!-- Reading: refresh and reading time (Settings) -->
-    <string name="reading_refresh">Refresh progress and notes</string>
+    <!-- Reading time (Settings), as last fetched from the old plugin -->
     <string name="reading_time_title">Reading time</string>
     <string name="reading_time_total">%1$d h %2$d min</string>
     <string name="reading_time_none">Not fetched yet</string>
-    <string name="reading_time_hint">Export statistics from the Librillo plugin in KOReader first.</string>
-    <string name="reading_time_get">Get from e-reader</string>
     <string name="reading_time_exported">Exported %1$s</string>
     <string name="reading_time_minutes">%1$d min</string>
     <!-- The Books folder (M8): Author/Title.epub, the only copy of each book. -->

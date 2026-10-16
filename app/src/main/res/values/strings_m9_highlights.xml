@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Reader: the menu over selected text. -->
+    <string name="reader_highlight_action">Highlight</string>
+    <string name="reader_highlight_note_action">Add note</string>
+    <string name="reader_highlight_copy_action">Copy</string>
+    <string name="reader_highlight_saved">Highlighted</string>
+    <string name="reader_highlight_note_saved">Note saved</string>
+    <string name="reader_highlight_failed">Couldn\'t highlight this passage. Try selecting a little less.</string>
+    <string name="reader_highlight_save_failed">Couldn\'t save the highlight. Try again.</string>
+    <!-- Reader: the note dialog after Add note. -->
+    <string name="reader_note_title">Add a note</string>
+    <string name="reader_note_field">Note</string>
+    <string name="reader_note_save">Save</string>
+    <string name="reader_note_cancel">Cancel</string>
+    <!-- Reader: the sheet after tapping a highlight. -->
+    <string name="reader_highlight_from_phone">Made on this phone</string>
+    <string name="reader_highlight_from_ereader">From your e-reader</string>
+    <string name="reader_highlight_your_note">Your note</string>
+    <string name="reader_highlight_copy">Copy</string>
+    <string name="reader_highlight_kept">Highlights and notes are kept on all your devices.</string>
+</resources>

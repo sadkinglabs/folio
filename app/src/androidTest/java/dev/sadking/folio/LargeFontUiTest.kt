@@ -103,26 +103,31 @@ class LargeFontUiTest {
             waitFor("the library") {
                 compose.onAllNodes(middlemarch).fetchSemanticsNodes().isNotEmpty()
             }
+            // The sync line sits under the title and stays on screen at 200%.
+            compose.onNodeWithTag(SYNC_LINE_TAG).assertIsDisplayed()
             QaScreenshots.capture("library-font200")
 
             compose.onNode(middlemarch).performClick()
-            val send = hasTestTag(BOOK_ACTION_SEND_TAG)
-            waitFor("the book page") { compose.onAllNodes(send).fetchSemanticsNodes().isNotEmpty() }
+            val share = hasTestTag(BOOK_ACTION_SHARE_TAG)
+            waitFor("the book page") {
+                compose.onAllNodes(share).fetchSemanticsNodes().isNotEmpty()
+            }
             // The primary actions must be reachable, scrolling if the large text pushes them down.
             compose.onNodeWithTag(BOOK_PRIMARY_TAG).performScrollTo().assertIsDisplayed()
-            compose.onNode(send).performScrollTo().assertIsDisplayed()
+            compose.onNode(share).performScrollTo().assertIsDisplayed()
             QaScreenshots.capture("book-font200")
 
             // Back straight to the activity: a system Back can land on another window on top.
             scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             waitFor("the library again") {
-                compose.onAllNodes(send).fetchSemanticsNodes().isEmpty()
+                compose.onAllNodes(share).fetchSemanticsNodes().isEmpty()
             }
             compose.onNode(hasText("Device") and hasClickAction()).performClick()
             compose.waitForIdle()
-            // The Link card and its switch stay on screen at 200%.
-            compose.onNodeWithTag(DEVICE_LINK_CARD_TAG).assertIsDisplayed()
-            compose.onNodeWithTag(DEVICE_LINK_SWITCH_TAG).assertIsDisplayed()
+            // Not set up in this run: the setup card is on screen at 200%, and the Sync
+            // automatically switch is reachable below it.
+            compose.onNodeWithTag(DEVICE_SETUP_TAG).assertIsDisplayed()
+            compose.onNodeWithTag(DEVICE_AUTO_SYNC_TAG).performScrollTo().assertIsDisplayed()
             QaScreenshots.capture("device-font200")
             compose.onNode(hasText("Settings") and hasClickAction()).performClick()
             compose.waitForIdle()

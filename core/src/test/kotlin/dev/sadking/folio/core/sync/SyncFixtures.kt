@@ -94,7 +94,8 @@ internal object Fx {
         phone: List<PhoneBook>,
         baselines: List<Baseline> = emptyList(),
         answers: Map<String, String> = emptyMap(),
-    ) = SyncPlanner.plan(HOME, ROOT, kindle, phone, baselines, answers)
+        ignored: Set<String> = emptySet(),
+    ) = SyncPlanner.plan(HOME, ROOT, kindle, phone, baselines, answers, ignored)
 
     /** Every e-reader action reported as done. */
     fun allDone(plan: SyncPlan) = plan.kindle.indices.map { KindleResult(it, true) }

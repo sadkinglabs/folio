@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Librillo Link: settings -->
-    <string name="link_title">Librillo Link</string>
-    <string name="link_starting">Starting…</string>
+    <!-- Progress sync sign-in, for setting KOReader up by hand -->
     <string name="link_username">Username: %1$s</string>
     <string name="link_password">Password: %1$s</string>
     <string name="link_show_password">Show password</string>
@@ -10,7 +8,7 @@
     <string name="link_new_password">New password</string>
     <string name="link_steps">In KOReader: Tools → Progress sync → Custom sync server. Enter the address, then Register or Login with these details.</string>
     <string name="link_keep_awake">Keep the phone awake</string>
-    <string name="link_keep_awake_hint">Uses more battery.</string>
+    <string name="link_keep_awake_hint">Helps if syncing stops while the screen is off. Uses more battery.</string>
     <string name="link_log_empty">Nothing yet</string>
     <string name="link_log_clear">Clear log</string>
     <string name="link_log_line">%1$s · %2$s</string>
@@ -23,7 +21,7 @@
     <string name="link_log_sent">%1$s sent its position</string>
     <string name="link_log_asked">%1$s asked for the latest position</string>
     <string name="link_log_refused">%1$s was refused: wrong username or password</string>
-    <string name="link_log_checked">%1$s checked for books</string>
+    <string name="link_log_checked">%1$s checked for changes</string>
     <string name="link_log_downloaded">%1$s downloaded a book</string>
     <string name="link_log_saved">%1$s confirmed it saved a book</string>
     <string name="link_log_catalogue">%1$s opened the Librillo catalogue</string>
@@ -41,27 +39,21 @@
     <!-- Hardcover: automatic updates -->
     <string name="hardcover_automatic">Update Hardcover automatically</string>
 
-    <!-- Librillo Link: installing the KOReader plugin over USB -->
-    <string name="link_plugin_title">KOReader plugin</string>
+    <!-- Installing the KOReader plugin by hand, over USB -->
     <string name="link_plugin_hint">Save it, then unzip it into KOReader\'s plugins folder over USB.</string>
-    <string name="link_plugin_save">Save the plugin</string>
+    <string name="link_plugin_save">Save the plugin file</string>
     <string name="link_plugin_saved">Saved. Unzip it on the e-reader into:</string>
     <string name="link_plugin_failed">Couldn\'t save the plugin. Try another folder.</string>
     <string name="link_plugin_folders">Kindle: koreader/plugins\nKobo: .adds/koreader/plugins\nPocketBook: applications/koreader/plugins\nAndroid e-reader: koreader/plugins</string>
 
-    <!-- Librillo Link: sending books -->
-    <string name="link_queueing">Adding to the e-reader queue…</string>
-    <plurals name="link_queued">
-        <item quantity="one">%d book will download to your e-reader the next time it connects to Librillo Link</item>
-        <item quantity="other">%d books will download to your e-reader the next time it connects to Librillo Link</item>
-    </plurals>
+    <!-- The OPDS catalogue KOReader can browse -->
     <string name="link_catalogue">Librillo</string>
     <string name="link_catalogue_recent">Recently added</string>
     <string name="link_catalogue_lists">Lists</string>
 
     <!-- Librillo Link: notification -->
-    <string name="link_channel">Librillo Link</string>
-    <string name="link_notification_title">Librillo Link is on</string>
+    <string name="link_channel">Sync with your e-reader</string>
+    <string name="link_notification_title">Ready to sync with your e-reader</string>
     <string name="link_notification_text">Your e-reader can sync at %1$s</string>
     <string name="link_notification_no_network">Waiting for Wi-Fi or your hotspot</string>
     <string name="link_stop">Turn off</string>

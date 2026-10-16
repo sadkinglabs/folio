@@ -84,7 +84,7 @@ Going the other way: `unread` → Unread, `reading` → Reading, `finished` → 
 
 ## The rules
 
-The planner is `SyncPlanner.plan(home, root, kindle, phone, baselines, answers)`.
+The planner is `SyncPlanner.plan(home, root, kindle, phone, baselines, answers, ignored)`. `ignored` (default empty) holds the hashes of Kindle files the phone refused before (rule 13).
 
 ### 1. Which file is which book
 1. Same hash: the file is that book, wherever it is.
@@ -157,6 +157,16 @@ Files outside the library folder are moved in after they are imported. Files ins
 ### 12. Order
 The plan doesn't depend on the order of its input. Kindle actions run in phases: uploads, moves, downloads, deletes, statuses, annotations, collections. Within a phase they are sorted by path, ignoring case. Phone actions: imports, restores, revisions, removals, statuses, annotations, lists, each sorted by book id (imports by path). Questions are sorted by path.
 
+### 13. Files the phone refused
+A Kindle file the phone would not take (not a book Librillo can read, larger than it takes, or a new version in another format than the book) is remembered by its hash, per e-reader (`SyncLibrary.refused`). The planner leaves a file with that content alone:
+- **New on the Kindle:** not uploaded, not imported, not moved into the library folder.
+- **A new version of a book on both sides:** not uploaded; the phone keeps its file and the Kindle keeps its own. Moves, status, annotations and lists still sync. The phone's file is never sent over the Kindle's.
+- **A book with no file on the phone:** the Kindle's file is not taken back.
+- **A purged book changed on the Kindle:** left alone, without a question ("Keep it" could not import it). An unchanged one is still deleted.
+- **"Keep it" for a book removed on the phone:** the book is restored; the refused file is not sent.
+
+A file whose content changes is new content and is offered again. A refusal is forgotten once no Kindle file has that content (see `/finish`). A file can be refused only after one upload, so it may have been moved into the library folder by that first sync.
+
 ### Input that is refused
 A path that is empty, starts with `/`, contains `\`, an empty part, `.` or `..`; a hash that is not 64 lowercase hex characters; the same path twice; the same book id twice; a library folder that is not a plain relative path. The server answers 403 (`{"code":2003}`) and plans nothing. It refuses the whole manifest rather than skip one file, because a skipped file would look like a Kindle deletion.
 
@@ -178,7 +188,7 @@ Header `x-folio-device: <device id>`.
 ```json
 {"api": 2, "name": "Librillo", "pending": true}
 ```
-`pending` is true when the phone has changes this device hasn't received (`SyncLibrary.pending`); it is false without the header. The plugin polls this every few minutes and syncs when it is true.
+`pending` is true when the phone has changes this device hasn't received (`SyncLibrary.pending`), or when the owner tapped Sync on the phone since this device's last finished sync; it is false without the header. The plugin polls this every few minutes and syncs when it is true.
 
 ### POST /folio/v2/sync
 ```json
@@ -250,7 +260,7 @@ The body is the file. `path` is the path as the manifest listed it, even when a 
 ```json
 {"ok": true, "path": "Downloads/dune.epub", "size": 412345, "sha256": "…"}
 ```
-Uploading the same path again replaces the earlier upload. Nothing is handed to the library until `/finish`.
+Uploading the same path again replaces the earlier upload. Nothing is handed to the library until `/finish`. A 413 is remembered: at `/finish` that file is recorded as refused, too large (rule 13).
 
 ### POST /folio/v2/finish
 ```json
@@ -263,15 +273,16 @@ Uploading the same path again replaces the earlier upload. Nothing is handed to 
 Answer `{"ok": true}`. `path` is where the file ended up, for moves and downloads; an invalid one is ignored and the planned path used. A missing result counts as a failure. The session ends here, so a second finish is 410.
 
 Only now does the phone change anything, in this order:
-1. **Uploads.** For each `upload` reported ok whose file arrived: `SyncLibrary.revise(device, bookId, path, file)` when the plan has a `Revise` for that path, otherwise `SyncLibrary.receive(device, path, file)` for its `Import`. An upload counts as done only when the library took the file.
+1. **Uploads.** For each `upload` reported ok whose file arrived: `SyncLibrary.revise(device, bookId, path, file)` when the plan has a `Revise` for that path, otherwise `SyncLibrary.receive(device, path, file)` for its `Import`. An upload counts as done only when the library took the file. When either throws `SyncRefusal`, the file is refused for good (with its reason); returning null means "not this time".
 2. **Phone actions.** `SyncPlanner.phoneActionsAfter(plan, results)` (an import or revision only when its upload was taken), applied through `SyncLibrary.apply` with the uploaded paths mapped to their book ids.
 3. **The Kindle's new state.** `SyncPlanner.kindleAfter(manifest, plan.kindle, phone books at plan time, results)`.
 4. **Baselines.** The phone's books are read again, and `SyncPlanner.baselines(kindleAfter, phoneAfter, previous, root)` is passed to `SyncLibrary.commit`, which **replaces** this e-reader's whole baseline set.
 5. **Questions.** `SyncLibrary.saveQuestions(device, plan.questions)`, which replaces the device's questions and drops stored answers to other ids.
-6. `SyncLibrary.synced(device, name, now)`, and the temporary uploads are deleted.
+6. **Refused files.** `SyncLibrary.saveRefused(device, list)`: the files refused in this sync (`RefusedFile`: hash, Kindle path, reason, time), plus the earlier ones whose hash is still in this manifest. A refusal for content the Kindle no longer has is dropped.
+7. `SyncLibrary.synced(device, name, now)`, and the temporary uploads are deleted.
 
 ### Sessions
-A session lasts 30 minutes after its last request, so a long transfer can't expire half way. Each device has one at a time: a new `/sync` replaces the old one and deletes its uploads. At most 16 sessions exist; the oldest is dropped. An unknown or ended session is 410 (`{"code":2005}`) on every route that takes one. Planning and finishing run one at a time; uploads stream in parallel.
+Once `/sync` has planned, the server calls `SyncLibrary.started(device, name, now)`, so the phone can say "Syncing…". A session lasts 30 minutes after its last request, so a long transfer can't expire half way. Each device has one at a time: a new `/sync` replaces the old one and deletes its uploads. At most 16 sessions exist; the oldest is dropped. An unknown or ended session is 410 (`{"code":2005}`) on every route that takes one. Planning and finishing run one at a time; uploads stream in parallel.
 
 ## SyncLibrary: what the app provides
 
@@ -279,11 +290,13 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 - `phoneBooks()`: every book, Recently removed and records without a file included, as `PhoneBook`.
 - `baselines(ereaderId)`, `commit(ereaderId, baselines)`: read the baseline set; replace it whole (never an upsert).
 - `bookFile(bookId)`: the file to serve.
-- `receive(ereaderId, kindlePath, file)`: takes an upload as a new book; returns its id, or null.
-- `revise(ereaderId, bookId, kindlePath, file)`: takes an upload as a new revision of `bookId`, beside the old file; returns the id, or null. The book may be in Recently removed when a `Restore` follows.
+- `receive(ereaderId, kindlePath, file)`: takes an upload as a new book; returns its id, or null for "not this time". Throws `SyncRefusal(reason)` when the file can never be taken: `NOT_A_BOOK` or `TOO_LARGE`.
+- `revise(ereaderId, bookId, kindlePath, file)`: takes an upload as a new revision of `bookId`, beside the old file; returns the id, or null. The book may be in Recently removed when a `Restore` follows. Throws `SyncRefusal` with `NOT_A_BOOK`, `TOO_LARGE` or `OTHER_FORMAT` (another kind of file than the book).
 - `apply(ereaderId, actions, received)`: runs the phone actions in order. `received` maps Kindle paths to the book ids from `receive` or `revise`, so an `Import` finds its book and applies the status, notes and lists it carries.
 - `pending(ereaderId)`, `phoneQuestions(ereaderId)`, `saveQuestions(ereaderId, questions)`, `phoneAnswers(ereaderId)`.
 - `uploadDir()`: where uploads land while they arrive (default: the system temp folder).
+- `refused(ereaderId)`, `saveRefused(ereaderId, refused)`: the e-reader's refused files (rule 13); the planner gets their hashes as `ignored`.
+- `started(ereaderId, deviceName, at)`: a sync was planned.
 - `synced(ereaderId, deviceName, at)`: a sync finished.
 
 `receive` and `revise` get a temporary file the server deletes afterwards, so they copy or move it.
@@ -291,11 +304,34 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 ### The app's SyncLibrary (`RoomSyncLibrary`, step 3b)
 - `phoneBooks()` lists every row of the `books` table, Recently removed included. `hasFile` is false when the current file is gone, except for a Books folder path while All files access is off (the folder can't be seen, so it is not taken as missing). `statusAt` is the `books.statusAt` column (schema 10), set whenever the status changes; 0 means unknown. Lists are the manual lists the book is in; smart lists are rules, not memberships.
 - Annotations map `BookAnnotation.id` → `id`, `position` → `pos0`, `endPosition` → `pos1`, `date` → `datetime`. Rows added by sync get the device id `link:<e-reader id>`. Rows imported over SSH before sync have other ids; once a synced row with the same `datetime` and `pos0` exists, the older row is hidden from sync (kept in Room, never deleted). The plugin skips an incoming annotation with the same `datetime` and start as one it already has, so such a note is never added twice on the e-reader.
+- `receive` refuses a file over the import limit (256 MiB, `TOO_LARGE`) and one the import can't read (`NOT_A_BOOK`: not an EPUB, PDF, CBZ or CBR, or damaged). `revise` refuses the same, and another format than the book's (`OTHER_FORMAT`). A file that vanished or a storage error is not a refusal: the next sync tries again.
 - `receive` uses the normal import path (format from the file's bytes, `Books/Author/Title.ext` when the Books folder is ready, else private storage, " (2)" on a clash). Content the library already has returns that book without restoring it. `revise` refuses another format; in the Books folder the old file moves to `.librillo/originals/<id>.<ext>` (the original) or `.librillo/previous/<id>-<ms>.<ext>`, and the new file takes its path.
 - `apply` runs each action on its own; one that fails is skipped and the next sync tries again. `Remove` goes to Recently removed. `SetLists` creates missing manual lists by exact name and skips a name a smart list already uses.
-- `pending(ereaderId)` is true when an answer given on the phone is waiting, else `SyncPending.pending(phoneBooks, baselines, root = null, waiting)` (core). `root = null` accepts any library folder, because hello doesn't say which one the e-reader uses. Books with an open question, a blank baseline status, and a missing phone file don't count, so the e-reader doesn't sync every 5 minutes for nothing.
-- Questions, answers, the last sync time and the device name are kept per e-reader in `SyncState` (SharedPreferences `librillo-sync`, JSON), with a StateFlow for the UI.
+- `pending(ereaderId)` is true when the owner tapped Sync since that e-reader's last finished sync (`SyncState.requestSync`), or when an answer given on the phone is waiting, else `SyncPending.pending(phoneBooks, baselines, root = null, waiting)` (core). `root = null` accepts any library folder, because hello doesn't say which one the e-reader uses. Books with an open question, a blank baseline status, and a missing phone file don't count, so the e-reader doesn't sync every 5 minutes for nothing.
+- Questions, answers, refused files, the last sync time, the number of books both sides held after it and the device name are kept per e-reader in `SyncState` (SharedPreferences `librillo-sync`, JSON), with a StateFlow for the UI (`ereaders`). State saved before step 4 has no refused files and loads as such. "Syncing since" is kept in memory only, from `started` until `synced`, and stops counting after 30 minutes. The Sync button's time is `requestedAt` (`syncRequestedAt`).
+- After `apply`, the books whose status sync set (a `SetStatus`, or an `Import` with a status) are passed to `HardcoverFinishPrompts.statusChanged`.
 - `uploadDir()` is `Books/.librillo/uploads` when the Books folder is ready, else `cacheDir/sync-uploads`; uploads left over for more than a day are deleted.
+
+## Hardcover finish prompt (step 4)
+Reading progress goes to Hardcover on its own (`HardcoverOutbox`), and only ever moves an open read forward. Finishing a read on Hardcover is never automatic.
+
+When a book becomes Finished, by a sync (`SetStatus`, or an `Import` with that status) or on the phone (the book page or the Library's selection), `HardcoverFinishPrompts.statusChanged(ids)` checks it. A prompt is kept when:
+- a Hardcover account is linked (`HardcoverSettings.connected` and its account id);
+- the book is linked to a Hardcover book (a catalogue entry with `hardcoverId` whose `linkedBookId` is the book);
+- the phone last saw that read as Currently Reading (status 2) for that account, in `hardcover_observations`. The reading sheet, the Hardcover import and now the outbox, after every progress update, keep that table current. Nothing goes online to decide.
+
+There is one prompt per book, in SharedPreferences `hardcover-finish-prompts`, with the book's `statusAt` when it became Finished. `dismiss(bookId)` (Mark as read done, or Not now) records that finish as answered, so it isn't asked again until the book is finished again (a new `statusAt`). A prompt is hidden as soon as its book is no longer Finished or is in Recently removed, and dropped at the next `statusChanged`.
+
+The phone shows prompts in the "Needs your decision" sheet: "You finished <title>. Mark it as read on Hardcover?" with Mark as read and Not now. Not now calls `dismiss`. Mark as read opens that book's Hardcover reading sheet with its Finish dialog already open and today's date filled in; Hardcover changes only when the owner taps Finish there. The prompt goes once the phone sees the read is no longer Currently Reading (`settledPrompts` in `DecisionsSheet.kt`), so a finish that failed keeps it waiting.
+
+## Highlights made on the phone (step 4c)
+EPUB only. The reader draws every annotation of the book whose `pos0` and `pos1` are xpointers in the same chapter, from the e-reader or the phone, as Readium decorations. The page script `assets/reader/highlights.js` turns the xpointers into a DOM range with the same resolver as reading positions (`positions.js`) and returns a quote with 32 characters of context on each side, which Readium anchors. A highlight that can't be placed is not drawn, but it stays in the database and on the book page.
+
+Selecting text offers Highlight, Add note and Copy. The phone stores a `BookAnnotation` with device id `phone`, `pos0`/`pos1` as KOReader xpointers built from the selection, the selected text, the chapter title from the table of contents, `datetime` in local time (`YYYY-MM-DD HH:MM:SS`), kind `highlight` (or `note` with a note), and the id from the recipe above with device id `phone`. When another annotation already has that id (same second and start), the id is the first 32 hex of SHA-256 of `phone\n<datetime>\n<pos0>\n<pos1>\nhighlight`, as the plugin does. Phone rows have no `link:` prefix, so `SyncAnnotations.forSync` sends them to the e-reader at the next sync.
+
+Tapping a highlight shows its passage, its note and where it was made, read-only, with Copy. There is no delete: sync never deletes annotations (rule 7), so a deleted one would come back.
+
+The end of a KOReader range is taken as exclusive, like a DOM range end. That is not checked on a device yet.
 
 ## The plugin (step 3b)
 - **Manifest:** every EPUB, PDF, CBZ and CBR under KOReader's home folder, except hidden folders, `.sdr` folders, symbolic links and KOReader's own data folder. Hashes are cached by path, size and modification time in `settings/folio-hashes.lua`. An unreadable folder or a failed hash stops the sync, so nothing looks deleted.
@@ -313,7 +349,7 @@ Librillo's SSH installer leaves `link-setup.json` beside the plugin. The plugin 
  "username": "folio", "userkey": "…", "root": "Librillo", "auto_sync": true,
  "sync_forward": "prompt", "device_name": "Kindle Paperwhite"}
 ```
-`device_name` is optional. Progress sync's settings are written to both places KOReader reads: `settings/kosync.lua` (key `settings`) and the older reader setting `kosync`: `custom_server`, `username`, `userkey`, `auto_sync = true`, and `sync_forward` and `sync_backward` = 1 (ask first) unless already set; `checksum_method` is left alone. The plugin keeps `root`, `auto_sync` and `device_name` in its reader setting `folio_sync`. Version 1 (without `root`, `auto_sync` and `sync_forward`) is still read; it keeps the old "Get books" behaviour and leaves two-way sync off until it is switched on.
+`device_name` is optional. Progress sync's settings are written to both places KOReader reads: `settings/kosync.lua` (key `settings`) and the older reader setting `kosync`: `custom_server`, `username`, `userkey`, `auto_sync = true`, and `sync_forward` and `sync_backward` = 1 (ask first) unless already set; `checksum_method` is left alone. The plugin keeps `root`, `auto_sync` and `device_name` in its reader setting `folio_sync`. Version 1 (without `root`, `auto_sync` and `sync_forward`) is still read; it sets up Progress sync only and leaves two-way sync off until it is switched on. Neither version writes `folio_auto_fetch` any more (step 5 removed Get books).
 
 On the phone, Link runs while Librillo is in the foreground and for 30 minutes after it leaves, longer while an e-reader is in the middle of a sync (from a successful `/sync` until `/finish`, or 30 minutes of silence). It starts only once Link is set up (its password exists) and "Sync automatically" (the old on/off setting) is on.
 

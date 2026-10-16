@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Devices
@@ -102,7 +101,8 @@ internal fun FolioBar(
     current: CurrentBook?,
     onContinue: () -> Unit,
     onOptions: () -> Unit,
-    transferActive: Boolean,
+    /** Something on the Device tab needs the owner: a dot on its icon. */
+    deviceBadge: Boolean,
     hazeState: HazeState?,
     modifier: Modifier = Modifier,
 ) {
@@ -120,7 +120,7 @@ internal fun FolioBar(
                         onClick = { onTab(i) },
                         icon = {
                             BadgedBox(
-                                badge = { if (i == FolioNav.DEVICE && transferActive) Badge() }
+                                badge = { if (i == FolioNav.DEVICE && deviceBadge) Badge() }
                             ) {
                                 Icon(if (tab == i) d.selectedIcon else d.icon, null)
                             }
@@ -147,16 +147,14 @@ internal fun FolioBar(
 }
 
 /**
- * The bar while books are selected: the tabs give way to Material's floating toolbar with Send, Add
- * to list, Status and Remove, each with its label. It takes the tab bar's place and height, so the
+ * The bar while books are selected: the tabs give way to Material's floating toolbar with Add to
+ * list, Status and Remove, each with its label. It takes the tab bar's place and height, so the
  * content under it does not move.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun SelectionActionBar(
     enabled: Boolean,
-    sendEnabled: Boolean,
-    onSend: () -> Unit,
     onLists: () -> Unit,
     onStatus: () -> Unit,
     onRemove: () -> Unit,
@@ -175,12 +173,6 @@ internal fun SelectionActionBar(
             modifier = Modifier.testTag(SELECTION_BAR_TAG),
             colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
         ) {
-            ToolbarAction(
-                Icons.AutoMirrored.Outlined.Send,
-                stringResource(R.string.rd_action_send),
-                enabled && sendEnabled,
-                onSend,
-            )
             ToolbarAction(
                 Icons.Outlined.BookmarkAdd,
                 stringResource(R.string.shell_add_to_list),

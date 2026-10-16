@@ -56,7 +56,6 @@ class UnifiedLibraryTest {
     @Test
     fun noFileCannotClaimKindleProgress() {
         val value = catalogueSignals(wish(), HardcoverObservation(1, 1, 2, 42, 10, 1000))
-        assertEquals("No EPUB", value.device)
         assertEquals("Reading · Hardcover", value.reading)
         assertNull(value.progress)
     }

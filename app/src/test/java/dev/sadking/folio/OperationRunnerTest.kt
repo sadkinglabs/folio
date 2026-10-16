@@ -17,29 +17,15 @@ class OperationRunnerTest {
             fileTransfer = "file transfer",
             incomplete = "Something went wrong. Try again.",
             generic = "Something went wrong. Check the file, free space and connection.",
-            transferBusy = "Finish or cancel the current transfer first.",
         )
 
-    private fun runner(transfer: Boolean = false) =
-        OperationRunner(transferActive = { transfer }, authentication = { "Key" }, text = { text })
-
-    @Test
-    fun deviceWorkWaitsForTheTransferButLibraryWorkDoesNot() = runBlocking {
-        val runner = runner(transfer = true)
-        runner.launch(this, "Sending", device = true) { "sent" }
-        val refused = runner.notices.first()
-        assertTrue(refused.failed)
-        assertEquals(text.transferBusy, refused.message)
-
-        runner.launch(this, "Saving", device = false) { "saved" }
-        assertEquals(Operation(message = "saved"), runner.notices.first())
-    }
+    private fun runner() = OperationRunner(authentication = { "Key" }, text = { text })
 
     @Test
     fun undoableWorkOffersItsUndoAndPlainWorkDoesNot() = runBlocking {
         val runner = runner()
         var undone = false
-        runner.launchUndoable(this, "Removing", device = false) {
+        runner.launchUndoable(this, "Removing") {
             "Removed 1 book" to { undone = true }
         }
         val notice = runner.notices.first()
@@ -47,14 +33,14 @@ class OperationRunnerTest {
         notice.undo!!.invoke()
         assertTrue(undone)
 
-        runner.launch(this, "Saving", device = false) { "saved" }
+        runner.launch(this, "Saving") { "saved" }
         assertNull(runner.notices.first().undo)
     }
 
     @Test
     fun failuresAreExplainedWithoutRawDetails() = runBlocking {
         val runner = runner()
-        runner.launch(this, "Exporting", device = false) {
+        runner.launch(this, "Exporting") {
             throw IOException("/data/user/0/dev.sadking.folio/files/private.epub")
         }
         val notice = runner.notices.first()
@@ -94,12 +80,12 @@ class OperationRunnerTest {
         val runner = runner()
         val order = mutableListOf<String>()
         val release = CompletableDeferred<Unit>()
-        runner.launch(this, "First", device = false) {
+        runner.launch(this, "First") {
             release.await()
             order += "first"
             "first"
         }
-        runner.launch(this, "Second", device = false) {
+        runner.launch(this, "Second") {
             order += "second"
             "second"
         }
@@ -114,7 +100,7 @@ class OperationRunnerTest {
     fun aClosedScreenDoesNotLeaveTheStatusBusy() = runBlocking {
         val runner = runner()
         val screen = CoroutineScope(Job())
-        runner.launch(screen, "Waiting", device = false) { awaitCancellation() }
+        runner.launch(screen, "Waiting") { awaitCancellation() }
         runner.state.first { it.busy }
         screen.cancel()
         assertEquals(Operation(), runner.state.first { !it.busy })

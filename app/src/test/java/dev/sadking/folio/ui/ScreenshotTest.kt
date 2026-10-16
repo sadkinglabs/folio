@@ -63,11 +63,19 @@ class ScreenshotTest {
 
     @Test fun listEditor() = shoot("list-editor") { ListEditorPreview() }
 
-    @Test fun device() = shoot("device") { KindlePreview() }
+    @Test fun device() = shoot("device", tall = true) { KindlePreview() }
 
-    @Test fun deviceOff() = shoot("device-off") { DeviceOffPreview() }
+    @Test fun deviceOff() = shoot("device-off", tall = true) { DeviceOffPreview() }
 
     @Test fun deviceFirstRun() = shoot("device-first-run") { DeviceFirstRunPreview() }
+
+    @Test fun syncLine() = shoot("sync-line") { SyncLinePreview() }
+
+    @Test fun decisions() = shoot("decisions") { DecisionsPreview() }
+
+    @Test fun setup() = shoot("setup", tall = true) { SetupPreview() }
+
+    @Test fun setupDone() = shoot("setup-done") { SetupDonePreview() }
 
     @Test fun pairing() = shoot("pairing", tall = true) { PairingPreview() }
 
@@ -120,6 +128,8 @@ class ScreenshotTest {
     @Test fun readerText() = shoot("reader-text") { ReaderTextPreview() }
 
     @Test fun readerContents() = shoot("reader-contents") { ReaderContentsPreview() }
+
+    @Test fun readerHighlight() = shoot("reader-highlight") { ReaderHighlightPreview() }
 
     @Test fun readerDevices() = shoot("reader-devices") { ReaderDevicesPreview() }
 

@@ -20,6 +20,11 @@ object SyncPlanner {
      * Plans one sync. [home] is KOReader's home folder, for information only; every path is
      * relative to it. [root] is the library folder inside it. [answers] maps question ids to the
      * option the owner chose.
+     *
+     * [ignored] holds the SHA-256 of e-reader files the phone refused before (not a book it can
+     * read, or too large). A file with that content is never uploaded again, so it is not imported,
+     * not taken as a new revision and not tidied into the library folder: it is left where it is
+     * until its content changes (rule 13).
      */
     fun plan(
         @Suppress("UNUSED_PARAMETER") home: String,
@@ -28,9 +33,10 @@ object SyncPlanner {
         phone: List<PhoneBook>,
         baselines: List<Baseline>,
         answers: Map<String, String> = emptyMap(),
+        ignored: Set<String> = emptySet(),
     ): SyncPlan {
         checkInput(kindle, phone)
-        return Planner(cleanRoot(root), kindle, phone, baselines, answers).run()
+        return Planner(cleanRoot(root), kindle, phone, baselines, answers, ignored).run()
     }
 
     /**
@@ -197,6 +203,8 @@ private class Planner(
     phoneIn: List<PhoneBook>,
     val baselineIn: List<Baseline>,
     val answers: Map<String, String>,
+    /** Content the phone refused before: never uploaded again (rule 13). */
+    val ignored: Set<String>,
 ) {
     val kindle = kindleIn.filter { kept(it.format) }
     val phone = phoneIn
@@ -265,8 +273,10 @@ private class Planner(
             Side.PHONE -> deleteFromKindle(file, book)
             Side.KINDLE -> {
                 phoneActions += PhoneAction.Restore(book.id)
-                kindleActions += KindleAction.Upload(file.path)
-                phoneActions += PhoneAction.Revise(book.id, file.path)
+                if (file.sha256 !in ignored) {
+                    kindleActions += KindleAction.Upload(file.path)
+                    phoneActions += PhoneAction.Revise(book.id, file.path)
+                }
             }
             null -> Unit
         }
@@ -279,6 +289,8 @@ private class Planner(
             kindleActions += KindleAction.Delete(file.path)
             return
         }
+        // The phone can't take this content, so "Keep it" could not import it: leave it alone.
+        if (file.sha256 in ignored) return
         val q =
             question(
                 REMOVED_SIDES,
@@ -343,6 +355,8 @@ private class Planner(
     // ---- Rule 3: files only on the e-reader ----
 
     fun importNew(file: KindleFile) {
+        // Refused before: not sent again, and not moved, until its content changes.
+        if (file.sha256 in ignored) return
         val status = SyncStatus.normalize(file.status)
         kindleActions += KindleAction.Upload(file.path)
         phoneActions +=
@@ -387,7 +401,8 @@ private class Planner(
         val to =
             if (tidy(file.path, book.authors, book.title, format)) file.path
             else allocate(book.authors, book.title, format)
-        if (content == Side.KINDLE) {
+        // A Kindle file the phone refused before is not sent again; the rest still syncs.
+        if (content == Side.KINDLE && file.sha256 !in ignored) {
             kindleActions += KindleAction.Upload(file.path)
             phoneActions += PhoneAction.Revise(book.id, file.path)
         }

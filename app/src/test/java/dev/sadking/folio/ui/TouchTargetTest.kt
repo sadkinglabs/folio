@@ -34,6 +34,7 @@ class TouchTargetTest {
             "DetailsPreview" to { DetailsPreview() },
             "DetailsFileMissingPreview" to { DetailsFileMissingPreview() },
             "DetailsChangedPreview" to { DetailsChangedPreview() },
+            "DecisionsPreview" to { DecisionsPreview() },
             "DeviceFirstRunPreview" to { DeviceFirstRunPreview() },
             "DeviceOffPreview" to { DeviceOffPreview() },
             "DiscoveryPreview" to { DiscoveryPreview() },
@@ -72,6 +73,9 @@ class TouchTargetTest {
             "RemovedPreview" to { RemovedPreview() },
             "SettingsFirstRunPreview" to { SettingsFirstRunPreview() },
             "SettingsPreview" to { SettingsPreview() },
+            "SetupDonePreview" to { SetupDonePreview() },
+            "SetupPreview" to { SetupPreview() },
+            "SyncLinePreview" to { SyncLinePreview() },
             "ReaderListenNaturalPreview" to { ReaderListenNaturalPreview() },
         )
 

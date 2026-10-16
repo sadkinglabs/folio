@@ -60,10 +60,12 @@ fun HardcoverReadingSheet(
     model: DiscoveryViewModel,
     book: Book,
     snapshot: ReadingSnapshot?,
-    onRefreshDevice: () -> Unit = {},
-    devicePaired: Boolean = false,
-    deviceOperation: dev.sadking.folio.Operation = dev.sadking.folio.Operation(),
     phoneReading: PhoneReading? = null,
+    /**
+     * Opened from "You finished … Mark it as read on Hardcover?": once the read is loaded and is
+     * Currently Reading, the finish dialog opens with today's date. The owner still taps Finish.
+     */
+    finishOnOpen: Boolean = false,
     onDismiss: () -> Unit,
 ) {
     val username by model.username.collectAsStateWithLifecycle()
@@ -73,7 +75,6 @@ fun HardcoverReadingSheet(
     val matches by model.matches.collectAsStateWithLifecycle()
     val snackbar = rememberOperationSnackbar(model.notices)
     var account by remember { mutableStateOf(false) }
-    var requestedDevice by remember(book.id) { mutableStateOf(false) }
     var confirmStatus by remember { mutableStateOf(false) }
     var send by remember { mutableStateOf<Triple<HardcoverEdition, Int, Boolean>?>(null) }
     var allowNew by remember { mutableStateOf(false) }
@@ -81,6 +82,14 @@ fun HardcoverReadingSheet(
     var startedOn by remember { mutableStateOf(LocalDate.now()) }
     var finishing by remember { mutableStateOf(false) }
     var finishedOn by remember { mutableStateOf(LocalDate.now()) }
+    var offeredFinish by remember(book.id) { mutableStateOf(false) }
+    LaunchedEffect(finishOnOpen, reading) {
+        if (finishOnOpen && !offeredFinish && reading?.status == 2 && reading?.readId != null) {
+            offeredFinish = true
+            finishedOn = LocalDate.now()
+            finishing = true
+        }
+    }
     val reports = linkReports(book)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -101,17 +110,8 @@ fun HardcoverReadingSheet(
                 phonePercent =
                     phoneReading?.takeIf { it.revisionHash == book.currentHash }?.percent,
                 reports = reports,
-                deviceFetch = book.currentPath.isNotEmpty(),
-                deviceFetchEnabled = devicePaired && !deviceOperation.busy && !state.busy,
-                deviceFetchBusy = requestedDevice && deviceOperation.busy,
-                deviceError =
-                    deviceOperation.message.takeIf { requestedDevice && deviceOperation.failed },
                 onConnect = { account = true },
                 onRefresh = { model.openReading(book) },
-                onFetchDevice = {
-                    requestedDevice = true
-                    onRefreshDevice()
-                },
                 onSearch = model::searchHardcoverText,
                 onLink = model::link,
                 onMarkReading = { confirmStatus = true },
@@ -381,13 +381,8 @@ internal fun HardcoverReadingContent(
     snapshot: ReadingSnapshot?,
     phonePercent: Double?,
     reports: List<KosyncReport>,
-    deviceFetch: Boolean,
-    deviceFetchEnabled: Boolean,
-    deviceFetchBusy: Boolean,
-    deviceError: String?,
     onConnect: () -> Unit,
     onRefresh: () -> Unit,
-    onFetchDevice: () -> Unit,
     onSearch: (String) -> Unit,
     onLink: (HardcoverMatch) -> Unit,
     onMarkReading: () -> Unit,
@@ -449,11 +444,6 @@ internal fun HardcoverReadingContent(
                     phonePercent,
                     reports,
                     busy,
-                    deviceFetch,
-                    deviceFetchEnabled,
-                    deviceFetchBusy,
-                    deviceError,
-                    onFetchDevice,
                     onMarkReading,
                     onMarkFinished,
                     onSend,
@@ -506,11 +496,6 @@ private fun PositionStep(
     phonePercent: Double?,
     reports: List<KosyncReport>,
     busy: Boolean,
-    deviceFetch: Boolean,
-    deviceFetchEnabled: Boolean,
-    deviceFetchBusy: Boolean,
-    deviceError: String?,
-    onFetchDevice: () -> Unit,
     onMarkReading: () -> Unit,
     onMarkFinished: () -> Unit,
     onSend: (HardcoverEdition, Int, Boolean) -> Unit,
@@ -675,31 +660,12 @@ private fun PositionStep(
                     input = percentInput(percent)
                 }
             }
-            if (deviceFetch)
-                AssistChip(
-                    onClick = {
-                        useDevice = true
-                        onFetchDevice()
-                    },
-                    enabled = deviceFetchEnabled,
-                    label = { Text(stringResource(R.string.hardcover_get_from_device)) },
-                    leadingIcon = {
-                        if (deviceFetchBusy) LoadingIndicator(Modifier.size(24.dp))
-                        else Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
-                    },
-                )
         }
         if (snapshot != null && snapshot.documentHash != book.currentHash)
             Text(
                 stringResource(R.string.hardcover_device_fetched_old),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        if (deviceError != null)
-            Text(
-                deviceError,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
             )
         Button(
             onClick = { page?.let { onSend(edition, it, percentage) } },

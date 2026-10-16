@@ -49,16 +49,22 @@ class BookPageTest {
     }
 
     @Test
-    fun recordLosesSendAndShareAndGainsAttach() {
+    fun recordLosesShareAndGainsAttach() {
         val record = bookPageActions(false)
         assertEquals(BookPageAction.ATTACH, record.first())
-        assertFalse(BookPageAction.SEND in record)
         assertFalse(BookPageAction.SHARE in record)
         assertTrue(BookPageAction.REMOVE in record)
         val epub = bookPageActions(true)
-        assertEquals(6, epub.size)
-        assertEquals(BookPageAction.SEND, epub.first())
-        assertFalse(BookPageAction.ATTACH in epub)
+        assertEquals(
+            listOf(
+                BookPageAction.EDIT,
+                BookPageAction.PROGRESS,
+                BookPageAction.HARDCOVER,
+                BookPageAction.SHARE,
+                BookPageAction.REMOVE,
+            ),
+            epub,
+        )
     }
 
     @Test
@@ -80,13 +86,13 @@ class BookPageTest {
     }
 
     @Test
-    fun quickActionsNeverSendARecord() {
+    fun quickActionsReadABookAndAttachToARecord() {
         val record = quickBookActions(false)
-        assertFalse(BookAction.SEND in record)
         assertTrue(BookAction.ATTACH in record)
         assertTrue(BookAction.REMOVE in record)
-        assertTrue(BookAction.SEND in quickBookActions(true))
-        assertEquals(6, quickBookActions(true).size)
+        assertFalse(BookAction.OPEN_READER in record)
+        assertEquals(BookAction.OPEN_READER, quickBookActions(true).first())
+        assertEquals(5, quickBookActions(true).size)
     }
 
     @Test
@@ -156,19 +162,6 @@ class BookPageTest {
                 ?.percent!!,
             0.0,
         )
-    }
-
-    @Test
-    fun deviceStatesMapToOneWordEach() {
-        assertEquals(EreaderState.SENT, ereaderState("On Kindle"))
-        assertEquals(EreaderState.CHANGED, ereaderState("Needs update"))
-        assertEquals(EreaderState.NOT_SENT, ereaderState("Not sent"))
-        assertEquals(EreaderState.NOT_SENT, ereaderState("Phone only"))
-        assertEquals(EreaderState.QUEUED, ereaderState("Queued"))
-        assertEquals(EreaderState.SENDING, ereaderState("Sending"))
-        assertEquals(EreaderState.PAUSED, ereaderState("Transfer paused"))
-        assertEquals(EreaderState.FAILED, ereaderState("Transfer failed"))
-        assertEquals(EreaderState.NO_EPUB, ereaderState("No EPUB"))
     }
 
     @Test

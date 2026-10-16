@@ -42,13 +42,12 @@ class BookFolderStateTest {
     }
 
     @Test
-    fun aMissingFileSaysSoAndHoldsSendAndShare() {
+    fun aMissingFileSaysSoAndHoldsShare() {
         compose.setContent {
             FolioTheme(dynamic = false) { BookDetails(book(), fileMissing = true) }
         }
         compose.onNodeWithTag(BOOK_FILE_MISSING_TAG).assertExists()
         compose.onNodeWithText("File missing").assertExists()
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsNotEnabled()
         compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertIsNotEnabled()
         compose.onNodeWithTag(BOOK_ACTION_EDIT_TAG).assertIsEnabled()
     }

@@ -7,11 +7,16 @@
 
 package dev.sadking.folio.reader
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
+import android.view.ActionMode
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -47,6 +52,7 @@ import androidx.fragment.app.FragmentFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.sadking.folio.R
+import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.ui.FolioMotion
@@ -54,10 +60,14 @@ import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
+import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
@@ -71,6 +81,7 @@ import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.AbsoluteUrl
+import org.readium.r2.shared.util.mediatype.MediaType
 
 class ReaderActivity : FragmentActivity() {
     private val model: ReaderViewModel by viewModels()
@@ -88,11 +99,53 @@ class ReaderActivity : FragmentActivity() {
     private var navigationError by mutableStateOf<String?>(null)
     /** The highlight colour for the sentence being read, from the current theme. */
     private var listenTint = android.graphics.Color.YELLOW
+    /** The highlight or note the owner tapped, shown read-only in a sheet. */
+    private var shownHighlight by mutableStateOf<BookAnnotation?>(null)
+    /** A passage waiting for its note in the Add note dialog. */
+    private var pendingNote by mutableStateOf<PendingNote?>(null)
     private val scripts by lazy {
-        assets.open("reader/positions.js").bufferedReader().use { it.readText() } +
-            "\n" +
-            assets.open("reader/bridge.js").bufferedReader().use { it.readText() }
+        listOf("positions.js", "bridge.js", "highlights.js").joinToString("\n") { name ->
+            assets.open("reader/$name").bufferedReader().use { it.readText() }
+        }
     }
+
+    /**
+     * The menu over selected text: Highlight, Add note and Copy. It replaces the WebView's own
+     * menu, so Copy is offered here too.
+     */
+    private val selectionActions =
+        object : ActionMode.Callback {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.add(Menu.NONE, SELECTION_HIGHLIGHT, 0, R.string.reader_highlight_action)
+                menu.add(Menu.NONE, SELECTION_NOTE, 1, R.string.reader_highlight_note_action)
+                menu.add(Menu.NONE, SELECTION_COPY, 2, R.string.reader_highlight_copy_action)
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                if (item.itemId !in listOf(SELECTION_HIGHLIGHT, SELECTION_NOTE, SELECTION_COPY))
+                    return false
+                selectionAction(item.itemId).invokeOnCompletion { mode.finish() }
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode) = Unit
+        }
+
+    /** A tap on a highlight opens its sheet instead of toggling the controls. */
+    private val highlightTaps =
+        object : DecorableNavigator.Listener {
+            override fun onDecorationActivated(
+                event: DecorableNavigator.OnActivatedEvent
+            ): Boolean {
+                val tapped =
+                    model.highlights.firstOrNull { it.id == event.decoration.id } ?: return false
+                shownHighlight = tapped
+                return true
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Publication is asynchronous. Rebuild its fragment from the Room locator, including after
@@ -221,6 +274,7 @@ class ReaderActivity : FragmentActivity() {
                             configuration =
                                 EpubNavigatorFragment.Configuration {
                                     shouldApplyInsetsPadding = false
+                                    selectionActionModeCallback = selectionActions
                                 },
                         )
                 fragmentClass = EpubNavigatorFragment::class.java
@@ -268,6 +322,10 @@ class ReaderActivity : FragmentActivity() {
                 }
             }
         )
+        if (epub != null) {
+            epub.addDecorationListener(HIGHLIGHT_GROUP, highlightTaps)
+            lifecycleScope.launch { showHighlights(epub) }
+        }
         // The sentence being read: highlight it and keep its page in view. The page turn saves the
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
         // on the main thread. Read-aloud highlights are EPUB-only.
@@ -374,7 +432,8 @@ class ReaderActivity : FragmentActivity() {
     private suspend fun EpubNavigatorFragment.bridge(call: String): String? {
         val ready =
             evaluateJavascript(
-                "typeof FolioReader !== 'undefined' && typeof FolioPositions !== 'undefined'"
+                "typeof FolioReader !== 'undefined' && typeof FolioPositions !== 'undefined' && " +
+                    "typeof FolioHighlights !== 'undefined'"
             )
         if (ready != "true") evaluateJavascript("$scripts\ntrue;")
         return evaluateJavascript(call)
@@ -515,6 +574,136 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
+     * Runs one item of the selection menu on the selected text. Highlight saves at once; Add note
+     * opens the note dialog first. The selection is cleared when it is done. Internal for tests.
+     */
+    internal fun selectionAction(itemId: Int): Job = lifecycleScope.launch {
+        val nav = epubNavigator ?: return@launch
+        try {
+            val selection = nav.currentSelection() ?: return@launch
+            if (itemId == SELECTION_COPY) {
+                selection.locator.text.highlight?.takeIf { it.isNotBlank() }?.let(::copy)
+                return@launch
+            }
+            val href = selection.locator.href.toString()
+            val index = docFragmentIndex(href, model.spine)
+            val passage = index?.let {
+                val raw =
+                    withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                        nav.bridge("JSON.stringify(FolioHighlights.selection($it));")
+                    }
+                parseSelection(raw, it, model.spine.size)
+            }
+            if (passage == null) {
+                navigationError = getString(R.string.reader_highlight_failed)
+                return@launch
+            }
+            val chapter = model.publication?.let { chapterTitle(it, href) }.orEmpty()
+            if (itemId == SELECTION_NOTE) pendingNote = PendingNote(passage, chapter)
+            else model.addHighlight(passage, "", chapter)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            navigationError = getString(R.string.reader_highlight_failed)
+        } finally {
+            nav.clearSelection()
+        }
+    }
+
+    private fun copy(text: String) {
+        getSystemService(ClipboardManager::class.java)
+            ?.setPrimaryClip(ClipData.newPlainText(model.book?.title.orEmpty(), text))
+    }
+
+    /**
+     * Draws the book's highlights and notes from every device. A chapter's are placed the first
+     * time it is on screen, by resolving their KOReader pointers in that page; one that does not
+     * resolve is not drawn, and the book page still lists it. Nothing touches the page while the
+     * book has none.
+     */
+    private suspend fun showHighlights(epub: EpubNavigatorFragment) {
+        val placed = mutableMapOf<String, Locator>()
+        val tried = mutableSetOf<String>()
+        var applied = emptyList<Decoration>()
+        combine(
+                snapshotFlow { model.highlights },
+                epub.currentLocator.map { resourcePath(it.href.toString()) }.distinctUntilChanged(),
+            ) { rows, path ->
+                rows to path
+            }
+            .collectLatest { (rows, path) ->
+                val all = placeableHighlights(rows, model.spine.size)
+                val index = model.spine.indexOf(path)
+                val wanted =
+                    all.filter { it.chapter == index && it.annotation.id !in tried }
+                        .map { it.annotation }
+                if (index >= 0 && wanted.isNotEmpty()) {
+                    val quotes = placeChapter(epub, path, wanted)
+                    val link =
+                        model.publication?.readingOrder?.firstOrNull {
+                            resourcePath(it.url().toString()) == path
+                        }
+                    if (quotes != null && link != null) {
+                        tried += wanted.map { it.id }
+                        quotes.forEach { (id, quote) ->
+                            placed[id] =
+                                Locator(
+                                    link.url(),
+                                    link.mediaType ?: MediaType.XHTML,
+                                    locations =
+                                        Locator.Locations(
+                                            otherLocations = mapOf("cssSelector" to quote.selector)
+                                        ),
+                                    text =
+                                        Locator.Text(
+                                            before = quote.before,
+                                            highlight = quote.highlight,
+                                            after = quote.after,
+                                        ),
+                                )
+                        }
+                    }
+                }
+                val byId = all.associateBy { it.annotation.id }
+                val decorations = placed.mapNotNull { (id, locator) ->
+                    byId[id]?.let {
+                        Decoration(
+                            id,
+                            locator,
+                            Decoration.Style.Highlight(tint = highlightTint(it.annotation)),
+                        )
+                    }
+                }
+                if (decorations != applied) {
+                    withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
+                        epub.applyDecorations(decorations, HIGHLIGHT_GROUP)
+                    }
+                    applied = decorations
+                }
+            }
+    }
+
+    /**
+     * Asks the page on screen where [rows] sit, once it is the chapter at [path]. Null when the
+     * page never answered for that chapter (the reader moved on, or it is still loading).
+     */
+    private suspend fun placeChapter(
+        epub: EpubNavigatorFragment,
+        path: String,
+        rows: List<BookAnnotation>,
+    ): Map<String, HighlightQuote>? {
+        val call = placementCall(rows)
+        repeat(PLACE_ATTEMPTS) {
+            if (resourcePath(epub.currentLocator.value.href.toString()) != path) return null
+            val raw = withTimeoutOrNull(BRIDGE_WAIT_MS) { epub.bridge(call) }
+            val placement = parsePlacement(raw)
+            if (placement != null && samePage(placement.path, path)) return placement.quotes
+            delay(PLACE_RETRY_MS)
+        }
+        return null
+    }
+
+    /**
      * Slider release: opens the Readium position nearest [fraction] through the navigator, like any
      * other navigation, so the usual debounced save runs. Nothing moves until positions are known.
      */
@@ -534,7 +723,7 @@ class ReaderActivity : FragmentActivity() {
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
-        SideEffect { panelOpen = panel != null }
+        SideEffect { panelOpen = panel != null || shownHighlight != null || pendingNote != null }
         BackHandler { if (panel != null) panel = null else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
@@ -755,6 +944,25 @@ class ReaderActivity : FragmentActivity() {
                 }
             }
         }
+        shownHighlight?.let { shown ->
+            ModalBottomSheet(
+                onDismissRequest = { shownHighlight = null },
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                HighlightSheet(shown, onCopy = { copy(highlightCopyText(shown)) })
+            }
+        }
+        pendingNote?.let { pending ->
+            HighlightNoteDialog(
+                pending.passage.text,
+                onSave = { note ->
+                    pendingNote = null
+                    model.addHighlight(pending.passage, note, pending.chapter)
+                },
+                onDismiss = { pendingNote = null },
+            )
+        }
     }
 
     @Composable
@@ -856,7 +1064,6 @@ class ReaderActivity : FragmentActivity() {
                     }
                 )
         val linkFailed = stringResource(R.string.reader_link_failed)
-        val sendFailed = stringResource(R.string.reader_send_failed)
         ReaderDevicesSheet(
             rows,
             busy = model.busy,
@@ -867,19 +1074,6 @@ class ReaderActivity : FragmentActivity() {
                     else {
                         val report = reports.firstOrNull { it.deviceId == row.id } ?: return@launch
                         if (!resumeAt(report.progress)) navigationError = linkFailed
-                    }
-                }
-            },
-            onCheck = { scope.launch { model.refreshKindle() } },
-            onSend = {
-                scope.launch {
-                    try {
-                        savePosition()
-                        model.sendPosition()
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        navigationError = sendFailed
                     }
                 }
             },
@@ -894,6 +1088,8 @@ class ReaderActivity : FragmentActivity() {
         private const val CHAPTER_WAIT_MS = 10_000L
         private const val HIGHLIGHT_WAIT_MS = 3_000L
         private const val BRIDGE_WAIT_MS = 8_000L
+        private const val PLACE_ATTEMPTS = 5
+        private const val PLACE_RETRY_MS = 400L
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
         private const val LEGACY_ROW = "legacy-ssh"
 

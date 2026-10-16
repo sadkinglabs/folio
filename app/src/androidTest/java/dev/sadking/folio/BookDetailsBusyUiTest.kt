@@ -7,7 +7,7 @@ import dev.sadking.folio.ui.*
 import org.junit.Rule
 import org.junit.Test
 
-/** A transfer in progress blocks device actions only; the book stays readable and editable. */
+/** A running library operation blocks changes only; the book stays readable. There is no Send. */
 class BookDetailsBusyUiTest {
     @get:Rule val compose = createComposeRule()
     private val book =
@@ -22,27 +22,26 @@ class BookDetailsBusyUiTest {
         )
 
     @Test
-    fun transferInProgressKeepsReadingAndProgressAvailable() {
+    fun idlePageOffersReadingAndProgressWithoutSendOrSshRefresh() {
         compose.setContent {
-            FolioTheme(dynamic = false) {
-                BookDetails(book, busy = false, deviceBusy = true, fileMissing = false)
-            }
+            FolioTheme(dynamic = false) { BookDetails(book, busy = false, fileMissing = false) }
         }
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Read").assertIsEnabled()
         compose.onNodeWithTag(BOOK_ACTION_EDIT_TAG).assertIsEnabled()
         compose.onNodeWithTag(BOOK_ACTION_HARDCOVER_TAG).assertIsEnabled()
-        compose.onNodeWithTag(BOOK_ACTION_SEND_TAG).assertIsNotEnabled()
-        // The e-reader refresh lives in the Progress sheet and waits for the transfer too.
+        // Sync puts every book on the e-reader: no Send, and no fetching over SSH.
+        compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_PROGRESS_TAG).assertIsEnabled().performClick()
         compose.onNodeWithTag(PROGRESS_SHEET_TAG).assertIsDisplayed()
-        compose.onNodeWithContentDescription("Refresh from e-reader").assertIsNotEnabled()
+        compose.onNodeWithText("Not opened").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Refresh from e-reader").assertDoesNotExist()
     }
 
     @Test
     fun libraryOperationBlocksChangesButNeverReading() {
         compose.setContent {
             FolioTheme(dynamic = false) {
-                BookDetails(book, busy = true, deviceBusy = true, fileMissing = false)
+                BookDetails(book, busy = true, fileMissing = false)
             }
         }
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertIsEnabled()

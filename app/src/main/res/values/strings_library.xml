@@ -189,8 +189,7 @@
         <item quantity="one">%1$d highlight or note</item>
         <item quantity="other">%1$d highlights and notes</item>
     </plurals>
-    <string name="library_book_notes_empty">Close the book in KOReader, then get its notes.</string>
-    <string name="library_book_notes_get">Get notes from e-reader</string>
+    <string name="library_book_notes_empty">No highlights or notes yet. Ones made on the e-reader arrive with the next sync.</string>
     <string name="library_book_bookmark">Bookmark</string>
     <string name="library_book_highlight">Highlight</string>
     <string name="library_book_notes_limited">Showing the first 100. The export has them all.</string>

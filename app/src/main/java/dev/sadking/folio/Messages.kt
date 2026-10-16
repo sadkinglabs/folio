@@ -13,7 +13,6 @@ internal fun Resources.failureText() =
         fileTransfer = getString(R.string.msg_error_file_transfer),
         incomplete = getString(R.string.msg_error_incomplete),
         generic = getString(R.string.msg_error_generic),
-        transferBusy = getString(R.string.msg_error_transfer_busy),
     )
 
 /** Explains [e] to the user without raw details such as paths or server replies. */
