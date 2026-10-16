@@ -100,8 +100,14 @@ class ReaderUiTest {
                 // The reader opens immersive: no controls until the centre is tapped.
                 compose.waitUntil(5000) { !controlsShown() }
                 QaScreenshots.capture("reader-immersive")
-                QaScreenshots.tapScreenCentre()
-                compose.waitUntil(5000) { controlsShown() }
+                // A tap that lands before the page takes touches is lost: tap again, up to 3 times.
+                var taps = 0
+                while (!controlsShown() && taps < 3) {
+                    QaScreenshots.tapScreenCentre()
+                    taps++
+                    runCatching { compose.waitUntil(5000) { controlsShown() } }
+                }
+                check(controlsShown()) { "No controls after $taps taps. ${Diagnostics.state()}" }
                 QaScreenshots.capture("reader-controls")
                 compose.onNodeWithContentDescription("Text settings").performClick()
                 compose.waitUntil(5000) {

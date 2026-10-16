@@ -41,6 +41,7 @@ class UsabilityUiTest {
                     onRead = { read = true },
                     onSend = { send = true },
                     onHardcover = { hardcover = true },
+                    fileMissing = false,
                 )
             }
         }

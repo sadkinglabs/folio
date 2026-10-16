@@ -138,6 +138,7 @@ class BookActionsUiTest {
                     onSend = { send = true },
                     onHardcover = { hardcover = true },
                     onLists = { lists = true },
+                    fileMissing = false,
                 )
             }
         }

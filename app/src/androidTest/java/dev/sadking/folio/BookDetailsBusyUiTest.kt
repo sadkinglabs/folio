@@ -24,7 +24,9 @@ class BookDetailsBusyUiTest {
     @Test
     fun transferInProgressKeepsReadingAndProgressAvailable() {
         compose.setContent {
-            FolioTheme(dynamic = false) { BookDetails(book, busy = false, deviceBusy = true) }
+            FolioTheme(dynamic = false) {
+                BookDetails(book, busy = false, deviceBusy = true, fileMissing = false)
+            }
         }
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Read").assertIsEnabled()
         compose.onNodeWithTag(BOOK_ACTION_EDIT_TAG).assertIsEnabled()
@@ -39,7 +41,9 @@ class BookDetailsBusyUiTest {
     @Test
     fun libraryOperationBlocksChangesButNeverReading() {
         compose.setContent {
-            FolioTheme(dynamic = false) { BookDetails(book, busy = true, deviceBusy = true) }
+            FolioTheme(dynamic = false) {
+                BookDetails(book, busy = true, deviceBusy = true, fileMissing = false)
+            }
         }
         compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertIsEnabled()
         compose.onNodeWithTag(BOOK_ACTION_EDIT_TAG).assertIsNotEnabled()

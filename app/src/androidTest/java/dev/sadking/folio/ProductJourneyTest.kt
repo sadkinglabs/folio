@@ -114,7 +114,7 @@ class ProductJourneyTest {
             compose.waitUntil(15000, condition)
         } catch (timeout: ComposeTimeoutException) {
             throw AssertionError(
-                "Timed out waiting for $what. Screen:\n" +
+                "Timed out waiting for $what. ${Diagnostics.state()}\nScreen:\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE),
                 timeout,
             )
@@ -310,9 +310,26 @@ class ProductJourneyTest {
         }
         compose.onNodeWithText("Save changes").performClick()
         // The edited title is already in the editor's own field, so wait for the saved revision.
-        waitFor("the edited revision to be saved") {
-            runBlocking { app.database.library().book(pride.id)!!.currentHash != pride.currentHash }
+        // A failed save fails here with its message. A click that never started a save (Save still
+        // enabled, nothing running) is tried once more.
+        fun saved() = runBlocking {
+            app.database.library().book(pride.id)!!.currentHash != pride.currentHash
         }
+        val retried =
+            runCatching { compose.waitUntil(15000) { saved() } }.isFailure &&
+                run {
+                    val op = app.operations.state.value
+                    check(!op.failed) { "Saving the edit failed: ${op.message}" }
+                    val idle =
+                        !op.busy &&
+                            compose
+                                .onAllNodes(hasText("Save changes") and isEnabled())
+                                .fetchSemanticsNodes()
+                                .isNotEmpty()
+                    if (idle) compose.onNodeWithText("Save changes").performClick()
+                    true
+                }
+        waitFor("the edited revision to be saved (retried: $retried)") { saved() }
         waitText("Pride and Prejudice · Edited")
         runBlocking {
             val changed = app.database.library().book(pride.id)!!

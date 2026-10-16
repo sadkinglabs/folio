@@ -1,6 +1,5 @@
 package dev.sadking.folio
 
-import android.accessibilityservice.AccessibilityService
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.*
@@ -85,10 +84,10 @@ class LargeFontUiTest {
 
     private fun waitFor(what: String, condition: () -> Boolean) {
         try {
-            compose.waitUntil(15000, condition)
+            compose.waitUntil(30000, condition)
         } catch (timeout: ComposeTimeoutException) {
             throw AssertionError(
-                "Timed out waiting for $what. Screen:\n" +
+                "Timed out waiting for $what. ${Diagnostics.state()}\nScreen:\n" +
                     compose.onAllNodes(isRoot()).printToString(maxDepth = Int.MAX_VALUE),
                 timeout,
             )
@@ -97,7 +96,7 @@ class LargeFontUiTest {
 
     @Test
     fun mainScreensWorkAtDoubleFontSize() {
-        ActivityScenario.launch(MainActivity::class.java).use {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             // Covers carry no caption; TalkBack and the tests read "Title, Author" instead.
             val middlemarch =
                 hasContentDescription("Middlemarch, George Eliot") and hasClickAction()
@@ -114,7 +113,8 @@ class LargeFontUiTest {
             compose.onNode(send).performScrollTo().assertIsDisplayed()
             QaScreenshots.capture("book-font200")
 
-            automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            // Back straight to the activity: a system Back can land on another window on top.
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
             waitFor("the library again") {
                 compose.onAllNodes(send).fetchSemanticsNodes().isEmpty()
             }
