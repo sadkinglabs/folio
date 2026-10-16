@@ -47,6 +47,7 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 .put("id", b.id)
                                 .put("metadata", metadataJson(b.metadata()))
                                 .put("status", b.status)
+                                .put("statusAt", b.statusAt)
                                 .put("bookFormat", b.format)
                                 .put("addedAt", b.addedAt)
                                 // A book whose file is missing (moved away or deleted by hand) is
@@ -238,6 +239,8 @@ class LibraryBackup(private val repo: LibraryRepository) {
                                 addedAt = o.getLong("addedAt"),
                                 status = status,
                                 format = format,
+                                // Older backups don't have it: 0 is "unknown".
+                                statusAt = o.optLong("statusAt", 0).coerceAtLeast(0),
                             )
                             .withMetadata(m)
                     }

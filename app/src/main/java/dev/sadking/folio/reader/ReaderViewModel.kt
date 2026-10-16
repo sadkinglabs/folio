@@ -470,7 +470,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         stored.status in listOf("Unread", "Want to Read") &&
                             (value.percent ?: 0.0) > 0.001
                     )
-                        dao.update(stored.copy(status = "Reading"))
+                        dao.update(
+                            stored.copy(status = "Reading", statusAt = System.currentTimeMillis())
+                        )
                     lastPhone = value
                 }
             }

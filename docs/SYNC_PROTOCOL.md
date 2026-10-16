@@ -288,6 +288,35 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 
 `receive` and `revise` get a temporary file the server deletes afterwards, so they copy or move it.
 
+### The app's SyncLibrary (`RoomSyncLibrary`, step 3b)
+- `phoneBooks()` lists every row of the `books` table, Recently removed included. `hasFile` is false when the current file is gone, except for a Books folder path while All files access is off (the folder can't be seen, so it is not taken as missing). `statusAt` is the `books.statusAt` column (schema 10), set whenever the status changes; 0 means unknown. Lists are the manual lists the book is in; smart lists are rules, not memberships.
+- Annotations map `BookAnnotation.id` → `id`, `position` → `pos0`, `endPosition` → `pos1`, `date` → `datetime`. Rows added by sync get the device id `link:<e-reader id>`. Rows imported over SSH before sync have other ids; once a synced row with the same `datetime` and `pos0` exists, the older row is hidden from sync (kept in Room, never deleted). The plugin skips an incoming annotation with the same `datetime` and start as one it already has, so such a note is never added twice on the e-reader.
+- `receive` uses the normal import path (format from the file's bytes, `Books/Author/Title.ext` when the Books folder is ready, else private storage, " (2)" on a clash). Content the library already has returns that book without restoring it. `revise` refuses another format; in the Books folder the old file moves to `.librillo/originals/<id>.<ext>` (the original) or `.librillo/previous/<id>-<ms>.<ext>`, and the new file takes its path.
+- `apply` runs each action on its own; one that fails is skipped and the next sync tries again. `Remove` goes to Recently removed. `SetLists` creates missing manual lists by exact name and skips a name a smart list already uses.
+- `pending(ereaderId)` is true when an answer given on the phone is waiting, else `SyncPending.pending(phoneBooks, baselines, root = null, waiting)` (core). `root = null` accepts any library folder, because hello doesn't say which one the e-reader uses. Books with an open question, a blank baseline status, and a missing phone file don't count, so the e-reader doesn't sync every 5 minutes for nothing.
+- Questions, answers, the last sync time and the device name are kept per e-reader in `SyncState` (SharedPreferences `librillo-sync`, JSON), with a StateFlow for the UI.
+- `uploadDir()` is `Books/.librillo/uploads` when the Books folder is ready, else `cacheDir/sync-uploads`; uploads left over for more than a day are deleted.
+
+## The plugin (step 3b)
+- **Manifest:** every EPUB, PDF, CBZ and CBR under KOReader's home folder, except hidden folders, `.sdr` folders, symbolic links and KOReader's own data folder. Hashes are cached by path, size and modification time in `settings/folio-hashes.lua`. An unreadable folder or a failed hash stops the sync, so nothing looks deleted.
+- **Status:** KOReader's `summary.status` (`reading`, `complete` → `finished`, `abandoned`), a sidecar without one → `unread`, no sidecar → `null`. `statusAt` is the plugin's own exact time when it matches `summary.modified`, else that date at noon, else the sidecar's time.
+- **Annotation ids:** the stored `librillo_id`, else the recipe above (for a bookmark, `page` stands for `pos0`). Ids are written back once. Notes from the phone KOReader can't show (a PDF highlight without coordinates, a missing position) wait in `librillo_pending` and are reported back, so they are never lost.
+- **Delete** moves the file and its `.sdr` to `<home>/.librillo/trash`. The trash is emptied after `/finish` answers ok; otherwise the books are put back, and leftovers are put back at the start of the next sync.
+- **Download** lands in `<home>/.librillo/parts/<sha256>.part`, is checked for size and hash, checked again just before it is renamed into place.
+- **The open book** is never moved, replaced, deleted or written: those actions fail with "open on the e-reader" and the next sync tries again.
+- **Automatic sync:** when Wi-Fi connects, when a book closes, and every 5 minutes (spaced out to 80 minutes while the phone can't be reached). It syncs only when it never synced, when hello says `pending`, or when something changed on the e-reader since the last confirmed sync. It never turns Wi-Fi on.
+
+## Setup (version 2)
+Librillo's SSH installer leaves `link-setup.json` beside the plugin. The plugin applies it on its next start and deletes it:
+```json
+{"format": "librillo-link-setup", "version": 2, "server": "http://192.168.1.42:8765",
+ "username": "folio", "userkey": "…", "root": "Librillo", "auto_sync": true,
+ "sync_forward": "prompt", "device_name": "Kindle Paperwhite"}
+```
+`device_name` is optional. Progress sync's settings are written to both places KOReader reads: `settings/kosync.lua` (key `settings`) and the older reader setting `kosync`: `custom_server`, `username`, `userkey`, `auto_sync = true`, and `sync_forward` and `sync_backward` = 1 (ask first) unless already set; `checksum_method` is left alone. The plugin keeps `root`, `auto_sync` and `device_name` in its reader setting `folio_sync`. Version 1 (without `root`, `auto_sync` and `sync_forward`) is still read; it keeps the old "Get books" behaviour and leaves two-way sync off until it is switched on.
+
+On the phone, Link runs while Librillo is in the foreground and for 30 minutes after it leaves, longer while an e-reader is in the middle of a sync (from a successful `/sync` until `/finish`, or 30 minutes of silence). It starts only once Link is set up (its password exists) and "Sync automatically" (the old on/off setting) is on.
+
 ## Safety
 - Nothing is changed on either side until the Kindle reports at `/finish`, and then only what succeeded.
 - A file that is missing is a deletion only when a baseline says both sides had it. Otherwise it is sent.

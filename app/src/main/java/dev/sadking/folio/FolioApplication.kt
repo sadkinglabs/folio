@@ -1,6 +1,9 @@
 package dev.sadking.folio
 
 import android.app.Application
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.room.Room
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceSettings
@@ -33,5 +36,20 @@ class FolioApplication : Application() {
             authentication = { deviceSettings.load().authentication },
             text = { resources.failureText() },
         )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Folio Link runs while Librillo is open and for 30 minutes after (M9). The process
+        // lifecycle covers every activity, the reader included, and ignores rotation.
+        ProcessLifecycleOwner.get()
+            .lifecycle
+            .addObserver(
+                object : DefaultLifecycleObserver {
+                    override fun onStart(owner: LifecycleOwner) = link.onAppForeground()
+
+                    override fun onStop(owner: LifecycleOwner) = link.onAppBackground()
+                }
+            )
     }
 }

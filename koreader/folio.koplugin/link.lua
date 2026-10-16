@@ -190,11 +190,16 @@ function Link.summary(result, automatic)
 end
 
 -- The one-time setup Librillo's installer leaves beside the plugin: the Link address and the
--- sign-in for Progress sync. Data only: anything unexpected is ignored. Returns the updated kosync
--- settings and whether to get books when Wi-Fi connects, or nil when the setup is not usable.
+-- sign-in for Progress sync, and (version 2) the library folder and sync settings. Data only:
+-- anything unexpected is ignored. Returns the updated kosync settings and the plugin's options
+-- ({ version, auto_sync, auto_fetch, root, device_name }), or nil when the setup is not usable.
+-- Progress sync is set to sync automatically and to ask before jumping to a newer or older place
+-- (1 = prompt), unless those were already chosen on this e-reader.
+local STRATEGIES = { prompt = 1, silent = 2, disable = 3 }
 function Link.setup(text, decode, kosync)
     local ok, setup = pcall(decode, text)
-    if not ok or type(setup) ~= "table" or setup.format ~= "librillo-link-setup" or setup.version ~= 1 then
+    if not ok or type(setup) ~= "table" or setup.format ~= "librillo-link-setup"
+        or (setup.version ~= 1 and setup.version ~= 2) then
         return nil
     end
     local function clean(value, pattern)
@@ -206,11 +211,45 @@ function Link.setup(text, decode, kosync)
     local userkey = clean(setup.userkey, "^%x+$")
     if not (server and username and userkey) then return nil end
     local updated = {}
-    for key, value in pairs(kosync or {}) do updated[key] = value end
+    for key, value in pairs(type(kosync) == "table" and kosync or {}) do updated[key] = value end
     updated.custom_server = server
     updated.username = username
     updated.userkey = userkey
-    return updated, setup.auto_fetch == true
+    updated.auto_sync = true
+    if updated.sync_forward == nil then updated.sync_forward = STRATEGIES[setup.sync_forward] or 1 end
+    if updated.sync_backward == nil then updated.sync_backward = 1 end
+    -- The library folder: a plain relative path under KOReader's home folder.
+    local root = clean(setup.root, "^[^/\\%c][^\\%c]*$")
+    if root then
+        for part in (root .. "/"):gmatch("([^/]*)/") do
+            if part == "" or part:sub(1, 1) == "." then root = nil; break end
+        end
+    end
+    local name = type(setup.device_name) == "string" and #setup.device_name <= 64
+        and not setup.device_name:find("%c") and setup.device_name:match("%S") and setup.device_name or nil
+    local options = { version = setup.version, root = root or "Librillo", device_name = name }
+    if setup.version == 2 then
+        options.auto_sync = setup.auto_sync ~= false
+        options.auto_fetch = false
+    else
+        -- Version 1 came from a Librillo without two-way sync: keep getting books as before.
+        options.auto_sync = false
+        options.auto_fetch = setup.auto_fetch == true
+    end
+    return updated, options
+end
+
+-- Applies the setup to both places KOReader keeps Progress sync's settings: settings/kosync.lua
+-- (KOReader 2024 and later) and the older "kosync" reader setting. Each keeps its own choices.
+-- `store` reads and writes them. Returns the plugin's options, or nil when the setup is not usable.
+function Link.install(text, store)
+    local current = store.read_kosync()
+    local updated, options = Link.setup(text, store.decode, current)
+    if not updated then return nil end
+    local legacy = Link.setup(text, store.decode, store.read_legacy())
+    store.write_kosync(updated)
+    store.write_legacy(legacy)
+    return options
 end
 
 return Link

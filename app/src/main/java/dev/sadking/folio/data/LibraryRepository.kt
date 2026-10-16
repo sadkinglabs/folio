@@ -320,6 +320,87 @@ class LibraryRepository(
         }
 
     /**
+     * Takes [file], new content for book [bookId] from an e-reader, as the book's new revision. The
+     * old file is kept, never overwritten: in the Books folder it moves into `.librillo`, to
+     * `originals` when it was the book's original or else to `previous`, and the new file takes its
+     * name; in private storage the new file goes beside it. A book whose file is missing gets
+     * [file] as its file again. The book may be in Recently removed. [file] is moved, not copied.
+     * [name] is the file's name on the e-reader, a hint for its format. Returns the book, unchanged
+     * when it already has this content. Null when [file] is not a book of the book's format, or the
+     * book is gone. Call with [lock] held.
+     */
+    internal suspend fun reviseLocked(bookId: String, file: File, name: String): Book? =
+        withContext(Dispatchers.IO) {
+            val book = dao.book(bookId) ?: return@withContext null
+            if (!file.isFile || file.length() > Epub.MAX_FILE) return@withContext null
+            if (detectFormat(file, name) != book.format) return@withContext null
+            val hash = Epub.sha256(file)
+            val current = File(book.currentPath)
+            val present = book.currentPath.isNotBlank() && current.isFile
+            if (present && hash == book.currentHash) return@withContext book
+            val books = booksRoot()
+            val wasOriginal = book.originalPath == book.currentPath
+            // Where the old file steps aside to, when it is in the Books folder.
+            val kept =
+                if (!present || !inBooksFolder(current)) null
+                else
+                    File(books, ".librillo/originals/${book.id}.${book.format}").takeIf {
+                        wasOriginal && !it.exists()
+                    }
+                        ?: File(
+                            books,
+                            ".librillo/previous/${book.id}-${System.currentTimeMillis()}.${book.format}",
+                        )
+            val dest =
+                when {
+                    kept != null -> current
+                    !present && folderReady() ->
+                        File(
+                            books,
+                            freePath(
+                                books,
+                                decode(book.authors),
+                                book.title,
+                                mine = null,
+                                extension = book.format,
+                            ),
+                        )
+                    else -> File(File(root, book.id), "${UUID.randomUUID()}.${book.format}")
+                }
+            withContext(NonCancellable) {
+                if (kept != null) moveNoClobber(current, kept)
+                try {
+                    moveNoClobber(file, dest)
+                } catch (e: Exception) {
+                    if (kept != null) moveNoClobber(kept, current)
+                    throw e
+                }
+                val revised =
+                    book.copy(
+                        currentPath = dest.absolutePath,
+                        currentHash = hash,
+                        originalPath =
+                            if (kept != null && wasOriginal) kept.absolutePath
+                            else book.originalPath,
+                    )
+                try {
+                    database.withTransaction {
+                        dao.update(revised)
+                        val old = dao.phoneReading(bookId, book.currentHash)
+                        if (old != null && dao.phoneReading(bookId, hash) == null)
+                            dao.savePhoneReading(old.copy(revisionHash = hash))
+                    }
+                } catch (e: Exception) {
+                    // The record didn't change, so the files go back to where it says they are.
+                    runCatching { moveNoClobber(dest, file) }
+                    if (kept != null) runCatching { moveNoClobber(kept, current) }
+                    throw e
+                }
+                revised
+            }
+        }
+
+    /**
      * Moves books and wishes to Recently removed. Returns how many were removed, whether their
      * private files were cleaned, and the removed groups, so the removal can be undone.
      */
@@ -423,11 +504,17 @@ class LibraryRepository(
         }
     }
 
+    /**
+     * Adds books to a manual list or takes them out, and/or sets their status. A status that
+     * changes records [statusAt] as the time it changed: now, or the time the change was made on an
+     * e-reader.
+     */
     suspend fun manageBatch(
         ids: Set<String>,
         shelfId: String? = null,
         add: Boolean = true,
         status: String? = null,
+        statusAt: Long = System.currentTimeMillis(),
     ) = lock.withLock {
         database.withTransaction {
             if (shelfId != null)
@@ -443,7 +530,8 @@ class LibraryRepository(
                     it.id in ids || it.linkedBookId in owned.map { b -> b.id }
                 }
             owned.forEach { book ->
-                if (status != null) dao.update(book.copy(status = status))
+                if (status != null && status != book.status)
+                    dao.update(book.copy(status = status, statusAt = statusAt))
                 if (shelfId != null) {
                     if (add) dao.addMembership(Membership(book.id, shelfId))
                     else dao.removeMembership(book.id, shelfId)

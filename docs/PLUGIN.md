@@ -1,46 +1,77 @@
-# Optional KOReader Folio bridge
+# Librillo plugin for KOReader
 
-This plugin adds reviewed collection additions and a safe reading-statistics export. SFTP book transfers, phone collections, backups, metadata lookup and adjacent-sidecar reading retrieval work without it.
+The plugin keeps KOReader on your e-reader in sync with Librillo on your phone: the same books on both, with their reading status, highlights, notes, bookmarks and collections. Your place in a book goes through KOReader's Progress sync, which Librillo also serves.
 
-**Hardware compatibility remains unverified.** Host tests execute Lua validation and statistics SQL with API fixtures, not an actual KOReader installation. Start with disposable books and a new collection.
+It only talks to the phone over your local network: home Wi-Fi or the phone's hotspot. Nothing goes through the internet.
 
-## Install once
+**Not yet checked on a real e-reader.** The plugin's logic is tested on a computer against stand-ins for KOReader, real files and a fake phone (`scripts/check-plugin.py`). KOReader itself has not run it yet. Back up your KOReader folder before the first sync.
 
-1. Close any open book and back up your KOReader settings.
-2. Extract the bridge ZIP; copy the complete `folio.koplugin` directory into the installed KOReader `plugins` directory. Typical Kindle path: `/mnt/us/koreader/plugins/folio.koplugin`. Use an authenticated SFTP client or USB once for installation; Folio does not yet install plugins automatically.
-3. Restart KOReader. Find **Folio bridge** in its main tools menu. If your plugin manager disables it, enable it there and restart.
-4. Choose **Configure Folio book folder** and select the same existing folder used by Folio on the phone, usually `/mnt/us/Books/Folio`.
-5. Keep KOReader's SSH server enabled while using the phone's transfer/retrieval actions. A hotspot connection works like any other local network.
+## Set up (once)
 
-## Matching collections
+1. On the e-reader, turn on KOReader's SSH server (Network → SSH server).
+2. On the phone, open Librillo and set up the e-reader. Librillo installs the plugin over SSH and leaves a one-time setup file beside it.
+3. Restart KOReader. The plugin reads the setup file, then deletes it:
+   - Progress sync is pointed at Librillo, with your sign-in, set to sync automatically and to ask before jumping to another place ("Continue from…?"). Choices you already made in Progress sync are kept.
+   - Librillo's library folder and "Sync automatically" are set.
+4. KOReader says "Librillo is set up". Restart KOReader once more so Progress sync picks it up.
+5. Turn KOReader's SSH server off again.
 
-1. On the phone, create collections/rules and enable **Include in Sync** on the ones you want to deliver.
-2. Use **Sync missing books** or an explicit preview/transfer to ensure every selected current EPUB is verified on the Kindle.
-3. Tap **Send collection additions to KOReader**. The phone verifies remote files and publishes a versioned request; this is not yet an applied change.
-4. In KOReader → Folio bridge → **Review collection additions**, inspect the listed names and confirm **Apply additions**.
+The plugin also reads setup files from older Librillo versions (format version 1).
 
-Collections are named `Folio: <phone name>`. Membership updates only add: unrelated collections, existing members and book files are never deleted. Reapplying the same request is idempotent. Renaming/removing a phone collection or removing a member does not remove anything on the Kindle. A smart collection sends its calculated membership at request time. This is intentionally additive delivery rather than exact mirroring.
+## The Librillo menu
 
-The plugin selects the request with the greatest phone `createdAt` timestamp. It retains request JSON files. After many updates, remove old `.folio-collections-*.json` requests with an authenticated file manager, leaving the newest; the plugin limits scanning to 100 requests. No acknowledgement exchange exists yet.
+In KOReader's main menu (the tools tab), **Librillo**:
 
-## Reading statistics
+- **Sync now**: syncs right away. If Wi-Fi is off, KOReader may offer to turn it on.
+- **Sync automatically**: on after setup. See below.
+- **Library folder**: the folder inside KOReader's home folder where your books live. Default: `Librillo`.
+- **Questions (n)**: when the last sync found something only you can decide. Each question shows its choices; pick one, or **Later**. Your answers are sent with the next sync, which starts as soon as you've answered.
 
-1. Enable KOReader's Statistics plugin and read normally.
-2. Close the current book so pending statistics are saved.
-3. In KOReader → Folio bridge → **Export reading statistics**.
-4. On the phone → Reading → **Retrieve exported statistics**.
+The older items (Get books from Librillo, Find Librillo on this network, reading positions, collection additions and statistics export) still work for now. A later update removes them.
 
-The bridge uses a query-only SQLite read transaction and publishes `.folio-statistics.json` by same-directory rename. Folio does not download an open SQLite database or its WAL files. The snapshot includes total recorded seconds and up to 366 daily duration aggregates; the phone displays the latest 30 dates and the snapshot time. Day boundaries use the Kindle's local timezone. Per-book statistics, heatmaps, weekday/hour analysis and multi-device deduplication are deferred.
+## What a sync does
 
-## Safety and compatibility
+- **Books.** The whole Librillo library is on the e-reader, in `Librillo/Author/Title.epub` (or `.pdf`, `.cbz`, `.cbr`). Books you already had anywhere under KOReader's home folder are sent to Librillo, then moved into the library folder with their notes, history and collections.
+- **Deletions.** Deleting a book on the e-reader sends it to Recently removed on the phone, where you can restore it. Removing a book on the phone deletes it from the e-reader.
+- **Edits.** A new title or author on the phone renames the file on the e-reader. A new version of a book replaces the file in place, so its notes stay.
+- **Status.** Reading, Finished and On hold, both ways.
+- **Highlights, notes and bookmarks.** Merged both ways. Nothing is ever deleted.
+- **Collections.** KOReader collections and Librillo lists match by name.
 
-- Collection paths are resolved and constrained to the configured book folder; only existing EPUB files are accepted.
-- Requests and statistics are bounded to 4 MiB. Collection membership is bounded to 10,000 paths and 1,000 collections. Namespace duplication and control characters are rejected.
-- The plugin performs no shell commands and never parses downloaded Lua as executable input. The sidecar parser lives in the Android/JVM engine and accepts literal data only.
-- The plugin calls KOReader APIs in its UI process; it never hand-edits `collection.lua` or document settings. Partial API failures can leave some additions applied, so retry safely; this is not an atomic collection transaction.
-- Errors appear on-device without logging book text or credentials. Check your KOReader version if an API is unavailable. Capability negotiation and broader installed-version testing are future work.
-- Central or hashed sidecars are still outside the phone's adjacent-sidecar adapter. Plugin-based normalized progress/annotation snapshots are a future extension.
+When both sides changed the same thing, nothing changes until you answer a question, on either device.
+
+After a sync you tap, a short message says what happened, for example "3 books sent, 1 received, 2 updated."
+
+## When it syncs by itself
+
+With **Sync automatically** on, the plugin checks with the phone:
+
+- when Wi-Fi connects,
+- when you close a book,
+- every 5 minutes while Wi-Fi is on.
+
+Each check is one small request. A full sync runs only when something changed on either side, or when the e-reader has never synced. The plugin never turns Wi-Fi on by itself. Automatic syncs stay quiet unless something arrived or changed, or a new question needs your answer. If the phone can't be reached, the checks space out, up to every 80 minutes, until Wi-Fi reconnects or you close a book.
+
+On the phone, sync works while Librillo is open and for 30 minutes after you leave it.
+
+Progress sync's own "Auto sync" needs KOReader's "Action when Wi-Fi is off" set to "turn on" on some devices; KOReader switches Auto sync off otherwise. Librillo doesn't change that setting.
+
+## Safety
+
+- The book open in the reader is never changed. Anything for it waits for the next sync ("Close the book you're reading, then sync again").
+- A file is never overwritten. A new book only goes to a free name. A new version replaces a file only after the plugin checks the download's SHA-256 and that the file there is the one the phone expects.
+- Deleted books first go to a hidden folder (`.librillo/trash` in the home folder). They are removed only after the phone confirms the sync; otherwise they are put back, with their notes.
+- If a folder or a book can't be read, the sync stops instead of sending an incomplete list, which would look like deletions.
+- Files with names the phone can't take (a backslash or control characters) are left out and never touched. Folders starting with a dot, KOReader's `.sdr` folders and KOReader's own folder are skipped.
+- Books are hashed once; the plugin keeps the hashes in `settings/folio-hashes.lua`, by path, size and time. The first sync of a large library can take a few minutes.
+- The plugin keeps its settings in KOReader's reader settings under `folio_sync`. It logs nothing: no sign-in, no keys, no book text.
+
+## Formats
+
+EPUB, PDF, CBZ and CBR. Other files are ignored and never touched.
+
+Highlights from the phone appear as highlights in EPUB books. In PDFs and comics they appear as page bookmarks with the highlighted text and your note. A note the plugin can't place in KOReader is still kept and sent back, so it is never lost.
 
 ## Licence
 
-This optional plugin is independently authored and licensed AGPL-3.0-or-later. The included `licenses/AGPL-3.0.txt` provides the full licence. Distribute its corresponding source when redistributing modified versions. The separately communicating Android app is Apache-2.0 and contains neither this plugin nor KOReader code.
+This plugin is independently written and licensed AGPL-3.0-or-later. `licenses/AGPL-3.0.txt` has the full licence. If you share a modified version, share its source too. The Android app is Apache-2.0. It carries this plugin's files only to install them, and contains no KOReader code.

@@ -26,6 +26,11 @@ data class Book(
     val status: String = "Unread",
     /** The file's format and extension: "epub", "pdf", "cbz" or "cbr" (see BookFormats). */
     @ColumnInfo(defaultValue = "'epub'") val format: String = "epub",
+    /**
+     * When [status] last changed, in epoch milliseconds. 0 when unknown: books from before schema
+     * 10, or never given a status. Sync uses it to pick the newer status when there is no baseline.
+     */
+    @ColumnInfo(defaultValue = "0") val statusAt: Long = 0,
 ) {
     fun metadata() =
         Metadata(
@@ -516,6 +521,15 @@ interface LibraryDao {
     @Query("SELECT * FROM annotations WHERE bookId NOT IN (SELECT id FROM removed_entries)")
     suspend fun allAnnotations(): List<BookAnnotation>
 
+    /** Every annotation, books in Recently removed included (sync needs theirs too). */
+    @Query("SELECT * FROM annotations") suspend fun everyAnnotation(): List<BookAnnotation>
+
+    /** Every list membership, books in Recently removed included. */
+    @Query("SELECT * FROM memberships") suspend fun everyMembership(): List<Membership>
+
+    @Query("SELECT * FROM memberships WHERE bookId = :bookId")
+    suspend fun membershipsOf(bookId: String): List<Membership>
+
     @Query("SELECT * FROM device_statistics") suspend fun allStatistics(): List<DeviceStatistics>
 
     @Query("SELECT * FROM device_statistics") fun statistics(): Flow<List<DeviceStatistics>>
@@ -585,6 +599,11 @@ interface SyncBaselineDao {
 
     @Query("DELETE FROM sync_baseline WHERE bookId = :bookId AND ereaderId = :ereaderId")
     fun delete(bookId: String, ereaderId: String)
+
+    @Query("DELETE FROM sync_baseline WHERE ereaderId = :ereaderId")
+    fun deleteForEreader(ereaderId: String)
+
+    @Upsert fun upsertAll(baselines: List<SyncBaseline>)
 }
 
 @Database(
@@ -609,7 +628,7 @@ interface SyncBaselineDao {
             SyncTask::class,
             SyncBaseline::class,
         ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -728,6 +747,14 @@ val MIGRATION_8_9 =
         }
     }
 
+/** Schema 10: books remember when their status last changed; 0 for every existing book. */
+val MIGRATION_9_10 =
+    object : androidx.room.migration.Migration(9, 10) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN statusAt INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
@@ -739,4 +766,5 @@ val ALL_MIGRATIONS =
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
+        MIGRATION_9_10,
     )

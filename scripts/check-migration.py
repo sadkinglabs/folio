@@ -160,7 +160,7 @@ print('Migration 7→8 matches Room schema; KOReader reading data kept and Folio
 old.execute("INSERT INTO books VALUES ('v8-book','Kept','[]','','','','[]','','','[]','A/Kept.epub','A/Kept.epub',NULL,'h8','h8',1000,'Reading')")
 v9=json.loads((schemas/'9.json').read_text())['database']
 assert v9['version']==9
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_8_9',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_8_9',1)[1].split('val MIGRATION_9_10',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==2,statements
 for sql in statements:old.execute(sql)
@@ -183,3 +183,21 @@ assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 8→9 matches Room schema; existing books become EPUB and keep their data, baselines are one per book per e-reader and outlive a purge.')
 
+# Schema 10: books remember when their status last changed. Existing books get 0, "unknown".
+old.execute("INSERT INTO books VALUES ('v9-book','Kept','[]','','','','[]','','','[]','A/Kept.pdf','A/Kept.pdf',NULL,'h9','h9',1000,'Finished','pdf')")
+v10=json.loads((schemas/'10.json').read_text())['database']
+assert v10['version']==10
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_9_10',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==1,statements
+for sql in statements:old.execute(sql)
+expected10=sqlite3.connect(':memory:');schema(expected10,v10)
+for entity in v10['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected10.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected10.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected10.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT status,statusAt,format FROM books WHERE id='v9-book'").fetchone()==('Finished',0,'pdf')
+assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 9→10 matches Room schema; books keep their status, with an unknown (0) time of change, and baselines are kept.')

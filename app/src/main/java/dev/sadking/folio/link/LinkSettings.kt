@@ -16,12 +16,30 @@ import javax.crypto.spec.GCMParameterSpec
  * the Android Keystore; it is only shown to the user, never logged.
  */
 class LinkSettings(context: Context) {
-    private val prefs = context.getSharedPreferences("folio-link", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     @Volatile private var cached: KosyncAccount? = null
 
+    /**
+     * "Sync automatically": Link runs while Librillo is open and for 30 minutes after. On by
+     * default. It keeps the old on/off switch's key, so an update keeps the owner's choice.
+     */
+    var autoSync: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_SYNC, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_SYNC, value).apply()
+
+    /**
+     * Link has been set up: its password exists. It is made when Link is first turned on, when the
+     * sign-in is shown, or when the KOReader plugin is installed.
+     */
+    val isSetUp: Boolean
+        get() = prefs.contains(KEY_PASSWORD)
+
+    /** Link runs by itself: set up, with "Sync automatically" on. Setting it sets [autoSync]. */
     var enabled: Boolean
-        get() = prefs.getBoolean("enabled", false)
-        set(value) = prefs.edit().putBoolean("enabled", value).apply()
+        get() = autoSync && isSetUp
+        set(value) {
+            autoSync = value
+        }
 
     var port: Int
         get() = prefs.getInt("port", DEFAULT_PORT)
@@ -54,13 +72,13 @@ class LinkSettings(context: Context) {
     /** The password to type into KOReader, created the first time it is needed. */
     @Synchronized
     fun password(): String {
-        prefs.getString("password", null)?.let { stored ->
+        prefs.getString(KEY_PASSWORD, null)?.let { stored ->
             runCatching {
                 return String(decrypt(stored))
             }
         }
         val created = generate()
-        prefs.edit().putString("password", encrypt(created.toByteArray())).apply()
+        prefs.edit().putString(KEY_PASSWORD, encrypt(created.toByteArray())).apply()
         cached = null
         return created
     }
@@ -68,7 +86,7 @@ class LinkSettings(context: Context) {
     /** Makes a new password; KOReader must log in again. */
     @Synchronized
     fun resetPassword(): String {
-        prefs.edit().remove("password").apply()
+        prefs.edit().remove(KEY_PASSWORD).apply()
         cached = null
         return password()
     }
@@ -122,5 +140,9 @@ class LinkSettings(context: Context) {
         const val DEFAULT_PORT = 8765
         const val USERNAME = "folio"
         private const val ALIAS = "folio-link"
+        /** The old on/off switch's key, kept for "Sync automatically". */
+        internal const val KEY_AUTO_SYNC = "enabled"
+        internal const val KEY_PASSWORD = "password"
+        internal const val PREFERENCES = "folio-link"
     }
 }

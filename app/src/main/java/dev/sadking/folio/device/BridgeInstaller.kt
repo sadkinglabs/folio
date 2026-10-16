@@ -3,6 +3,7 @@ package dev.sadking.folio.device
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.link.FolioLink
+import dev.sadking.folio.link.SyncRoutes
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -30,15 +31,30 @@ internal fun phoneAddressFor(ereader: String, addresses: List<String>): String? 
         ?: addresses.firstOrNull()
 }
 
-/** The one-time setup the plugin applies to Progress sync on its first start, then removes. */
-internal fun linkSetupJson(server: String, username: String, userkey: String): String =
+/**
+ * The one-time setup the plugin applies on its first start, then removes (format version 2, M9).
+ * Progress sync gets the Link address and sign-in, syncs automatically and asks before jumping to a
+ * newer position ("prompt"). The plugin keeps its library folder ([root], under KOReader's home
+ * folder) and syncs the library by itself. [userkey] is the key KOReader stores, never the
+ * password. [deviceName] is left out unless known. The plugin still reads version 1.
+ */
+internal fun linkSetupJson(
+    server: String,
+    username: String,
+    userkey: String,
+    root: String = SyncRoutes.DEFAULT_ROOT,
+    deviceName: String? = null,
+): String =
     JSONObject()
         .put("format", "librillo-link-setup")
-        .put("version", 1)
+        .put("version", 2)
         .put("server", server)
         .put("username", username)
         .put("userkey", userkey)
-        .put("auto_fetch", true)
+        .put("root", root)
+        .put("auto_sync", true)
+        .put("sync_forward", "prompt")
+        .apply { if (!deviceName.isNullOrBlank()) put("device_name", deviceName) }
         .toString()
 
 /**
@@ -91,6 +107,8 @@ class BridgeInstaller(private val app: FolioApplication) {
                 SftpDevice(config.copy(directory = plugins), credential).use {
                     it.installFolioBridge(files)
                 }
+                // Link is set up now: have it listening for the e-reader's first sync.
+                if (address != null) app.link.startIfAllowed()
                 app.getString(
                     if (address != null) R.string.msg_companion_installed
                     else R.string.msg_companion_installed_no_link

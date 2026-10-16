@@ -215,6 +215,7 @@ class ImportFormatsTest {
         val comic =
             import(zip("Saga 03.cbz", "p1.jpg" to byteArrayOf(1), "p2.jpg" to byteArrayOf(2))).first
         BooksFolderMove(repo).run()
+        repo.manageBatch(setOf(pdf.id), status = "Finished", statusAt = 1_234L)
         val archive = File(base, "backup.zip")
         LibraryBackup(repo).export(archive)
 
@@ -241,6 +242,10 @@ class ImportFormatsTest {
                 assertEquals(book.format, copy.format)
                 assertEquals(book.currentHash, Epub.sha256(File(copy.currentPath)))
             }
+            // When the status last changed is kept, for sync.
+            assertEquals(1_234L, restored.getValue(pdf.id).statusAt)
+            assertEquals("Finished", restored.getValue(pdf.id).status)
+            assertEquals(0L, restored.getValue(comic.id).statusAt)
         } finally {
             otherDb.close()
         }

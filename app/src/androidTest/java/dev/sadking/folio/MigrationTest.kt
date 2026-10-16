@@ -8,6 +8,7 @@ import dev.sadking.folio.data.ALL_MIGRATIONS
 import dev.sadking.folio.data.LibraryDatabase
 import dev.sadking.folio.data.MIGRATION_7_8
 import dev.sadking.folio.data.MIGRATION_8_9
+import dev.sadking.folio.data.MIGRATION_9_10
 import dev.sadking.folio.data.SyncBaseline
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -129,6 +130,42 @@ class MigrationTest {
     }
 
     @Test
+    fun schema10GivesBooksAStatusTimeAndKeepsEverything() {
+        val name = "status-at.db"
+        helper.createDatabase(name, 9).use {
+            it.execSQL(
+                "INSERT INTO books (id, title, authors, description, publisher, language, identifiers, series, seriesIndex, tags, originalPath, currentPath, coverPath, originalHash, currentHash, addedAt, status, format) VALUES ('book', 'Kept', '[]', '', '', '', '[]', '', '', '[]', 'A/Kept.pdf', 'A/Kept.pdf', NULL, 'h', 'h', 1, 'Finished', 'pdf')"
+            )
+            it.execSQL(
+                "INSERT INTO annotations VALUES ('note', 'book', 'kindle', 'text', 'my note', 'Ch 1', '2026-10-01', 'p0', 'p1', 'highlight')"
+            )
+            it.execSQL(
+                "INSERT INTO sync_baseline VALUES ('book', 'kindle', 'Librillo/A/Kept.pdf', 'h', 'finished', 1, '[\"note\"]', '[]', 2)"
+            )
+        }
+        helper.runMigrationsAndValidate(name, 10, true, MIGRATION_9_10).use { db ->
+            db.query("SELECT statusAt, status, format, title FROM books WHERE id = 'book'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0L, it.getLong(0))
+                assertEquals("Finished", it.getString(1))
+                assertEquals("pdf", it.getString(2))
+                assertEquals("Kept", it.getString(3))
+            }
+            for (table in listOf("annotations", "sync_baseline")) {
+                db.query("SELECT COUNT(*) FROM $table").use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals(table, 1, it.getInt(0))
+                }
+            }
+            db.execSQL("UPDATE books SET status = 'Reading', statusAt = 5 WHERE id = 'book'")
+            db.query("SELECT statusAt FROM books WHERE id = 'book'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(5L, it.getLong(0))
+            }
+        }
+    }
+
+    @Test
     fun roomOpensAnUpgradedLibraryAndKeepsBaselines() = runBlocking {
         val name = "baseline-dao.db"
         helper.createDatabase(name, 8).use { it.execSQL(bookAtVersion8) }
@@ -139,6 +176,7 @@ class MigrationTest {
                 .build()
         try {
             assertEquals("epub", database.library().book("book")!!.format)
+            assertEquals(0L, database.library().book("book")!!.statusAt)
             val baselines = database.syncBaselines()
             val first =
                 SyncBaseline(

@@ -18,8 +18,6 @@ class MainActivity : ComponentActivity() {
         model = ViewModelProvider(this)[LibraryViewModel::class.java]
         if (savedInstanceState == null) consume(intent)
         setContent { FolioApp(model) }
-        // Folio Link stays on across launches if the user left it on.
-        (application as FolioApplication).link.resumeIfEnabled()
     }
 
     override fun onStart() {

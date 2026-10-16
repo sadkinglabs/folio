@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.activity)
     implementation(libs.lifecycle.compose)
     implementation(libs.lifecycle.vm.compose)
+    // Already shipped through Compose; declared to tell when Librillo is in the foreground.
+    implementation(libs.lifecycle.process)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
