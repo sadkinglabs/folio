@@ -617,6 +617,21 @@ Tested on the JVM, Robolectric and Lua (lupa, Lua 5.4 and LuaJIT 2.1) only. Scre
 4. **Metadata sync:** status, annotations, collections, edits, conflicts on both sides, the Hardcover finish prompt.
 5. **UI:** Library status line, Device tab, the conflicts sheet, Kindle menu, plain copy throughout. The old send queue and SSH send are removed.
 
+### M10: Seamless sync with Hardcover
+Decided with the owner on 2026-10-16. Goal, in the owner's words: "I want seamless sync between Librillo and Hardcover." and "if I add a book after navigating Hardcover to a wishlist, it would be awesome if it appeared in Librillo — and vice versa."
+
+**What the owner gets**
+- **Every book matched to Hardcover, without doing it by hand.** A one-time pass over the existing library, then every new book (import, Inbox, Kindle upload, scan, search) is matched as it arrives. ISBN first (many at once per request), then title and author. A clear single result is linked on its own; anything unsure goes to a **Check these matches** list in Needs your decision (pick one of a few candidates, or "Not on Hardcover"). Nothing is linked until it is sure or the owner picks.
+- **Statuses both ways.** Want to Read, Currently Reading, Read, Paused and Did Not Finish, plus reading progress.
+  - Librillo → Hardcover: any status change (phone or Kindle) goes up. Finished from Reading or Paused gets that day's date; a book that goes straight to Finished (read long ago) is Read with no date. Unread never removes anything from Hardcover.
+  - Hardcover → Librillo: Librillo checks when it opens and every few hours. A status changed on Hardcover comes down. A book added on Hardcover (for example to Want to Read) appears in Librillo as a catalogue entry; one added in Librillo goes up.
+  - Both changed the same book since the last sync: asked in Needs your decision.
+- **Kindle finishes go to Hardcover automatically**, like the phone's. The "Mark it as read on Hardcover?" prompt goes away.
+- **Within Hardcover's limits:** all Hardcover traffic goes through one paced queue (about one request a second), waits and retries on "slow down", survives restarts, and resumes where it stopped.
+- **Never lost:** nothing is deleted on either side because it is missing on the other. A book removed from Hardcover is not removed from Librillo.
+
+**Status:** planned 2026-10-16.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)
