@@ -3,6 +3,7 @@ package dev.sadking.folio.data
 import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
+import dev.sadking.folio.core.BookPaths
 import dev.sadking.folio.core.Epub
 import dev.sadking.folio.core.Metadata
 import java.io.File
@@ -12,10 +13,30 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-class LibraryRepository(private val context: Context, val database: LibraryDatabase) {
+class LibraryRepository(
+    private val context: Context,
+    val database: LibraryDatabase,
+    /** The visible Books folder (M8); books moved there have their only copy in it. */
+    val booksRoot: () -> File = { BooksFolder(context).location },
+) {
     val dao = database.library()
     internal val lock = Mutex()
     val root = File(context.filesDir, "library").apply { mkdirs() }
+
+    /** True for a file in Librillo's private storage. */
+    fun isPrivate(file: File): Boolean =
+        file.canonicalPath.startsWith(root.canonicalPath + File.separator)
+
+    /** True for a file anywhere in the Books folder, including Librillo's own `.librillo`. */
+    fun inBooksFolder(file: File): Boolean =
+        file.canonicalPath.startsWith(booksRoot().canonicalPath + File.separator)
+
+    /**
+     * True when [file] may be one of this book's files: in its private folder, or in the Books
+     * folder. Paths come from the database and backups, so they are checked before use.
+     */
+    fun holds(bookId: String, file: File): Boolean =
+        file.canonicalFile.parentFile == File(root, bookId).canonicalFile || inBooksFolder(file)
 
     suspend fun import(uri: Uri): Pair<Book, Boolean> =
         withContext(Dispatchers.IO) {
@@ -118,6 +139,15 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
         withContext(Dispatchers.IO) {
             lock.withLock {
                 val entries = dao.allRemoved().filter { it.groupId == group }
+                // A book in the Books folder has its only copy there; purging is the one place
+                // Librillo deletes it, after the confirmation that says so.
+                val folderFiles =
+                    entries
+                        .filter { it.kind == "EPUB" }
+                        .mapNotNull { dao.book(it.id) }
+                        .flatMap { listOf(File(it.currentPath), File(it.originalPath)) }
+                        .filter { inBooksFolder(it) }
+                        .distinctBy { it.canonicalPath }
                 val folders = entries.map { entry ->
                     UUID.fromString(entry.id)
                     File(root, entry.id).also {
@@ -136,11 +166,17 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
                     }
                     dao.restoreRemoved(group)
                 }
+                val filesGone =
+                    folderFiles
+                        .map { file ->
+                            (!file.exists() || file.delete()).also { removeEmptyFolder(file) }
+                        }
+                        .all { it }
                 folders
                     .map {
                         !it.exists() || runCatching { it.deleteRecursively() }.getOrDefault(false)
                     }
-                    .all { it }
+                    .all { it } && filesGone
             }
         }
 
@@ -275,6 +311,8 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
         withContext(Dispatchers.IO) {
             lock.withLock {
                 val old = dao.book(id) ?: error("Book no longer exists")
+                if (inBooksFolder(File(old.currentPath)))
+                    return@withLock editInFolder(old, metadata, coverUri)
                 val dir = File(root, id)
                 val revision = UUID.randomUUID().toString()
                 val temp = File(dir, ".$revision.part")
@@ -321,4 +359,108 @@ class LibraryRepository(private val context: Context, val database: LibraryDatab
                 }
             }
         }
+
+    /**
+     * An edit to a book in the Books folder: the new file is written next to the old one, the old
+     * one is kept in `.librillo` (as the original if it was, else as a previous version), and the
+     * new one takes the book's path, which follows a new title or author. Nothing is written if the
+     * file changed outside Librillo.
+     */
+    private suspend fun editInFolder(old: Book, metadata: Metadata, coverUri: Uri?): Book {
+        val books = booksRoot()
+        val current = File(old.currentPath)
+        require(current.isFile && Epub.sha256(current) == old.currentHash) {
+            "This book's file changed outside Librillo. Open the Books folder to check it."
+        }
+        val (bytes, mime) = coverBytes(coverUri)
+        val revision = UUID.randomUUID().toString()
+        val temp = File(current.parentFile, ".$revision.part")
+        val kept =
+            if (old.originalPath == old.currentPath)
+                File(books, ".librillo/originals/${old.id}.epub")
+            else File(books, ".librillo/previous/${old.id}-${System.currentTimeMillis()}.epub")
+        try {
+            Epub.edit(current, temp, metadata, bytes, mime)
+            val path = freePath(books, metadata.authors, metadata.title, mine = current)
+            val dest = File(books, path)
+            kept.parentFile!!.mkdirs()
+            check(!kept.exists() && current.renameTo(kept)) { "Cannot keep the previous file" }
+            dest.parentFile!!.mkdirs()
+            if (!temp.renameTo(dest)) {
+                kept.renameTo(current)
+                error("Cannot commit EPUB revision")
+            }
+            if (dest.parentFile != current.parentFile) removeEmptyFolder(current)
+            val cover =
+                bytes?.let {
+                    File(File(root, old.id).apply { mkdirs() }, "cover-$revision")
+                        .also { it.writeBytes(bytes) }
+                        .absolutePath
+                } ?: old.coverPath
+            val book =
+                old.withMetadata(metadata)
+                    .copy(
+                        currentPath = dest.absolutePath,
+                        currentHash = Epub.sha256(dest),
+                        originalPath =
+                            if (old.originalPath == old.currentPath) kept.absolutePath
+                            else old.originalPath,
+                        coverPath = cover,
+                    )
+            dao.update(book)
+            return book
+        } finally {
+            temp.delete()
+        }
+    }
+
+    private fun coverBytes(coverUri: Uri?): Pair<ByteArray?, String> {
+        val bytes = coverUri?.let { uri ->
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                java.io
+                    .ByteArrayOutputStream()
+                    .also { Epub.copyBounded(input, it, 10L * 1024 * 1024) }
+                    .toByteArray()
+            } ?: error("Cannot open cover")
+        }
+        if (bytes != null) {
+            val options =
+                android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            require(
+                options.outWidth in 1..12000 &&
+                    options.outHeight in 1..12000 &&
+                    options.outWidth.toLong() * options.outHeight <= 40_000_000
+            ) {
+                "Cover is not a supported image or is too large"
+            }
+        }
+        val mime = coverUri?.let { context.contentResolver.getType(it) } ?: "image/jpeg"
+        return bytes to mime
+    }
+
+    /**
+     * A free `Author/Title.epub` path in [books]. A name counts as taken when a file with the same
+     * name, ignoring case, is there, unless it is [mine].
+     */
+    internal fun freePath(books: File, authors: List<String>, title: String, mine: File?): String =
+        BookPaths.path(authors, title) { candidate ->
+            val file = File(books, candidate)
+            val key = BookPaths.key(file.name)
+            file.parentFile?.listFiles().orEmpty().any {
+                BookPaths.key(it.name) == key &&
+                    (mine == null || it.canonicalFile != mine.canonicalFile)
+            }
+        }
+
+    /** Removes an author folder left empty, never the Books folder itself. */
+    internal fun removeEmptyFolder(file: File) {
+        val parent = file.parentFile ?: return
+        if (
+            inBooksFolder(parent) &&
+                !parent.name.startsWith('.') &&
+                parent.list()?.isEmpty() == true
+        )
+            parent.delete()
+    }
 }

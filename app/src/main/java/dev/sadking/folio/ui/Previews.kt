@@ -530,16 +530,17 @@ internal fun BackupPreview() {
     }
 }
 
-@Preview(name = "Books folder · light", widthDp = 412, heightDp = 480)
+@Preview(name = "Books folder · light", widthDp = 412, heightDp = 640)
 @Composable
 internal fun BooksFolderPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             BooksFolderContent(
                 "Phone storage/Books",
-                hasAccess = false,
+                hasAccess = true,
                 onAllow = {},
                 onChange = {},
+                pending = 12,
             )
         }
     }

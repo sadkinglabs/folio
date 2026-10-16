@@ -163,13 +163,26 @@
     <string name="reading_time_minutes">%1$d min</string>
     <!-- The Books folder (M8): Author/Title.epub, the only copy of each book. -->
     <string name="settings_books_folder">Books folder</string>
-    <string name="settings_books_folder_value">%1$s · Not in use yet</string>
-    <string name="settings_books_folder_value_access">%1$s · Needs access</string>
+    <string name="books_folder_state_access">Needs access</string>
+    <string name="books_folder_state_in_use">In use</string>
+    <plurals name="books_folder_state_pending">
+        <item quantity="one">%1$d book to move</item>
+        <item quantity="other">%1$d books to move</item>
+    </plurals>
     <string name="books_folder_phone_storage">Phone storage</string>
-    <string name="books_folder_body">Librillo will keep your books here, by author: Author/Title.epub. It will be the only copy, so keep cleaning and sync apps away from it. Nothing is moved here yet; that is the next step.</string>
+    <string name="books_folder_body">Librillo will keep your books here, by author: Author/Title.epub. Once a book is here, this is its only copy, so keep cleaning apps away from this folder.</string>
     <string name="books_folder_access_body">Android needs to give Librillo All files access to read and write this folder. Librillo uses it only for the Books folder.</string>
+    <plurals name="books_folder_pending_body">
+        <item quantity="one">%1$d book is still in Librillo\'s own storage. Each file is checked after copying, before Librillo\'s copy is removed. Notes, progress and lists stay with the book.</item>
+        <item quantity="other">%1$d books are still in Librillo\'s own storage. Each file is checked after copying, before Librillo\'s copy is removed. Notes, progress and lists stay with each book.</item>
+    </plurals>
+    <plurals name="books_folder_move">
+        <item quantity="one">Move %1$d book here</item>
+        <item quantity="other">Move %1$d books here</item>
+    </plurals>
     <string name="books_folder_allow">Allow access</string>
     <string name="books_folder_allowed">Access allowed</string>
     <string name="books_folder_change">Change location</string>
+    <string name="books_folder_fixed">Your books are in this folder, so its location can\'t be changed yet.</string>
     <string name="books_folder_not_phone">Choose a folder in the phone\'s own storage, not an SD card or the top level.</string>
 </resources>

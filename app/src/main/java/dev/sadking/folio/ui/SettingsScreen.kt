@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BooksFolder
+import dev.sadking.folio.data.BooksFolderMove
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.LinkStatus
 import dev.sadking.folio.data.linkStatus
@@ -81,6 +82,7 @@ internal const val SETTINGS_SSH_TAG = "settings-ssh"
 internal const val SETTINGS_FOLDER_TAG = "settings-folder"
 internal const val SETTINGS_BOOKS_FOLDER_TAG = "settings-books-folder"
 internal const val BOOKS_FOLDER_ALLOW_TAG = "books-folder-allow"
+internal const val BOOKS_FOLDER_MOVE_TAG = "books-folder-move"
 internal const val SETTINGS_PLUGIN_TAG = "settings-plugin"
 internal const val TEXT_SHEET_TAG = "settings-text-sheet"
 internal const val BACKUP_EXPORT_TAG = "settings-backup-export"
@@ -125,6 +127,7 @@ internal fun SettingsTab(
     onForgetFolder: () -> Unit,
     onInstallCompanion: () -> Unit,
     busy: Boolean,
+    onMoveBooks: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
@@ -206,6 +209,7 @@ internal fun SettingsTab(
         onForgetFolder = onForgetFolder,
         onInstallCompanion = onInstallCompanion,
         busy = busy,
+        onMoveBooks = onMoveBooks,
     )
 }
 
@@ -248,6 +252,7 @@ internal fun SettingsScreen(
     onRefreshFolder: () -> Unit = {},
     onForgetFolder: () -> Unit = {},
     onInstallCompanion: () -> Unit = {},
+    onMoveBooks: () -> Unit = {},
     busy: Boolean = false,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
@@ -257,7 +262,7 @@ internal fun SettingsScreen(
     var showBackup by rememberSaveable { mutableStateOf(false) }
     var showFolder by rememberSaveable { mutableStateOf(false) }
     var showBooksFolder by rememberSaveable { mutableStateOf(false) }
-    val booksFolder = rememberBooksFolder()
+    val booksFolder = rememberBooksFolder(busy)
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
@@ -377,11 +382,18 @@ internal fun SettingsScreen(
             SettingsRow(
                 Icons.Outlined.FolderSpecial,
                 stringResource(R.string.settings_books_folder),
-                stringResource(
-                    if (booksFolder.hasAccess) R.string.settings_books_folder_value
-                    else R.string.settings_books_folder_value_access,
-                    booksFolder.shown,
-                ),
+                booksFolder.shown +
+                    " · " +
+                    when {
+                        !booksFolder.hasAccess -> stringResource(R.string.books_folder_state_access)
+                        booksFolder.pending > 0 ->
+                            pluralStringResource(
+                                R.plurals.books_folder_state_pending,
+                                booksFolder.pending,
+                                booksFolder.pending,
+                            )
+                        else -> stringResource(R.string.books_folder_state_in_use)
+                    },
                 Modifier.testTag(SETTINGS_BOOKS_FOLDER_TAG),
                 onClick = { showBooksFolder = true },
             )
@@ -488,6 +500,13 @@ internal fun SettingsScreen(
                 onAllow = booksFolder.allow,
                 onChange = booksFolder.change,
                 refused = booksFolder.refused,
+                pending = booksFolder.pending,
+                canChange = booksFolder.inFolder == 0,
+                busy = busy,
+                onMove = {
+                    showBooksFolder = false
+                    onMoveBooks()
+                },
             )
         }
     if (showFolder)
@@ -825,12 +844,16 @@ internal class BooksFolderState(
     val shown: String,
     val hasAccess: Boolean,
     val refused: Boolean,
+    /** Books still in Librillo's private storage. */
+    val pending: Int,
+    /** Books already in the folder; while there are any, the folder can't be moved yet. */
+    val inFolder: Int,
     val allow: () -> Unit,
     val change: () -> Unit,
 )
 
 @Composable
-internal fun rememberBooksFolder(): BooksFolderState {
+internal fun rememberBooksFolder(busy: Boolean = false): BooksFolderState {
     val context = LocalContext.current
     val folder = remember { BooksFolder(context) }
     val phoneStorage = stringResource(R.string.books_folder_phone_storage)
@@ -842,6 +865,19 @@ internal fun rememberBooksFolder(): BooksFolderState {
         hasAccess = folder.hasAccess
         onPauseOrDispose {}
     }
+    // Counted again when library work ends, so the row is right after a move.
+    val counts by
+        produceState(0 to 0, busy, location) {
+            val app = context.applicationContext as? FolioApplication
+            value =
+                if (app == null) 0 to 0
+                else
+                    runCatching {
+                            val move = BooksFolderMove(app.repository)
+                            move.pending() to move.inFolder()
+                        }
+                        .getOrDefault(0 to 0)
+        }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
             if (tree == null) return@rememberLauncherForActivityResult
@@ -852,6 +888,8 @@ internal fun rememberBooksFolder(): BooksFolderState {
         shown = BooksFolder.shown(location, phoneStorage),
         hasAccess = hasAccess,
         refused = refused,
+        pending = counts.first,
+        inFolder = counts.second,
         allow = {
             runCatching { context.startActivity(BooksFolder.accessIntent(context)) }
         },
@@ -870,6 +908,10 @@ internal fun BooksFolderContent(
     onAllow: () -> Unit,
     onChange: () -> Unit,
     refused: Boolean = false,
+    pending: Int = 0,
+    canChange: Boolean = true,
+    busy: Boolean = false,
+    onMove: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxWidth().padding(bottom = 32.dp),
@@ -909,12 +951,38 @@ internal fun BooksFolderContent(
             ) {
                 Text(stringResource(R.string.books_folder_allow))
             }
-        OutlinedButton(
-            onClick = onChange,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
-        ) {
-            Text(stringResource(R.string.books_folder_change))
+        if (hasAccess && pending > 0) {
+            Text(
+                pluralStringResource(R.plurals.books_folder_pending_body, pending, pending),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = FolioSpace.section),
+            )
+            Button(
+                onClick = onMove,
+                enabled = !busy,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = FolioSpace.section)
+                        .testTag(BOOKS_FOLDER_MOVE_TAG),
+            ) {
+                Text(pluralStringResource(R.plurals.books_folder_move, pending, pending))
+            }
         }
+        // Books in the folder are found by their path; moving the folder with them comes later.
+        if (canChange)
+            OutlinedButton(
+                onClick = onChange,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
+            ) {
+                Text(stringResource(R.string.books_folder_change))
+            }
+        else
+            Text(
+                stringResource(R.string.books_folder_fixed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = FolioSpace.section),
+            )
         if (refused)
             Text(
                 stringResource(R.string.books_folder_not_phone),

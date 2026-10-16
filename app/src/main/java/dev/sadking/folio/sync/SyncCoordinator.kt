@@ -45,8 +45,7 @@ class SyncCoordinator(private val app: FolioApplication) {
             require(
                 file.isFile &&
                     file.length() in 1..Epub.MAX_FILE &&
-                    file.canonicalFile.parentFile ==
-                        File(app.repository.root, item.book.id).canonicalFile
+                    app.repository.holds(item.book.id, file)
             ) {
                 "Queued library revision is unavailable"
             }

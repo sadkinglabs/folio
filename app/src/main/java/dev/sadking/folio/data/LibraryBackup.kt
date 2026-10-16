@@ -19,10 +19,15 @@ class LibraryBackup(private val repo: LibraryRepository) {
             val files = linkedMapOf<String, File>()
             fun path(book: Book, location: String): String {
                 val file = File(location)
-                require(file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile) {
-                    "Invalid library resource"
-                }
-                val relative = "library/${book.id}/${file.name}"
+                require(repo.holds(book.id, file)) { "Invalid library resource" }
+                // A book in the Books folder is named by its role, so its names never meet the
+                // private folder's (original.epub, <revision>.epub, cover-…).
+                val name =
+                    if (file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile)
+                        file.name
+                    else if (location == book.originalPath) "folder-original.epub"
+                    else "folder-current.epub"
+                val relative = "library/${book.id}/$name"
                 files[relative] = file
                 return relative
             }

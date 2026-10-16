@@ -1081,6 +1081,7 @@ fun FolioApp(model: LibraryViewModel) {
                                                                 installCompanion = true
                                                             },
                                                             busy = deviceBusy,
+                                                            onMoveBooks = model::moveToBooksFolder,
                                                         )
                                                 }
                                             }

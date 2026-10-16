@@ -172,11 +172,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         val found =
                             dao.book(id) ?: error(app.getString(R.string.msg_reader_no_epub))
                         val file = File(found.currentPath).canonicalFile
-                        require(
-                            file.path.startsWith(
-                                app.repository.root.canonicalPath + File.separator
-                            ) && file.isFile
-                        ) {
+                        require(app.repository.holds(found.id, file) && file.isFile) {
                             app.getString(R.string.msg_reader_epub_missing)
                         }
                         require(Epub.sha256(file) == found.currentHash) {

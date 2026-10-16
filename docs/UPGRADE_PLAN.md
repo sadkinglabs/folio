@@ -516,7 +516,21 @@ Your books live in one visible folder on the phone, `Books/Author/Title.epub`. T
 - **Slice 1 built:**
   - `BookPaths` in `core` gives `Author/Title.epub`: FAT-safe names, a 120-character and 240-byte limit per part, case-insensitive clashes, reserved Windows names, and composed and decomposed accents treated as one name. Tested on the JVM.
   - Settings → Library → Books folder shows where the folder will be (Phone storage/Books by default). It asks for All files access with a plain reason, and lets you choose another folder in phone storage. Nothing is moved there yet.
-- **Not verified on a device:** the All files access page and the folder picker.
+- **Slice 2 built:**
+  - Settings → Books folder shows how many books are still in Librillo's storage, with a "Move N books here" button. It's a button, not automatic, so you can pick the folder's location first.
+  - Each book's current file goes to `Author/Title.epub`, and an edited book's original download goes to `.librillo/originals/<id>.epub`. Each copy is flushed and checked against the book's hash before the database points at it, and Librillo's private copy is removed last.
+  - A book that fails stays private and keeps working. Running it again moves what's left and reuses a file an interrupted run already placed. Recently removed books stay private until restored.
+  - The reader, Link fingerprint, SSH sends, export, "Open in another app" and backups accept files in the Books folder. Backups name them `folder-original.epub` and `folder-current.epub`, and they restore into an empty library (tested).
+  - Edits to a moved book stay in the folder:
+    - the new file is written next to the old one;
+    - the old one is kept in `.librillo/originals` if it was the original, else in `.librillo/previous`;
+    - the file follows a new title or author;
+    - nothing is written if the file changed outside Librillo.
+  - Purging a book from Recently removed deletes its folder file and an empty author folder; removing alone keeps it, so Undo works.
+  - "Change location" is hidden once any book is in the folder, until moving the folder is built.
+  - **Changed from the plan:** the Room table that records files (schema 9) moves to slice 3, where the folder scan needs it. Slice 2 reads each book's path from the existing `books` table.
+  - Tested: 10 move, edit, purge and backup tests (Room in Robolectric on the JVM), the Settings sheet on the JVM, screenshots and the touch-target check.
+- **Not verified on a device:** the All files access page, the folder picker, and the move on real phone storage.
 
 **Not in this milestone:** an Inbox on the e-reader, series subfolders, other layouts (flat, by series), and mirroring anything other than EPUBs (covers, notes as files).
 

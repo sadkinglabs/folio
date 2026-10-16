@@ -268,4 +268,14 @@
     <string name="msg_reader_turn_page_first">Turn a page first to save a position</string>
     <string name="msg_reader_position_sent">Position sent. On your e-reader, open this book in KOReader, then choose Librillo bridge → Review phone reading position.</string>
     <string name="msg_reader_position_send_failed">Could not send your reading position</string>
+    <string name="msg_books_folder_moving">Moving your books to the Books folder…</string>
+    <string name="msg_books_folder_no_access">Allow All files access in Settings → Books folder first.</string>
+    <plurals name="msg_books_folder_moved">
+        <item quantity="one">Moved %1$d book to the Books folder.</item>
+        <item quantity="other">Moved %1$d books to the Books folder.</item>
+    </plurals>
+    <plurals name="msg_books_folder_stayed">
+        <item quantity="one">%1$d stayed in Librillo\'s storage and still works: %2$s.</item>
+        <item quantity="other">%1$d stayed in Librillo\'s storage and still work: %2$s.</item>
+    </plurals>
 </resources>

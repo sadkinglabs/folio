@@ -53,4 +53,31 @@ class BooksFolderUiTest {
         }
         compose.onNodeWithText("not an SD card", substring = true).assertIsDisplayed()
     }
+
+    @Test
+    fun theMoveButtonShowsOnlyWithAccessAndBooksToMove() {
+        var moves = 0
+        var state by mutableStateOf(Triple(false, 3, false))
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                BooksFolderContent(
+                    "Phone storage/Books",
+                    hasAccess = state.first,
+                    onAllow = {},
+                    onChange = {},
+                    pending = state.second,
+                    busy = state.third,
+                    onMove = { moves++ },
+                )
+            }
+        }
+        compose.onNodeWithTag(BOOKS_FOLDER_MOVE_TAG).assertDoesNotExist()
+        state = Triple(true, 3, false)
+        compose.onNodeWithText("Move 3 books here").performClick()
+        compose.runOnIdle { assertEquals(1, moves) }
+        state = Triple(true, 3, true)
+        compose.onNodeWithTag(BOOKS_FOLDER_MOVE_TAG).assertIsNotEnabled()
+        state = Triple(true, 0, false)
+        compose.onNodeWithTag(BOOKS_FOLDER_MOVE_TAG).assertDoesNotExist()
+    }
 }

@@ -248,6 +248,34 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             )
         }
 
+    /**
+     * Moves every book still in private storage into the Books folder (M8). Each file is checked
+     * before its private copy goes; a book that fails stays where it is and keeps working.
+     */
+    fun moveToBooksFolder() =
+        run(msg(R.string.msg_books_folder_moving)) {
+            require(dev.sadking.folio.data.BooksFolder(app).hasAccess) {
+                msg(R.string.msg_books_folder_no_access)
+            }
+            val result = dev.sadking.folio.data.BooksFolderMove(repo).run()
+            val moved =
+                app.resources.getQuantityString(
+                    R.plurals.msg_books_folder_moved,
+                    result.moved,
+                    result.moved,
+                )
+            if (result.failed.isEmpty()) moved
+            else
+                moved +
+                    " " +
+                    app.resources.getQuantityString(
+                        R.plurals.msg_books_folder_stayed,
+                        result.failed.size,
+                        result.failed.size,
+                        result.failed.joinToString(", "),
+                    )
+        }
+
     fun exportEpub(book: Book, uri: Uri) =
         run(msg(R.string.msg_library_exporting_epub)) {
             repo.lock.withLock {
@@ -256,9 +284,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     msg(R.string.msg_library_restore_first)
                 }
                 val file = File(current.currentPath)
-                require(file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile) {
-                    msg(R.string.msg_library_file_misplaced)
-                }
+                require(repo.holds(book.id, file)) { msg(R.string.msg_library_file_misplaced) }
                 app.contentResolver.openOutputStream(uri, "wt")?.use { out ->
                     file.inputStream().use { it.copyTo(out) }
                 } ?: error(msg(R.string.msg_write_failed))
@@ -280,11 +306,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         msg(R.string.msg_library_restore_first)
                     }
                     val file = File(current.currentPath)
-                    require(
-                        file.canonicalFile.parentFile == File(repo.root, book.id).canonicalFile
-                    ) {
-                        msg(R.string.msg_library_file_misplaced)
-                    }
+                    require(repo.holds(book.id, file)) { msg(R.string.msg_library_file_misplaced) }
                     val folder = File(app.cacheDir, "epub-share").apply { mkdirs() }
                     File(folder, "${book.id}.epub").also { file.copyTo(it, overwrite = true) }
                 }
