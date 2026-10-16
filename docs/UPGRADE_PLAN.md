@@ -401,31 +401,62 @@ Librillo reads the open book aloud with the voice engine already on the phone, h
   - APK grows from 45 to 70 MB (ONNX Runtime for arm64 and the emulator's x86_64).
 - **Next:** the phone test of the natural voice: speed, pauses between sentences, battery.
 
-### M8: One book folder, the same on the phone and the e-reader
-Your books sit in a readable folder on the phone, and the e-reader's Librillo folder has the same tree: `Author/Title.epub`. The only way in is through Librillo. Once a book is imported, the file you picked (for example in Downloads) can be deleted; nothing is lost.
+### M8: One Books folder, the same on the phone and the e-reader
+Your books live in one visible folder on the phone, `Books/Author/Title.epub`. That folder holds the only copy of each EPUB, and Librillo's library mirrors what it finds there. The e-reader's Librillo folder gets the same tree. A `Books/Inbox` folder takes any EPUB you drop in, and Librillo files it when it opens.
 
 **Decided (owner, 2026-10-16):**
+- The Books folder holds the only copy. There is no private master copy any more.
+- The library mirrors the folder: what is in the folder is in the library.
 - Folders by author: `Author/Title.epub`.
-- Books are only added through the app. Neither folder is an inbox: a file put there by hand is not imported.
-- An imported book no longer needs its source file.
+- `Books/Inbox` is a drop folder, processed when the app opens.
+- An imported book does not need its source file; the original can be deleted from Downloads.
 
-**How it works:**
-- **The library keeps its private copy.** Import already copies the EPUB into Librillo's storage and keeps no link to where it came from, so deleting the original is safe today. This copy stays the master. It is what the reader opens, what backups contain, and what makes a book safe if a folder is changed by hand.
-- **The phone's Books folder is a mirror Librillo writes.** You pick a folder once (for example `Documents/Books`) through Android's folder picker. Librillo writes each book there under its readable path. This takes the space of a second copy, a few MB per book.
-- **The e-reader gets the same tree.** Sends over Link and over SSH both use the readable path under the Librillo folder (`/mnt/us/Books/Folio` on a Kindle by default). The old `<id>.epub` and flat `Author - Title.epub` names go away.
-- **Librillo remembers what it wrote,** with the path and hash per book per folder, in a new Room table. This is an additive migration, schema 9, with a `MigrationTestHelper` test. That record decides every later move or replace.
+**Folder access:** Librillo asks for Android's "All files access" (`MANAGE_EXTERNAL_STORAGE`), once, with a screen that says why.
+- **Why:** the reader, the KOReader fingerprint, SSH sends and backups all work on plain file paths. Android's folder picker would mean rewriting each of them for content URIs, and scanning through it is slow.
+- **Cost:** it is a broad permission. Google Play restricts it, but this app is installed directly, so that doesn't apply.
+- Without the permission, the library still opens and reads what it already knows, and Settings says what is missing.
+
+**Layout:**
+- `Books/` is in the phone's shared storage, next to Downloads and Documents. You can change where it is in Settings; Librillo moves the whole tree.
+- `Books/Author/Title.epub`: every book. Folders and files are named by the path rule below.
+- `Books/Inbox/`: drop EPUBs here. `Books/Inbox/Not imported/` keeps files that couldn't be added, with the reason in the app.
+- `Books/.librillo/`: Librillo's own working space, hidden in most file managers and never sent to the e-reader. It holds:
+  - `removed/`: books in Recently removed, so Undo works;
+  - `previous/`: the file an edit replaced, kept for 30 days;
+  - `originals/`: the original download of each book, moved here from today's private storage.
 
 **The path rule** (pure Kotlin in `core`, unit-tested):
 - The author folder is the book's first author as shown in the app; with no author, "Unknown author". The file is the title.
 - Names are safe on FAT and exFAT, which e-readers use: no `\ / : * ? " < > |` or control characters, no trailing dots or spaces, and parts kept under 120 characters.
 - Names that differ only by case count as the same, since FAT ignores case. A clash gets `Title (2).epub`.
-- A book without an EPUB has no file and no folder entry.
+- Librillo applies the rule to the books it files: Inbox, imports from the app, and edits. A book you placed elsewhere in the tree yourself keeps its name.
 
-**Rules that keep files safe (from the invariants):**
-- **Never overwrite silently.** Librillo replaces a mirrored file (a new revision after an edit) only if the file still has the hash it last wrote. If someone changed it, both are kept and the book is listed for review.
-- **A missing file is not a deletion.** If a mirrored file is deleted by hand, the book stays in the library. The next mirror puts it back and says so. To remove a book, remove it in the app.
-- **Removing a book in the app** takes its phone mirror file away only when it is purged from Recently removed, so Undo still works. The e-reader copy is left alone, as now. Removing it from the e-reader is a separate, explicit action.
-- **Files Librillo didn't write** are never moved, renamed or deleted, in either folder. They show in a short "Not from Librillo" list, with no action needed.
+**How books come in:**
+- **Inbox, on open.** Each time Librillo comes to the foreground, and on pull-to-refresh, it processes `Inbox`:
+  - a readable EPUB is **moved** (not copied) to `Author/Title.epub` and added to the library;
+  - a file whose content is already in the library goes to `Not imported` as a duplicate. Nothing is deleted;
+  - a broken, protected or non-EPUB file goes to `Not imported`, with the reason;
+  - a file still being written (its size is changing) waits for the next pass.
+- **Import in the app** (Add books, Open with, Share) copies the file into the tree under the rule. The source is left alone and can be deleted.
+- **A file put straight into the tree,** outside Inbox, is added as it is, in place.
+
+**How the library mirrors the folder.** On every open and refresh, Librillo scans the tree (not Inbox or `.librillo`) and compares it with what it last saw:
+- **New file:** added as a book.
+- **Same content at a new path** (you moved or renamed it): the book follows it and keeps its progress, notes and lists.
+- **Same path, new content** (edited elsewhere, for example in Calibre): accepted as a new revision of that book. The book page says so, because the saved reading position may land a little off.
+- **Gone:** the book stays in the library, with its progress, notes and lists, as "EPUB missing". If the same content shows up again anywhere in the tree, it is linked back. A missing file is never treated as a deletion.
+- **Speed:** hashing every file on every open is too slow, so the record keeps each file's size and modified time and only re-hashes what changed. The record is a new Room table, an additive migration to schema 9 with a `MigrationTestHelper` test.
+
+**What Librillo itself writes to the folder:**
+- **Edits** that rewrite the EPUB (metadata, cover) write the new file next to the old one, then swap them. The replaced file goes to `.librillo/previous/` for 30 days. If the file's content changed since Librillo last saw it, nothing is written; the book is listed for review instead.
+- **Title or author edits** move the file to its new path, and the e-reader copy follows (see renames below).
+- **Remove in the app:** the file moves to `.librillo/removed/` and the book goes to Recently removed. Undo moves it back. Purging Recently removed deletes the file for good, after a confirmation that says so. This is the only way Librillo deletes a book file.
+- Files Librillo didn't write are never renamed or deleted, except Inbox files, which it files as above.
+
+**The e-reader gets the same tree:**
+- Link downloads and SSH sends use the book's path under the Librillo folder (`/mnt/us/Books/Folio` on a Kindle by default). The old `<id>.epub` and flat `Author - Title.epub` names go away.
+- Only books you send go to the e-reader, as now. Inbox and `.librillo` never do.
+- Removing a book on the phone leaves the e-reader copy alone, as now. Removing it there stays a separate, explicit action.
 
 **Renames on the e-reader keep your notes:**
 - KOReader keeps highlights, notes and position in a `Title.sdr` folder next to the book, and its history and collections refer to the book by path. Moving only the `.epub` would lose all of that.
@@ -433,45 +464,55 @@ Your books sit in a readable folder on the phone, and the e-reader's Librillo fo
 - Over SSH alone (no plugin running), a move takes the `.epub` and `.sdr` together and leaves history to KOReader, which drops stale entries.
 - Link progress keeps matching after a move: KOReader's default progress key is a fingerprint of the file's content, not its name. If KOReader is set to match by file name, a moved book shows as new; the Link settings will warn about that setting.
 
+**Moving today's library (one time, on the first start of this version):**
+- Each book's current EPUB moves from private storage to `Books/Author/Title.epub`; its original download moves to `.librillo/originals/`.
+- Each file is checked by hash after the move, before the private copy is removed. If anything fails, the private copy stays and the book keeps working from it, and the app says which books didn't move.
+- Covers and other app data stay private.
+
+**Backups:** a backup still contains every EPUB, read from the folder; it's now the only copy, so this matters more. Restore writes the books into the tree under the path rule. Older backup formats still restore.
+
 **Slices:**
-1. **Path rule and import guarantee.**
-   - The `core` path function and its tests (FAT names, case clashes, long titles, missing author, non-Latin names).
-   - An emulator test: import from Downloads, delete the source, then reopen, read, send and back up the book.
-2. **Phone Books folder.**
-   - Pick the folder in Settings, mirror every book, and keep the record table (schema 9).
-   - Edits move or replace the file under the safety rules above. A "Not from Librillo" list.
-   - Someone with the current Phone folder set can reuse it as the Books folder. Its old import-from-folder scan is retired: the folder is never an inbox.
-3. **Same tree on the e-reader.**
-   - Link downloads and SSH sends use the readable path; the plugin creates author folders.
-   - The plugin reports the path it wrote, and the app records it.
-4. **Renames.**
-   - An edit to a title or author queues a move.
-   - The plugin performs it with the `.sdr` folder, history and collections, and acknowledges it.
-5. **Tidy the e-reader once.**
-   - A preview lists every Librillo book still under an old name (`<id>.epub`, or `Author - Title.epub`) and where it will go.
-   - On confirm, the plugin moves them as in slice 4.
-   - Books that aren't Librillo's are not touched.
-6. **Retire the old two-way folder mirror** (`PairedFolder`, `FolderReconciliation`), once slices 2–5 cover what it did. Its last-agreed baselines are kept until then.
+1. **Path rule and folder access.** The `core` path function and its tests; the "All files access" screen; choosing where `Books` lives.
+2. **Move the library into the folder.** The one-time move with hash checks; the reader, Link fingerprint, sending and backups working from folder paths; schema 9.
+3. **Mirror the folder.** The scan on open and refresh: new, moved, edited and missing files, with the hash cache.
+4. **Inbox.** Processing on open, `Not imported` with reasons, and imports from the app writing into the tree.
+5. **Edits and removal.** Swap-and-keep for rewritten EPUBs, moves on title or author edits, `.librillo/removed/` for Undo, and delete on purge only.
+6. **Same tree on the e-reader.** Link downloads and SSH sends use the readable path; the plugin creates author folders and reports what it wrote.
+7. **Renames and the one-time tidy on the e-reader.**
+   - Edits queue moves, which the plugin performs with `.sdr`, history and collections.
+   - A preview lists every Librillo book on the e-reader still under an old name and where it will go. It moves them on confirm. Books that aren't Librillo's are not touched.
+8. **Retire the old two-way folder mirror** (`PairedFolder`, `FolderReconciliation`) and the Phone folder setting, which the Books folder replaces.
 
 **Tests:**
-- JVM: the path rule, mirror decisions (write, replace, keep both, put back) and the schema 9 migration.
+- JVM:
+  - the path rule;
+  - each mirror decision (new, moved, edited, missing, back again);
+  - Inbox outcomes (filed, duplicate, broken, still being written);
+  - the one-time move, including a failure halfway;
+  - the schema 9 migration.
+- Emulator:
+  - import from Downloads, delete the source, then reopen, read, send and back up the book;
+  - drop a file in Inbox, reopen the app: it's filed and readable;
+  - delete a book's file in the Files app: the book shows "EPUB missing" with its progress, and putting the file back relinks it.
 - Lua: plugin moves with `.sdr`, history and collection updates, refusal while the book is open, and hostile paths.
 - SFTP in CI: SSH sends land at readable paths; a move carries the `.sdr`.
-- Emulator: the slice 1 import test, and the Books folder through Android's folder picker.
 
 **Device check:**
-- Import 3 books from Downloads, then delete them from Downloads. They open, and they show in `Books/Author/` on the phone.
-- Send them to the Kindle. KOReader shows the same `Author/Title.epub` tree.
+- Install over the current app: every book is in `Books/Author/` and opens; progress and notes are intact.
+- Download an EPUB, move it to `Books/Inbox` in the Files app, open Librillo: it is filed and in the library. Delete the download: nothing changes.
+- Rename a book file in the Files app: the book follows it, with its progress.
+- Send to the Kindle: KOReader shows the same `Author/Title.epub` tree.
 - Highlight a passage on the Kindle, then edit the book's title on the phone and sync. The Kindle file is renamed, and the highlight and position are still there.
 - Run the one-time tidy on a Kindle with old-name books. Same check.
-- Delete a mirrored file on the phone by hand. Librillo puts it back and says so.
 
 **Risks:**
-- KOReader settings vary: metadata can live next to the book, in a central folder, or by hash. The plugin must read which one is used before moving.
-- The Kindle's own home screen indexes `/mnt/us/documents`, not `Books`, so it is not affected. A Kobo's library may re-index after moves.
-- Android folder access can be revoked by the user; then the mirror pauses and Settings says why.
+- **One copy means a deletion in the Files app is real.** Librillo keeps the book's record, notes and progress, but not the file. Backups and `.librillo/previous/` are the only safety net, so the backup reminder becomes more prominent.
+- **Other apps can touch the folder** (file managers, sync apps, cleaners). The mirror handles moves and edits, but a cleaner that empties hidden folders would take `.librillo/` with it.
+- **KOReader settings vary:** metadata can live next to the book, in a central folder, or by hash. The plugin must read which one is used before moving.
+- **E-reader indexers:** the Kindle's own home screen indexes `/mnt/us/documents`, not `Books`, so it is not affected. A Kobo's library may re-index after moves.
+- **Large libraries:** the first scan of a few thousand books takes a while. It runs in the background with progress, and later scans only re-hash what changed.
 
-**Not in this milestone:** importing from the folders, series subfolders, other layouts (flat, by series), and mirroring anything other than the EPUB (covers, notes as files).
+**Not in this milestone:** an Inbox on the e-reader, series subfolders, other layouts (flat, by series), and mirroring anything other than EPUBs (covers, notes as files).
 
 ---
 
