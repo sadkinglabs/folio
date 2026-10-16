@@ -163,6 +163,51 @@ class LibraryPresentationTest {
     }
 
     @Test
+    fun aBookTheLibrilloPluginConfirmedIsOnTheEreader() {
+        val b = book()
+        fun device(transfers: List<Transfer>, paired: Boolean = false) =
+            presentLibrary(
+                    listOf(b),
+                    emptyList(),
+                    emptyList(),
+                    emptyList(),
+                    emptyList(),
+                    transfers,
+                    emptyList(),
+                    emptyList(),
+                    emptyList(),
+                    7,
+                    "ssh-device",
+                    paired,
+                    null,
+                )
+                .signals
+                .getValue(b.id)
+                .device
+        // Sent through the plugin only, with no SSH pairing at all.
+        assertEquals(
+            "On Kindle",
+            device(listOf(Transfer(b.id, "link:kindle", "/b.epub", b.currentHash, 5))),
+        )
+        // An old SSH copy does not hide that the plugin has the current file.
+        assertEquals(
+            "On Kindle",
+            device(
+                listOf(
+                    Transfer(b.id, "ssh-device", "/old.epub", "old", 9),
+                    Transfer(b.id, "link:kindle", "/b.epub", b.currentHash, 5),
+                ),
+                paired = true,
+            ),
+        )
+        // Only an older file anywhere: it needs updating.
+        assertEquals(
+            "Needs update",
+            device(listOf(Transfer(b.id, "link:kindle", "/b.epub", "old", 5))),
+        )
+    }
+
+    @Test
     fun catalogueRecordsDoNotBecomeTransferRuleInputs() {
         val wish = WishBook("record", "key", "Title", "[]")
         val shelf = Shelf("shelf", "Missing", "Missing on Kindle", "")

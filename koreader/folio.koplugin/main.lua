@@ -224,6 +224,26 @@ local function link_deps()
             return (call("GET", url, headers, nil, ltn12.sink.file(assert(io.open(path, "wb")))))
         end,
         exists = function(path) return lfs.attributes(path, "mode") == "file" end,
+        -- EPUBs in the folder and its subfolders (three levels), skipping KOReader's .sdr folders
+        -- and hidden ones; at most 5000, so a huge folder cannot stall the fetch.
+        list = function(folder)
+            local found = {}
+            local function walk(dir, depth)
+                if depth > 3 or #found >= 5000 then return end
+                local ok, iter, state = pcall(lfs.dir, dir)
+                if not ok then return end
+                for name in iter, state do
+                    if name:sub(1, 1) ~= "." and not name:match("%.sdr$") then
+                        local path = dir .. "/" .. name
+                        local mode = lfs.attributes(path, "mode")
+                        if mode == "directory" then walk(path, depth + 1)
+                        elseif mode == "file" and name:lower():match("%.epub$") then found[#found + 1] = path end
+                    end
+                end
+            end
+            walk(folder, 0)
+            return found
+        end,
         size = function(path) return lfs.attributes(path, "size") end,
         sha256 = sha256_file,
         rename = function(from, to) return os.rename(from, to) end,

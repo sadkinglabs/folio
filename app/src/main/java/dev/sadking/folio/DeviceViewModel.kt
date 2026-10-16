@@ -414,8 +414,11 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     val sendsThroughLink: Boolean
         get() = app.link.settings.enabled
 
-    private fun queueForLink(ids: Set<String>): String {
+    private suspend fun queueForLink(ids: Set<String>): String {
         require(ids.isNotEmpty()) { app.getString(R.string.msg_device_book_unavailable) }
+        // Sending again means: get it again. The plugin still finds a copy that is there and
+        // keeps it; only a book deleted from the e-reader is downloaded once more.
+        ids.forEach { app.database.library().forgetLinkDeliveries(it) }
         app.linkQueue.add(ids)
         return app.resources.getQuantityString(R.plurals.link_queued, ids.size, ids.size)
     }

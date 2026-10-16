@@ -122,8 +122,8 @@ assert(not pcall(Link.fetch, cfg, deps))
 -- Without Progress sync set up there is nothing to call.
 assert(not pcall(Link.fetch, { folder = "/books" }, deps))
 """)
-# The phone's record is checked, never trusted: a book it thinks was delivered is fetched again
-# when its file is gone, and found where it was saved when it is still there.
+# The phone's record is checked, never trusted: a book is found where it was saved, or anywhere
+# in the folder under another name; a book received before and deleted since is left deleted.
 lua.execute(r"""
 local function sha(c) return (string.format("%02x", c:byte()):rep(32)) end
 local files = { ["/old/place/Kept.epub"] = { content = "K", sha = sha("k") } }
@@ -156,16 +156,33 @@ local d = {
 }
 local cfg = { server = "http://phone:8765", username = "u", key = "k", device = "kindle", folder = "/books" }
 local result = Link.fetch(cfg, d)
-assert(result.already == 1 and result.fetched == 2, result.already .. " " .. result.fetched)
+assert(result.already == 1 and result.fetched == 1 and result.gone == 1,
+  result.already .. " " .. result.fetched .. " " .. result.gone)
 assert(acks.k == "/old/place/Kept.epub", "found where it was saved, not copied again")
-assert(files["/books/Stephen King - Salem's Lot.epub"], "a missing book is fetched again")
-assert(acks.g == "/books/Stephen King - Salem's Lot.epub", "the phone learns the new place")
+assert(not files["/books/Stephen King - Salem's Lot.epub"] and acks.g == nil,
+  "a book received before and deleted since is not fetched again")
 assert(files["/books/B - Hostile.epub"], "a hostile saved path is ignored, the book still arrives")
-assert(downloads == 2)
--- The message names each book and where it went.
+assert(downloads == 1)
+-- The message names each book and where it went, and says how to get a deleted one back.
 local text = Link.summary(result, false)
-assert(text:find("Saved to /books:", 1, true) and text:find("Salem's Lot", 1, true), text)
+assert(text:find("Saved to /books:", 1, true) and text:find("Hostile", 1, true), text)
 assert(text:find("Already on this e-reader:", 1, true) and text:find("/old/place/Kept.epub", 1, true), text)
+assert(text:find("No longer on this e-reader", 1, true) and text:find("Salem's Lot", 1, true)
+  and text:find("send it again", 1, true), text)
+-- A copy that arrived another way, under another name in a subfolder, is used, not duplicated.
+files = { ["/books/to_read/0b9e.epub"] = { content = "G", sha = sha("g") } }
+queue = { { id = "g", title = "Salem's Lot", filename = "Stephen King - Salem's Lot.epub", sha256 = sha("g"), size = 1 } }
+acks, downloads = {}, 0
+local listed = {}
+for k, v in pairs(d) do listed[k] = v end
+listed.list = function(folder)
+  local out = {}
+  for path in pairs(files) do if path:sub(1, #folder + 1) == folder .. "/" then out[#out + 1] = path end end
+  return out
+end
+local other = Link.fetch(cfg, listed)
+assert(other.already == 1 and downloads == 0, "matched by content, not by name")
+assert(acks.g == "/books/to_read/0b9e.epub" and not files["/books/Stephen King - Salem's Lot.epub"])
 -- An automatic fetch only speaks when something arrived or failed.
 assert(Link.summary({ books = { fetched = {}, already = { { title = "x" } }, failed = {} }, folder = "/b" }, true) == "")
 assert(Link.summary({ books = { fetched = {}, already = {}, failed = {} }, folder = "/b" }, false)
@@ -180,7 +197,7 @@ downloads = 0
 local again = Link.fetch(cfg, nosha)
 assert(again.already == 1 and downloads == 0 and not files["/books/A - Kept (2).epub"])
 """)
-print('Folio Link fetch: saved path checked, missing book fetched again, hostile path ignored, messages, no-SHA devices.')
+print('Folio Link fetch: saved path checked, deleted book left deleted, copy under another name used, hostile path ignored, messages, no-SHA devices.')
 
 # Discovery: only a phone that proves it knows the key is trusted.
 lua.execute(r"""

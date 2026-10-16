@@ -451,6 +451,10 @@ interface LibraryDao {
 
     @Query("DELETE FROM transfers WHERE bookId=:id") suspend fun deleteLocalTransfers(id: String)
 
+    /** Forgets that Librillo plugins received [id], so sending it again fetches it again. */
+    @Query("DELETE FROM transfers WHERE bookId=:id AND deviceId LIKE 'link:%'")
+    suspend fun forgetLinkDeliveries(id: String)
+
     @Query("DELETE FROM sync_journal WHERE bookId=:id") suspend fun deleteLocalJournal(id: String)
 
     @Query(

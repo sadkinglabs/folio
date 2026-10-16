@@ -32,7 +32,17 @@ fun presentLibrary(
     val fileIds = books.map { it.id }.toSet()
     val linked = wishes.filter { it.linkedBookId != null }.associateBy { it.linkedBookId }
     val cloud = observations.filter { it.accountId == accountId }.associateBy { it.hardcoverId }
-    val deviceTransfers = transfers.filter { it.deviceId == deviceId }.associateBy { it.bookId }
+    // A book is on the e-reader when it went there over SSH or the Librillo plugin confirmed it.
+    // The confirmation for the book's current file wins, then the most recent.
+    val currentHash = books.associate { it.id to it.currentHash }
+    val deviceTransfers =
+        transfers
+            .filter { it.deviceId == deviceId || it.deviceId.startsWith(LINK_DEVICE_PREFIX) }
+            .groupBy { it.bookId }
+            .mapValues { (bookId, sent) ->
+                sent.filter { it.hash == currentHash[bookId] }.maxByOrNull { it.completedAt }
+                    ?: sent.maxBy { it.completedAt }
+            }
     val latest =
         snapshots
             .filter { it.deviceId == deviceId }

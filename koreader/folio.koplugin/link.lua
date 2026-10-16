@@ -62,10 +62,12 @@ local function saved_path(book)
     end
 end
 
--- Returns { fetched, already, failed } counts, the books by outcome as { title, path } lists in
--- `books`, and the folder. Raises only when Librillo cannot be reached or speaks another version;
--- a failed book is skipped and fetched again next time. A book the phone thinks is here is fetched
--- again when its file is no longer where it was saved.
+-- Returns { fetched, already, gone, failed } counts, the books by outcome as { title, path } lists
+-- in `books`, and the folder. Raises only when Librillo cannot be reached or speaks another
+-- version; a failed book is skipped and fetched again next time.
+-- A book is matched by its content, under any name in the folder, so a copy that arrived another
+-- way is never saved twice. A book this e-reader already received and no longer has is not fetched
+-- again: it was deleted or moved on purpose. Sending it again from the phone clears that record.
 function Link.fetch(cfg, d)
     assert(cfg.username and cfg.key and cfg.device, "Log in to Progress sync first")
     local headers = Link.headers(cfg)
@@ -92,14 +94,24 @@ function Link.fetch(cfg, d)
     status, text = d.request("GET", Link.url(cfg.server, "/folio/v1/queue"), headers)
     assert(status == 200, "Librillo did not send the list of books")
     local queue = d.decode(text)
-    local result = { fetched = 0, already = 0, failed = 0, folder = cfg.folder,
-        books = { fetched = {}, already = {}, failed = {} } }
-    -- Same book: the same SHA-256, or the same size where this KOReader cannot hash files.
+    local result = { fetched = 0, already = 0, gone = 0, failed = 0, folder = cfg.folder,
+        books = { fetched = {}, already = {}, gone = {}, failed = {} } }
+    -- Same book: the same size, then the same SHA-256 where this KOReader can hash files.
     local function same(path, book)
         if not d.exists(path) then return false end
+        if book.size ~= nil and d.size(path) ~= book.size then return false end
         local hash = d.sha256(path)
         if hash then return hash == book.sha256 end
-        return book.size ~= nil and d.size(path) == book.size
+        return book.size ~= nil
+    end
+    -- The same content anywhere in the folder, whatever its name.
+    local listing
+    local function find_same(book)
+        if not d.list then return nil end
+        listing = listing or d.list(cfg.folder) or {}
+        for _, path in ipairs(listing) do
+            if same(path, book) then return path end
+        end
     end
     for _, book in ipairs(queue and queue.books or {}) do
         local title = type(book) == "table" and type(book.title) == "string" and book.title
@@ -109,10 +121,14 @@ function Link.fetch(cfg, d)
             assert(valid(book), "Invalid book entry")
             target = cfg.folder .. "/" .. book.filename
             local earlier = saved_path(book)
-            if earlier and same(earlier, book) then
-                outcome, target = "already", earlier
-            elseif same(target, book) then
-                outcome = "already"
+            local found = (earlier and same(earlier, book) and earlier)
+                or (same(target, book) and target) or find_same(book)
+            if found then
+                outcome, target = "already", found
+            elseif earlier then
+                -- Received before and gone now: leave it gone, and say so.
+                outcome = "gone"
+                return
             else
                 outcome = "fetched"
                 -- Never replace a file that is already there; save beside it instead.
@@ -133,7 +149,7 @@ function Link.fetch(cfg, d)
         end)
         if ok then
             result[outcome] = result[outcome] + 1
-            table.insert(result.books[outcome], { title = title, path = target })
+            table.insert(result.books[outcome], { title = title, path = outcome ~= "gone" and target or nil })
         else
             result.failed = result.failed + 1
             table.insert(result.books.failed, { title = title })
@@ -162,6 +178,10 @@ function Link.summary(result, automatic)
     if automatic then return table.concat(lines, "\n\n") end
     if #result.books.already > 0 then
         lines[#lines + 1] = "Already on this e-reader:\n" .. list(result.books.already, true)
+    end
+    if #(result.books.gone or {}) > 0 then
+        lines[#lines + 1] = "No longer on this e-reader, so not fetched again:\n" .. list(result.books.gone)
+            .. "\nTo get one back, send it again from Librillo on your phone."
     end
     if #lines == 0 then
         return "Nothing to get. Send a book from Librillo on your phone first."
