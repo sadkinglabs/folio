@@ -158,7 +158,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             repo.manageBatch(ids, shelf, add, status)
             if (status != null) finishedHere(ids, status, before)
             withContext(Dispatchers.Main) { onDone() }
-            msg(R.string.msg_library_selected_updated)
+            val unmatched = if (status != null) unmatchedOnHardcover(ids) else 0
+            if (unmatched == 0) msg(R.string.msg_library_selected_updated)
+            else
+                app.resources.getQuantityString(
+                    R.plurals.msg_library_selected_updated_unmatched,
+                    unmatched,
+                    unmatched,
+                )
         }
 
     fun detach(book: Book, done: () -> Unit) =
@@ -519,6 +526,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * How many of [ids] Hardcover will not hear about because they are not matched to it. Zero when
+     * no Hardcover account is connected: then nothing goes there anyway.
+     */
+    private suspend fun unmatchedOnHardcover(ids: Set<String>): Int {
+        if (!dev.sadking.folio.device.HardcoverSettings(app).connected) return 0
+        val wishes = dao.allWishes()
+        return ids.count { id ->
+            wishes.none { (it.linkedBookId == id || it.id == id) && it.hardcoverId != null }
+        }
+    }
+
     /** Each id's status now: a book's own, or a catalogue entry's book's. */
     private suspend fun statusesOf(ids: Set<String>): Map<String, String> {
         val books = dao.allBooks().associateBy { it.id }
@@ -534,7 +553,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             val before = statusesOf(setOf(book.id))
             repo.manageBatch(setOf(book.id), status = status)
             finishedHere(setOf(book.id), status, before)
-            msg(R.string.msg_library_status_updated)
+            if (unmatchedOnHardcover(setOf(book.id)) == 0) msg(R.string.msg_library_status_updated)
+            else msg(R.string.msg_library_status_updated_unmatched)
         }
 
     fun createShelf(

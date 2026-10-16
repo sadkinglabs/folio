@@ -22,6 +22,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -190,6 +191,7 @@ class HardcoverOutbox(context: Context) {
 
     companion object {
         const val WORK = "hardcover-outbox"
+        internal const val FINISH_PACE_MS = 1_000L
     }
 }
 
@@ -283,6 +285,8 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                     outbox.finishDone(id, finishedOn)
                     continue
                 }
+                // About one book a second keeps a long list under Hardcover's request limit.
+                delay(HardcoverOutbox.FINISH_PACE_MS)
                 try {
                     client.markRead(token, hardcoverId, finishedOn, user)
                     if (user != null)

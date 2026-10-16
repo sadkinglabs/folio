@@ -35,8 +35,9 @@
     <!-- TalkBack and the Send tile for 1.5 s after a send is queued. -->
     <string name="rd_strip_phone">Phone</string>
     <string name="rd_hardcover_page">Page %1$d</string>
-    <string name="rd_hardcover_linked">Linked</string>
-    <string name="rd_hardcover_not_linked">Not linked</string>
+    <string name="rd_hardcover_linked">Matched</string>
+    <string name="rd_hardcover_not_linked">Not matched</string>
+    <string name="rd_hardcover_not_linked_detail">Tap Hardcover</string>
     <string name="rd_progress_ahead">%1$s is ahead at %2$d%%</string>
     <string name="rd_status_on_phone">Status on this phone</string>
     <string name="rd_add_to_list">Add to list</string>

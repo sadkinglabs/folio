@@ -60,6 +60,11 @@
     <string name="msg_library_changes_saved">Changes saved. Your original EPUB is kept</string>
     <string name="msg_library_updating_status">Updating the reading status…</string>
     <string name="msg_library_status_updated">Reading status updated</string>
+    <string name="msg_library_status_updated_unmatched">Reading status updated. This book isn\'t matched to Hardcover, so Hardcover won\'t see it. Tap Hardcover on its page to match it.</string>
+    <plurals name="msg_library_selected_updated_unmatched">
+        <item quantity="one">Selected books updated. %d isn\'t matched to Hardcover, so Hardcover won\'t see it.</item>
+        <item quantity="other">Selected books updated. %d aren\'t matched to Hardcover, so Hardcover won\'t see them.</item>
+    </plurals>
     <string name="msg_library_creating_list">Creating the list…</string>
     <string name="msg_library_list_created">List created</string>
     <string name="msg_library_updating_lists">Updating lists…</string>

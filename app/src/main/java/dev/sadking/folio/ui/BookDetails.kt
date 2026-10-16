@@ -606,7 +606,8 @@ private fun statusTiles(
                 hardcoverLinked -> stringResource(R.string.rd_hardcover_linked)
                 else -> stringResource(R.string.rd_hardcover_not_linked)
             },
-            null,
+            // Until it is matched, Hardcover hears nothing about this book: say so, and how.
+            if (hardcoverLinked) null else stringResource(R.string.rd_hardcover_not_linked_detail),
             STATUS_TILE_HARDCOVER_TAG,
         )
     return tiles
