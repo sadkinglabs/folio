@@ -1,6 +1,7 @@
 package dev.sadking.folio.link
 
 import java.io.File
+import java.io.InputStream
 import java.net.URLDecoder
 import java.time.Instant
 import java.util.Base64
@@ -47,12 +48,18 @@ class LinkRoutes(
     private val account: () -> KosyncAccount?,
     private val labels: () -> LinkLabels = { LinkLabels() },
     private val now: () -> Long = { System.currentTimeMillis() },
+    sync: SyncLibrary? = null,
 ) {
     private val failures = HashMap<String, ArrayDeque<Long>>()
+    private val syncRoutes = sync?.let { SyncRoutes(it, now) }
 
-    fun handle(request: KosyncRequest): LinkResponse {
+    /** [upload] is the raw body of `PUT /folio/v2/upload`, which the server streams. */
+    fun handle(request: KosyncRequest, upload: InputStream? = null): LinkResponse {
         val path = request.path.substringBefore('?').trimEnd('/').ifEmpty { "/" }
-        if (library == null || !(path.startsWith("/opds") || path.startsWith("/folio/")))
+        val v2 = path.startsWith("/folio/v2/")
+        val syncRoutes = syncRoutes
+        if (v2 && syncRoutes == null) return notFound()
+        if (!v2 && (library == null || !(path.startsWith("/opds") || path.startsWith("/folio/"))))
             return kosync.handle(request).let { LinkResponse.Text(it.status, JSON, it.body) }
         if (throttled(request.remote))
             return LinkResponse.Text(429, JSON, """{"code":2001,"message":"Unauthorized"}""")
@@ -66,7 +73,11 @@ class LinkRoutes(
             )
         }
         synchronized(failures) { failures.remove(request.remote) }
+        val library = library
         return when {
+            syncRoutes != null && v2 ->
+                syncRoutes.handle(request, path.removePrefix("/folio/v2"), upload)
+            library == null -> notFound()
             path.startsWith("/opds") -> opds(request.method, path, library)
             path.startsWith("/folio/v1/") ->
                 plugin(request, path.removePrefix("/folio/v1"), library)
