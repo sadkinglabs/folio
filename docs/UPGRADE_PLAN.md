@@ -534,6 +534,59 @@ Your books live in one visible folder on the phone, `Books/Author/Title.epub`. T
 
 **Not in this milestone:** an Inbox on the e-reader, series subfolders, other layouts (flat, by series), and mirroring anything other than EPUBs (covers, notes as files).
 
+### M9: Seamless sync between phone and e-reader
+Decided with the owner on 2026-10-16, in a question-by-question session. This replaces M8's slices 3–8 and M4's send queue. M8 slices 1–2 (path rule, Books folder, moving the library) stay as the base.
+
+**What the owner gets**
+- The whole Librillo library is on the Kindle, and the Kindle's books are in Librillo. Same tree on both sides:
+  - phone: `Books/Author/Title.ext` (the only copy, with `Books/Inbox`);
+  - Kindle: `<KOReader home>/Librillo/Author/Title.ext`.
+- **Books already on the Kindle** anywhere under KOReader's home folder are brought into Librillo once and moved into `Librillo/Author/Title`, with their `.sdr` (notes, progress), KOReader history and collections moved with them.
+- **Deleting** on either side deletes on the other. A book deleted on the Kindle goes to the phone's Recently removed, and restoring it sends it back. Purging is the only permanent delete.
+- **Formats:** EPUB, PDF, CBZ and CBR, readable on the phone and synced. MOBI, FB2 and TXT are out. Amazon DRM formats (AZW/KFX) can't be opened.
+- **Kept in sync:**
+  - reading position: asks "Continue from <device> at N%?" on either side (KOReader: Progress sync with "sync to a newer state" set to Prompt);
+  - highlights and notes, merged so nothing is ever lost;
+  - finished and reading status;
+  - edits to title, author or cover (renames on the Kindle keep the `.sdr`);
+  - Librillo lists ⇄ KOReader collections, both ways.
+- **Conflicts** (both sides changed the same status or metadata since the last sync) are asked about on whichever device is in use at the next sync. Positions use Progress sync's own prompt.
+- **Hardcover:** progress moves on its own (existing outbox); finishing asks first.
+- **When it syncs:** automatically whenever the Kindle and phone share a Wi‑Fi network (home or the phone's hotspot), while Librillo is open and for 30 minutes after it closes, plus a Sync button on each side. The Kindle syncs when its Wi‑Fi connects, when a book opens or closes, and on "Sync now". Nothing goes through the internet.
+- **Phone UI:**
+  - a sync status line at the top of the Library ("Kindle synced 2 min ago", with a Sync button);
+  - details on the Device tab;
+  - a "Needs your decision" sheet when there are conflicts.
+- **Kindle UI:** the Librillo menu has Sync now, Sync automatically and Library folder, plus a conflicts dialog when needed.
+- **Setup:** once, from the phone over Wi‑Fi. The owner turns on KOReader's SSH server; the phone:
+  1. installs the plugin;
+  2. writes Progress sync settings to `settings/kosync.lua` (and the old `G_reader_settings` key), with auto sync on;
+  3. chooses the Kindle library folder;
+  4. runs the first sync;
+  5. says to turn SSH off.
+- **Not supported:** no space management (the owner's library fits); no sync over the internet.
+
+**How it works**
+- **Sync session, plugin-driven** (the phone can't reach the Kindle reliably; the Kindle can always reach the phone's Link server):
+  1. **Hello:** discovery if needed, with a multicast lock on the phone.
+  2. **Manifest up:** the Kindle sends what it has:
+     - every book file under its home folder: path, size, mtime, and SHA-256 (cached by path, size and mtime in the plugin's own settings, so files aren't re-hashed);
+     - for each book, its KOReader metadata: status, percent, annotations, collections.
+  3. **Plan:** the phone compares the Kindle manifest, its own library and the last-synced baseline (a 3-way compare). Pure Kotlin in `core`, unit-tested. It produces actions for both sides plus conflicts.
+  4. **Kindle actions down:** download, move with `.sdr`, delete, set status, add annotations, set collections. Conflicts come down as questions. The Kindle executes, uploads any files the phone needs, and reports each result.
+  5. **The phone applies its side** and records the new baseline.
+- **Baseline** (what both sides agreed at the last sync) lives in a new Room table, schema 9, an additive migration with a `MigrationTestHelper` test. One row per book per e-reader: path, hash, status, status time, annotation ids, collections. Without a baseline, a deletion can't be told apart from "never had it"; with one, a file missing from one side since the last sync is a deletion.
+- **Positions** stay on kosync. Librillo's reader already publishes and offers positions.
+- **Books** gain a `format` column (epub, pdf, cbz, cbr), schema 9. Hashing and the path rule are format-agnostic. Readium opens PDF (pdfium adapter) and CBZ (image publication); CBR needs a RAR reader, and its licence is checked before adding it.
+- **Annotations:** KOReader stores them in `.sdr/metadata.<ext>.lua` (`annotations`: `pos0`/`pos1` xpointers or page numbers, `text`, `note`, `datetime`, `chapter`). The phone stores `BookAnnotation` rows with a device id. Merging is by identity (`device` + `datetime` + `pos0`), adding whatever is missing on each side, never deleting. Showing them in the phone reader converts xpointers through the existing resolver.
+
+**Build order** (the owner asked for everything at once; built in this order, with each stage compiled, tested and pushed before the next):
+1. **Schema 9 and formats:** `format`, the baseline table, import of PDF/CBZ/CBR, the reader opening them.
+2. **Phone folder mirror** (from M8): scan, Inbox, edits, removal, a single owner of book files.
+3. **Sync protocol v2:** server routes, `core` planner, plugin v2, setup over SSH (with kosync settings).
+4. **Metadata sync:** status, annotations, collections, edits, conflicts on both sides, the Hardcover finish prompt.
+5. **UI:** Library status line, Device tab, the conflicts sheet, Kindle menu, plain copy throughout. The old send queue and SSH send are removed.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)
