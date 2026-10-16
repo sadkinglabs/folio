@@ -83,6 +83,8 @@ class ScreenshotTest {
 
     @Test fun phoneFolder() = shoot("settings-folder") { PhoneFolderPreview() }
 
+    @Test fun booksFolder() = shoot("settings-books-folder") { BooksFolderPreview() }
+
     @Test fun hardcoverAccount() = shoot("hardcover-account") { HardcoverAccountPreview() }
 
     @Test fun bar() = shoot("bar") { BarPreview() }

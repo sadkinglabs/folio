@@ -30,6 +30,7 @@ class TouchTargetTest {
         listOf(
             "BackupPreview" to { BackupPreview() },
             "BarPreview" to { BarPreview() },
+            "BooksFolderPreview" to { BooksFolderPreview() },
             "DetailsPreview" to { DetailsPreview() },
             "DeviceFirstRunPreview" to { DeviceFirstRunPreview() },
             "DeviceOffPreview" to { DeviceOffPreview() },

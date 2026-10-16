@@ -161,4 +161,15 @@
     <string name="reading_time_get">Get from e-reader</string>
     <string name="reading_time_exported">Exported %1$s</string>
     <string name="reading_time_minutes">%1$d min</string>
+    <!-- The Books folder (M8): Author/Title.epub, the only copy of each book. -->
+    <string name="settings_books_folder">Books folder</string>
+    <string name="settings_books_folder_value">%1$s · Not in use yet</string>
+    <string name="settings_books_folder_value_access">%1$s · Needs access</string>
+    <string name="books_folder_phone_storage">Phone storage</string>
+    <string name="books_folder_body">Librillo will keep your books here, by author: Author/Title.epub. It will be the only copy, so keep cleaning and sync apps away from it. Nothing is moved here yet; that is the next step.</string>
+    <string name="books_folder_access_body">Android needs to give Librillo All files access to read and write this folder. Librillo uses it only for the Books folder.</string>
+    <string name="books_folder_allow">Allow access</string>
+    <string name="books_folder_allowed">Access allowed</string>
+    <string name="books_folder_change">Change location</string>
+    <string name="books_folder_not_phone">Choose a folder in the phone\'s own storage, not an SD card or the top level.</string>
 </resources>

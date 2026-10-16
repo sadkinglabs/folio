@@ -512,6 +512,12 @@ Your books live in one visible folder on the phone, `Books/Author/Title.epub`. T
 - **E-reader indexers:** the Kindle's own home screen indexes `/mnt/us/documents`, not `Books`, so it is not affected. A Kobo's library may re-index after moves.
 - **Large libraries:** the first scan of a few thousand books takes a while. It runs in the background with progress, and later scans only re-hash what changed.
 
+**M8 status (2026-10-16):**
+- **Slice 1 built:**
+  - `BookPaths` in `core` gives `Author/Title.epub`: FAT-safe names, a 120-character and 240-byte limit per part, case-insensitive clashes, reserved Windows names, and composed and decomposed accents treated as one name. Tested on the JVM.
+  - Settings → Library → Books folder shows where the folder will be (Phone storage/Books by default). It asks for All files access with a plain reason, and lets you choose another folder in phone storage. Nothing is moved there yet.
+- **Not verified on a device:** the All files access page and the folder picker.
+
 **Not in this milestone:** an Inbox on the e-reader, series subfolders, other layouts (flat, by series), and mirroring anything other than EPUBs (covers, notes as files).
 
 ---

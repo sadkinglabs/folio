@@ -5,6 +5,8 @@
 
 package dev.sadking.folio.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -12,12 +14,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cable
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.FolderSpecial
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
@@ -42,9 +46,11 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
+import dev.sadking.folio.data.BooksFolder
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.LinkStatus
 import dev.sadking.folio.data.linkStatus
@@ -73,6 +79,8 @@ internal const val SETTINGS_BACKUP_TAG = "settings-backup"
 internal const val SETTINGS_IMPORTS_TAG = "settings-imports"
 internal const val SETTINGS_SSH_TAG = "settings-ssh"
 internal const val SETTINGS_FOLDER_TAG = "settings-folder"
+internal const val SETTINGS_BOOKS_FOLDER_TAG = "settings-books-folder"
+internal const val BOOKS_FOLDER_ALLOW_TAG = "books-folder-allow"
 internal const val SETTINGS_PLUGIN_TAG = "settings-plugin"
 internal const val TEXT_SHEET_TAG = "settings-text-sheet"
 internal const val BACKUP_EXPORT_TAG = "settings-backup-export"
@@ -248,6 +256,8 @@ internal fun SettingsScreen(
     var showReadingTime by rememberSaveable { mutableStateOf(false) }
     var showBackup by rememberSaveable { mutableStateOf(false) }
     var showFolder by rememberSaveable { mutableStateOf(false) }
+    var showBooksFolder by rememberSaveable { mutableStateOf(false) }
+    val booksFolder = rememberBooksFolder()
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
@@ -365,6 +375,17 @@ internal fun SettingsScreen(
         }
         SettingsGroup(stringResource(R.string.settings_library)) {
             SettingsRow(
+                Icons.Outlined.FolderSpecial,
+                stringResource(R.string.settings_books_folder),
+                stringResource(
+                    if (booksFolder.hasAccess) R.string.settings_books_folder_value
+                    else R.string.settings_books_folder_value_access,
+                    booksFolder.shown,
+                ),
+                Modifier.testTag(SETTINGS_BOOKS_FOLDER_TAG),
+                onClick = { showBooksFolder = true },
+            )
+            SettingsRow(
                 Icons.Outlined.Storage,
                 stringResource(R.string.settings_storage),
                 pluralStringResource(R.plurals.settings_storage_entries, recordCount, recordCount) +
@@ -458,6 +479,16 @@ internal fun SettingsScreen(
             busy = busy,
         ) {
             showBackup = false
+        }
+    if (showBooksFolder)
+        SettingsSheet({ showBooksFolder = false }) {
+            BooksFolderContent(
+                booksFolder.shown,
+                booksFolder.hasAccess,
+                onAllow = booksFolder.allow,
+                onChange = booksFolder.change,
+                refused = booksFolder.refused,
+            )
         }
     if (showFolder)
         PhoneFolderSheet(
@@ -786,5 +817,110 @@ internal fun PhoneFolderContent(
                     Text(stringResource(R.string.settings_folder_disconnect))
                 }
             }
+    }
+}
+
+/** The Books folder as Settings shows it, with access checked again whenever Librillo returns. */
+internal class BooksFolderState(
+    val shown: String,
+    val hasAccess: Boolean,
+    val refused: Boolean,
+    val allow: () -> Unit,
+    val change: () -> Unit,
+)
+
+@Composable
+internal fun rememberBooksFolder(): BooksFolderState {
+    val context = LocalContext.current
+    val folder = remember { BooksFolder(context) }
+    val phoneStorage = stringResource(R.string.books_folder_phone_storage)
+    var location by remember { mutableStateOf(folder.location) }
+    var hasAccess by remember { mutableStateOf(folder.hasAccess) }
+    var refused by remember { mutableStateOf(false) }
+    // Access is granted on a system page; read it again when the user comes back.
+    LifecycleResumeEffect(folder) {
+        hasAccess = folder.hasAccess
+        onPauseOrDispose {}
+    }
+    val picker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+            if (tree == null) return@rememberLauncherForActivityResult
+            refused = !folder.choose(tree)
+            location = folder.location
+        }
+    return BooksFolderState(
+        shown = BooksFolder.shown(location, phoneStorage),
+        hasAccess = hasAccess,
+        refused = refused,
+        allow = {
+            runCatching { context.startActivity(BooksFolder.accessIntent(context)) }
+        },
+        change = { picker.launch(null) },
+    )
+}
+
+/**
+ * The Books folder: where it is, Android's All files access with a plain reason, and changing the
+ * location. Nothing moves into it yet; that is the next step of M8.
+ */
+@Composable
+internal fun BooksFolderContent(
+    location: String,
+    hasAccess: Boolean,
+    onAllow: () -> Unit,
+    onChange: () -> Unit,
+    refused: Boolean = false,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
+    ) {
+        SheetHeading(stringResource(R.string.settings_books_folder), location)
+        Text(
+            stringResource(R.string.books_folder_body),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = FolioSpace.section),
+        )
+        Text(
+            stringResource(R.string.books_folder_access_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = FolioSpace.section),
+        )
+        if (hasAccess)
+            Row(
+                Modifier.padding(horizontal = FolioSpace.section),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            ) {
+                Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    stringResource(R.string.books_folder_allowed),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+        else
+            Button(
+                onClick = onAllow,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = FolioSpace.section)
+                        .testTag(BOOKS_FOLDER_ALLOW_TAG),
+            ) {
+                Text(stringResource(R.string.books_folder_allow))
+            }
+        OutlinedButton(
+            onClick = onChange,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section),
+        ) {
+            Text(stringResource(R.string.books_folder_change))
+        }
+        if (refused)
+            Text(
+                stringResource(R.string.books_folder_not_phone),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = FolioSpace.section),
+            )
     }
 }
