@@ -629,6 +629,7 @@ internal fun wishJson(wish: WishBook): JSONObject =
         .put("linkedBookId", wish.linkedBookId ?: JSONObject.NULL)
         .put("details", JSONObject(wish.details))
         .put("status", wish.status)
+        .put("statusAt", wish.statusAt)
 
 internal fun parseWish(value: JSONObject): WishBook {
     val id = value.getString("id").also { UUID.fromString(it) }
@@ -662,5 +663,7 @@ internal fun parseWish(value: JSONObject): WishBook {
             .also { if (it.length() > 0) parseMetadata(it) }
             .toString(),
         value.optString("status", "").also { require(it.isBlank() || it in phoneStatuses) },
+        // Backups from before schema 11 have no status time: unknown.
+        value.optLong("statusAt", 0).coerceAtLeast(0),
     )
 }

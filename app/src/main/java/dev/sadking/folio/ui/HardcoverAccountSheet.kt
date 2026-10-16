@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
 import dev.sadking.folio.R
+import dev.sadking.folio.sync.HardcoverSync
 
 internal const val HARDCOVER_ACCOUNT_TAG = "hardcover-account"
 internal const val HARDCOVER_TOKEN_TAG = "hardcover-token"
@@ -60,6 +61,8 @@ internal fun HardcoverAccountSheet(
             },
             onConnect = { token ->
                 model.connect(token) {
+                    // A new account: match the library and sync statuses with it now.
+                    HardcoverSync.get(context.applicationContext).syncNow()
                     onConnected()
                     onDismiss()
                 }

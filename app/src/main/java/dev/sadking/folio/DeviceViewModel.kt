@@ -8,8 +8,12 @@ import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
 import dev.sadking.folio.sync.EreaderSync
-import dev.sadking.folio.sync.FinishPrompt
-import dev.sadking.folio.sync.HardcoverFinishPrompts
+import dev.sadking.folio.sync.HardcoverItemState
+import dev.sadking.folio.sync.HardcoverSync
+import dev.sadking.folio.sync.HardcoverSyncStatus
+import dev.sadking.folio.sync.MatchCandidateView
+import dev.sadking.folio.sync.MatchCheck
+import dev.sadking.folio.sync.StatusQuestion
 import dev.sadking.folio.sync.SyncState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -25,17 +29,17 @@ data class SetupProgress(val stage: Stage = Stage.IDLE, val message: String = ""
 }
 
 /**
- * The e-reader as the Device tab and the Library see it: sync with each e-reader (its state, the
- * Sync button and the answers to its questions), the Hardcover finish prompts, and setting the
- * e-reader up over SSH. SSH is only used to install the plugin; books, notes and statuses go both
- * ways through sync.
+ * Sync as the Device tab, the Library and Settings see it: sync with each e-reader (its state, the
+ * Sync button and the answers to its questions), sync with Hardcover (its status line, the matches
+ * and status questions waiting for the owner), and setting the e-reader up over SSH. SSH is only
+ * used to install the plugin; books, notes and statuses go both ways through sync.
  */
 class DeviceViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as FolioApplication
     private val runner = app.operations
     private val pairedFolder = PairedFolder(app)
     private val syncState = SyncState.of(app)
-    private val finishPrompts = HardcoverFinishPrompts(app)
+    private val hardcover = HardcoverSync.get(app)
     val phoneFolder = MutableStateFlow(pairedFolder.label)
 
     /** Every e-reader that has synced with this phone, most recent first. */
@@ -53,8 +57,23 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     /** When Sync was last tapped; 0 if never. */
     val syncRequestedAt: StateFlow<Long> = syncState.syncRequestedAt
 
-    /** "You finished … Mark it as read on Hardcover?", oldest first. */
-    val prompts: StateFlow<List<FinishPrompt>> = finishPrompts.prompts
+    /** Hardcover sync for Settings' switch and status line. */
+    val hardcoverStatus: StateFlow<HardcoverSyncStatus> = hardcover.status
+
+    /** "Check these matches": items Librillo could not match to Hardcover for sure. */
+    val hardcoverChecks: StateFlow<List<MatchCheck>> =
+        hardcover.checks.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Books whose status changed on both Librillo and Hardcover since they last agreed. */
+    val hardcoverQuestions: StateFlow<List<StatusQuestion>> =
+        hardcover.questions.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Book and catalogue entry ids to what their Hardcover tile says. */
+    val hardcoverItemStates: StateFlow<Map<String, HardcoverItemState>> =
+        hardcover.itemStates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** A Hardcover action that could not be done, in a sentence for the snackbar. */
+    val hardcoverNotices = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
     /** When the plugin was last installed from this phone; 0 if never. */
     val pluginInstalledAt = MutableStateFlow(PluginSetup.installedAt(app))
@@ -79,8 +98,51 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         if (syncState.answer(ereaderId, questionId, option)) app.link.syncNow()
     }
 
-    /** The owner answered a Hardcover finish prompt (Not now, or Hardcover took the finish). */
-    fun dismissPrompt(bookId: String) = finishPrompts.dismiss(bookId)
+    /** "Sync with Hardcover". Turning it on starts a sync. */
+    fun setHardcoverSync(on: Boolean) {
+        hardcover.enabled = on
+    }
+
+    /** Settings' Sync now, and after connecting an account. */
+    fun syncHardcoverNow() = hardcover.syncNow()
+
+    /** "This one" in Check these matches. A refusal is said in the snackbar. */
+    fun pickMatch(check: MatchCheck, candidate: MatchCandidateView) = hardcoverAction {
+        hardcover.pick(check.itemId, candidate)
+    }
+
+    /** "Not on Hardcover": never matched or asked again. */
+    fun notOnHardcover(check: MatchCheck) = hardcoverAction {
+        hardcover.notOnHardcover(check.itemId)
+    }
+
+    /**
+     * A status question answered: [useHardcover] true takes Hardcover's status, false Librillo's.
+     */
+    fun answerHardcover(question: StatusQuestion, useHardcover: Boolean) = hardcoverAction {
+        hardcover.answer(question, useHardcover)
+    }
+
+    /** "Use Hardcover for all" or "Use Librillo for all". */
+    fun answerAllHardcover(useHardcover: Boolean) = hardcoverAction {
+        hardcover.answerAll(useHardcover)
+    }
+
+    /**
+     * Runs [work] off the main thread. An IllegalArgumentException carries a sentence for the owner
+     * (HardcoverSync's contract); anything else gets a fixed one, so no book content is shown.
+     */
+    private fun hardcoverAction(work: suspend () -> Unit) = viewModelScope.launch {
+        try {
+            withContext(Dispatchers.IO) { work() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IllegalArgumentException) {
+            hardcoverNotices.tryEmit(e.message ?: app.getString(R.string.hc10_action_failed))
+        } catch (e: Exception) {
+            hardcoverNotices.tryEmit(app.getString(R.string.hc10_action_failed))
+        }
+    }
 
     fun choosePhoneFolder(uri: Uri) =
         run(app.getString(R.string.msg_device_connecting_folder)) {

@@ -5,6 +5,7 @@ import dev.sadking.folio.core.Metadata
 import java.net.HttpURLConnection
 import java.net.URI
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import org.json.*
 
 data class HardcoverMatch(
@@ -12,13 +13,19 @@ data class HardcoverMatch(
     val title: String,
     val authors: List<String>,
     val slug: String,
+    val releaseYear: Int? = null,
+    /** Hardcover's cover image (`cached_image.url`), or null. */
+    val coverUrl: String? = null,
 )
 
 data class HardcoverAccount(val id: Int, val username: String, val privacy: Int)
 
-/** Personal-account GraphQL client. No token-bearing redirects and no response text in errors. */
-/** A Hardcover HTTP failure. Still an [IllegalArgumentException], as callers already expect. */
-class HardcoverHttpException(val code: Int, message: String) : IllegalArgumentException(message) {
+/**
+ * A Hardcover HTTP failure. Still an [IllegalArgumentException], as callers already expect.
+ * [retryAfterMs]: for 429, how long every request now waits.
+ */
+class HardcoverHttpException(val code: Int, message: String, val retryAfterMs: Long? = null) :
+    IllegalArgumentException(message) {
     /** Worth retrying later: rate limits and server errors. */
     val transient: Boolean
         get() = code == 429 || code >= 500
@@ -27,10 +34,15 @@ class HardcoverHttpException(val code: Int, message: String) : IllegalArgumentEx
         get() = code == 401 || code == 403
 }
 
-class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)? = null) {
-    private var lastRequest = 0L
+/** An edition carrying one of the asked ISBNs, and its book (the canonical book when set). */
+data class HardcoverIsbnHit(val isbn13: String?, val isbn10: String?, val book: HardcoverMatch)
 
-    @Synchronized
+/**
+ * Personal-account GraphQL client. No token-bearing redirects and no response text in errors. Every
+ * request in the process goes through one gate ([Companion]): one at a time, at least [SPACING_MS]
+ * apart, and none while Hardcover asked to slow down.
+ */
+class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)? = null) {
     private fun query(
         token: String,
         document: String,
@@ -41,45 +53,46 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
         val body = JSONObject().put("query", document).put("variables", variables)
         val result =
-            fixture?.invoke(token, body)
-                ?: run {
-                    val wait = 1100 - (System.currentTimeMillis() - lastRequest)
-                    if (wait > 0) Thread.sleep(wait)
-                    lastRequest = System.currentTimeMillis()
-                    val connection =
-                        URI("https://api.hardcover.app/v1/graphql").toURL().openConnection()
-                            as HttpURLConnection
-                    connection.requestMethod = "POST"
-                    connection.connectTimeout = 15000
-                    connection.readTimeout = 20000
-                    connection.instanceFollowRedirects = false
-                    connection.doOutput = true
-                    connection.setRequestProperty("Content-Type", "application/json")
-                    connection.setRequestProperty("Authorization", "Bearer $token")
-                    try {
-                        connection.outputStream.use { it.write(body.toString().toByteArray()) }
-                        val code = connection.responseCode
-                        if (code != 200)
-                            throw HardcoverHttpException(
-                                code,
-                                when (code) {
-                                    401,
-                                    403 -> "Hardcover token was rejected; reconnect your account"
-                                    429 -> "Hardcover is busy; retry later"
-                                    else -> "Hardcover request failed; check internet and retry"
-                                },
-                            )
-                        val bytes = java.io.ByteArrayOutputStream()
-                        connection.inputStream.use { Epub.copyBounded(it, bytes, 2L * 1024 * 1024) }
-                        JSONObject(bytes.toString("UTF-8"))
-                    } finally {
-                        connection.disconnect()
-                    }
-                }
+            paced(live = fixture == null) { fixture?.invoke(token, body) ?: post(token, body) }
         require(result.optJSONArray("errors")?.length()?.let { it > 0 } != true) {
             "Hardcover could not complete this operation; no success was recorded"
         }
         return result.optJSONObject("data") ?: error("Invalid Hardcover response")
+    }
+
+    private fun post(token: String, body: JSONObject): JSONObject {
+        val connection =
+            URI("https://api.hardcover.app/v1/graphql").toURL().openConnection()
+                as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 15000
+        // Hardcover stops a query after 30 seconds.
+        connection.readTimeout = 35000
+        connection.instanceFollowRedirects = false
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Authorization", "Bearer $token")
+        try {
+            connection.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = connection.responseCode
+            if (code != 200)
+                throw HardcoverHttpException(
+                    code,
+                    when (code) {
+                        401,
+                        403 -> "Hardcover token was rejected; reconnect your account"
+                        429 -> BUSY
+                        else -> "Hardcover request failed; check internet and retry"
+                    },
+                    if (code == 429) retryAfterMs(connection.getHeaderField("Retry-After"))
+                    else null,
+                )
+            val bytes = java.io.ByteArrayOutputStream()
+            connection.inputStream.use { Epub.copyBounded(it, bytes, 2L * 1024 * 1024) }
+            return JSONObject(bytes.toString("UTF-8"))
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun account(token: String): HardcoverAccount {
@@ -114,31 +127,49 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         val books =
             query(
                     token,
-                    "query(\$ids:[Int!]!) { books(where:{id:{_in:\$ids}}) { id title slug cached_contributors } }",
+                    "query(\$ids:[Int!]!) { books(where:{id:{_in:\$ids}}) { id title slug release_year cached_contributors cached_image } }",
                     JSONObject().put("ids", JSONArray(positive)),
                 )
                 .getJSONArray("books")
         return books
             .objects()
-            .map { o ->
-                val contributors = o.optJSONArray("cached_contributors") ?: JSONArray()
-                HardcoverMatch(
-                    o.getInt("id"),
-                    o.getString("title"),
-                    contributors
-                        .objects()
-                        .mapNotNull { c ->
-                            c.optJSONObject("author")?.optString("name")?.takeIf { it.isNotBlank() }
-                                ?: c.optString("name").takeIf { it.isNotBlank() }
-                        }
-                        .distinct(),
-                    o.optString("slug"),
-                )
-            }
+            .map { bookMatch(it) }
             .also {
                 require(it.size <= 12 && it.all { b -> b.id in positive && b.title.isNotBlank() })
             }
             .sortedBy { positive.indexOf(it.id) }
+    }
+
+    /**
+     * Editions that carry any of [isbns] (ISBN-10 or ISBN-13 strings, at most 100), each with its
+     * book. Read only. Editions whose book has no title are left out.
+     */
+    fun editionsByIsbn(token: String, isbns: List<String>): List<HardcoverIsbnHit> {
+        require(
+            isbns.size in 1..100 &&
+                isbns.all { it.length in 10..13 && it.all { c -> c.isDigit() || c == 'X' } }
+        )
+        val rows =
+            query(
+                    token,
+                    "query(\$isbns:[String!]!) { editions(where:{_or:[{isbn_13:{_in:\$isbns}},{isbn_10:{_in:\$isbns}}]},limit:200) { id isbn_13 isbn_10 book { id title slug release_year canonical_id cached_contributors cached_image } } }",
+                    JSONObject().put("isbns", JSONArray(isbns)),
+                )
+                .getJSONArray("editions")
+        require(rows.length() <= 200) { "Invalid Hardcover edition response" }
+        return rows.objects().mapNotNull { o ->
+            val b = o.optJSONObject("book") ?: return@mapNotNull null
+            val canonical =
+                if (b.isNull("canonical_id")) null else b.optInt("canonical_id").takeIf { it > 0 }
+            val book = bookMatch(b, canonical ?: b.optInt("id"))
+            if (book.id <= 0 || book.title.isBlank() || book.title.length > 2000)
+                return@mapNotNull null
+            HardcoverIsbnHit(
+                text(o, "isbn_13").takeIf { it.isNotBlank() },
+                text(o, "isbn_10").takeIf { it.isNotBlank() },
+                book,
+            )
+        }
     }
 
     /**
@@ -242,36 +273,23 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         val rows =
             query(
                     token,
-                    "query(\$user:Int!,\$after:Int!) { user_books(where:{user_id:{_eq:\$user},id:{_gt:\$after}},order_by:{id:asc},limit:50) { id status_id edition_id book { id title slug cached_contributors } user_book_reads(order_by:{id:desc},limit:1) { progress_pages edition_id } } }",
+                    "query(\$user:Int!,\$after:Int!) { user_books(where:{user_id:{_eq:\$user},id:{_gt:\$after}},order_by:{id:asc},limit:50) { id status_id edition_id updated_at book { id title slug release_year cached_contributors cached_image } user_book_reads(order_by:{id:desc},limit:1) { progress_pages edition_id } } }",
                     JSONObject().put("user", accountId).put("after", after),
                 )
                 .getJSONArray("user_books")
         require(rows.length() <= 50)
         val result =
             rows.objects().map { row ->
-                val b = row.getJSONObject("book")
-                val authors =
-                    (b.optJSONArray("cached_contributors") ?: JSONArray())
-                        .objects()
-                        .mapNotNull { c ->
-                            c.optJSONObject("author")?.optString("name")?.takeIf { it.isNotBlank() }
-                                ?: c.optString("name").takeIf { it.isNotBlank() }
-                        }
-                        .distinct()
                 val read = row.getJSONArray("user_book_reads").optJSONObject(0)
                 HardcoverLibraryBook(
                     row.getInt("id"),
-                    HardcoverMatch(
-                        b.getInt("id"),
-                        b.getString("title"),
-                        authors,
-                        b.optString("slug"),
-                    ),
+                    bookMatch(row.getJSONObject("book")),
                     row.getInt("status_id"),
                     if (read == null || read.isNull("progress_pages")) null
                     else read.getInt("progress_pages"),
                     if (read != null && !read.isNull("edition_id")) read.getInt("edition_id")
                     else if (row.isNull("edition_id")) null else row.getInt("edition_id"),
+                    epochMillis(text(row, "updated_at")),
                 )
             }
         require(
@@ -370,6 +388,43 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         }
         return value.optInt("id").takeIf { it > 0 }
             ?: error("Hardcover did not acknowledge the update; reload before retrying")
+    }
+
+    /**
+     * Sets the book's status on Hardcover to [status]: Want to Read (1), Currently Reading (2),
+     * Paused (4) or Did Not Finish (5); Read goes through [markRead]. With no [userBookId] the book
+     * is added with [privacy] (the account's setting). Reads, rating and review are kept. Returns
+     * the user_book id.
+     */
+    fun setStatus(token: String, bookId: Int, status: Int, userBookId: Int?, privacy: Int): Int {
+        require(bookId > 0 && status in setOf(1, 2, 4, 5) && (userBookId == null || userBookId > 0))
+        return if (userBookId == null)
+            checkedWrite(
+                query(
+                    token,
+                    "mutation(\$object:UserBookCreateInput!) { insert_user_book(object:\$object) { id error } }",
+                    JSONObject()
+                        .put(
+                            "object",
+                            JSONObject()
+                                .put("book_id", bookId)
+                                .put("status_id", status)
+                                .put("privacy_setting_id", privacy),
+                        ),
+                ),
+                "insert_user_book",
+            )
+        else
+            checkedWrite(
+                query(
+                    token,
+                    "mutation(\$id:Int!,\$object:UserBookUpdateInput!) { update_user_book(id:\$id,object:\$object) { id error } }",
+                    JSONObject()
+                        .put("id", userBookId)
+                        .put("object", JSONObject().put("status_id", status)),
+                ),
+                "update_user_book",
+            )
     }
 
     /**
@@ -663,6 +718,91 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
             )
         return "$pages pages recorded on Hardcover"
     }
+
+    private fun text(o: JSONObject?, key: String): String =
+        o?.optString(key)?.takeUnless { it == "null" }.orEmpty()
+
+    /** A book as Hardcover's `books` rows give it; [id] overrides the row's own id. */
+    private fun bookMatch(o: JSONObject, id: Int = o.getInt("id")): HardcoverMatch =
+        HardcoverMatch(
+            id,
+            o.getString("title"),
+            (o.optJSONArray("cached_contributors") ?: JSONArray())
+                .objects()
+                .mapNotNull { c ->
+                    c.optJSONObject("author")?.optString("name")?.takeIf { it.isNotBlank() }
+                        ?: c.optString("name").takeIf { it.isNotBlank() }
+                }
+                .distinct(),
+            o.optString("slug"),
+            if (o.isNull("release_year")) null
+            else o.optInt("release_year").takeIf { it in 1..9999 },
+            text(o.optJSONObject("cached_image"), "url").takeIf { it.startsWith("https://") },
+        )
+
+    companion object {
+        /** Hardcover allows about 60 requests a minute; one every 1.1 s stays under it. */
+        internal const val SPACING_MS = 1_100L
+        /** How long to wait after a 429 that names no Retry-After. */
+        internal const val DEFAULT_RETRY_AFTER_MS = 60_000L
+        /** A cool-down this short is waited out; a longer one fails fast with a 429. */
+        internal const val SHORT_WAIT_MS = 2_000L
+        private const val MAX_RETRY_AFTER_MS = 60 * 60_000L
+        private const val BUSY = "Hardcover is busy; retry later"
+
+        private val gate = Any()
+        private var lastRequest = 0L
+        private var coolUntil = 0L
+
+        /** The gate's clock. Tests replace it. */
+        @Volatile internal var clock: () -> Long = System::currentTimeMillis
+
+        /** Tests: forget earlier requests and cool-downs. */
+        internal fun resetPacing() =
+            synchronized(gate) {
+                lastRequest = 0
+                coolUntil = 0
+            }
+
+        /** Retry-After in whole seconds, as milliseconds; null when absent or not seconds. */
+        internal fun retryAfterMs(header: String?): Long? =
+            header
+                ?.trim()
+                ?.toLongOrNull()
+                ?.takeIf { it >= 0 }
+                ?.let { (it * 1000).coerceIn(1_000L, MAX_RETRY_AFTER_MS) }
+
+        /**
+         * Runs one request through the process-wide gate. [live] requests are spaced and wait out a
+         * short cool-down; recorded responses (tests) skip the waiting but not the cool-down rule.
+         */
+        internal fun <T> paced(live: Boolean, send: () -> T): T =
+            synchronized(gate) {
+                val remaining = coolUntil - clock()
+                if (remaining > SHORT_WAIT_MS) throw HardcoverHttpException(429, BUSY, remaining)
+                if (live) {
+                    if (remaining > 0) Thread.sleep(remaining)
+                    val wait = SPACING_MS - (clock() - lastRequest)
+                    if (wait > 0) Thread.sleep(wait)
+                }
+                lastRequest = clock()
+                try {
+                    send()
+                } catch (e: HardcoverHttpException) {
+                    if (e.code != 429) throw e
+                    val wait = e.retryAfterMs ?: DEFAULT_RETRY_AFTER_MS
+                    coolUntil = clock() + wait
+                    throw HardcoverHttpException(429, BUSY, wait)
+                }
+            }
+
+        private fun epochMillis(value: String): Long? =
+            value
+                .takeIf { it.isNotBlank() }
+                ?.let {
+                    runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+                }
+    }
 }
 
 data class HardcoverEdition(val id: Int, val title: String, val pages: Int, val label: String)
@@ -695,6 +835,8 @@ data class HardcoverLibraryBook(
     val status: Int,
     val pages: Int?,
     val editionId: Int?,
+    /** When Hardcover last changed this entry, epoch milliseconds, or null. */
+    val updatedAt: Long? = null,
 )
 
 data class HardcoverBookData(val id: Int, val metadata: Metadata, val coverUrl: String?)

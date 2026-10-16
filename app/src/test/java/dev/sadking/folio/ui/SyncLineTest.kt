@@ -2,11 +2,10 @@ package dev.sadking.folio.ui
 
 import dev.sadking.folio.R
 import dev.sadking.folio.core.sync.Question
-import dev.sadking.folio.data.HardcoverObservation
-import dev.sadking.folio.data.WishBook
 import dev.sadking.folio.device.libraryFolderName
 import dev.sadking.folio.sync.EreaderSync
-import dev.sadking.folio.sync.FinishPrompt
+import dev.sadking.folio.sync.HardcoverProblem
+import dev.sadking.folio.sync.HardcoverSyncStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -30,26 +29,26 @@ class SyncLineTest {
 
     @Test
     fun nothingSetUpAsksForSetup() {
-        val state = syncLine(emptyList(), 0, pluginInstalled = false, prompts = 0, now)
+        val state = syncLine(emptyList(), 0, pluginInstalled = false, hardcover = 0, now)
         assertEquals(SyncLineState(SyncLine.NotSetUp, 0), state)
     }
 
     @Test
-    fun aFinishPromptCountsAsADecisionEvenWithoutAnEreader() {
-        val state = syncLine(emptyList(), 0, pluginInstalled = false, prompts = 2, now)
+    fun hardcoverChecksAndQuestionsCountAsDecisionsEvenWithoutAnEreader() {
+        val state = syncLine(emptyList(), 0, pluginInstalled = false, hardcover = 2, now)
         assertEquals(2, state.decisions)
     }
 
     @Test
     fun installedButNeverSyncedWaitsForTheFirstSync() {
-        val state = syncLine(emptyList(), 0, pluginInstalled = true, prompts = 0, now)
+        val state = syncLine(emptyList(), 0, pluginInstalled = true, hardcover = 0, now)
         assertEquals(SyncLine.NeverSynced(null), state.line)
     }
 
     @Test
     fun anEreaderThatSyncedOnceCountsAsSetUpWithoutTheInstallRecord() {
         val kindle = EreaderSync("k", "Kindle", lastSync = now - 2 * minute)
-        val state = syncLine(listOf(kindle), 0, pluginInstalled = false, prompts = 0, now)
+        val state = syncLine(listOf(kindle), 0, pluginInstalled = false, hardcover = 0, now)
         assertEquals(SyncLine.Synced("Kindle", now - 2 * minute), state.line)
     }
 
@@ -130,7 +129,7 @@ class SyncLineTest {
     }
 
     @Test
-    fun decisionsCountUnansweredQuestionsOfEveryEreaderAndThePrompts() {
+    fun decisionsCountUnansweredQuestionsOfEveryEreaderAndHardcover() {
         val kindle =
             EreaderSync(
                 "k",
@@ -167,34 +166,67 @@ class SyncLineTest {
         assertNull(listed.single().ereaderName)
     }
 
-    private fun wish(bookId: String, hardcoverId: Int?) =
-        WishBook(
-            "w-$bookId",
-            "hardcover:$hardcoverId",
-            "T",
-            "[]",
-            hardcoverId = hardcoverId,
-            linkedBookId = bookId,
-        )
-
-    private fun seen(account: Int, hardcoverId: Int, status: Int) =
-        HardcoverObservation(account, hardcoverId, status, null, null, now)
+    private val connected = HardcoverSyncStatus(connected = true, matched = 312)
 
     @Test
-    fun aFinishPromptIsSettledOnceHardcoverNoLongerSaysCurrentlyReading() {
-        val prompts = listOf(FinishPrompt("read", "Read"), FinishPrompt("reading", "Reading"))
-        val wishes = listOf(wish("read", 1), wish("reading", 2))
-        val observations = listOf(seen(7, 1, 3), seen(7, 2, 2))
-        assertEquals(listOf("read"), settledPrompts(prompts, wishes, observations, 7))
+    fun hardcoverSaysNothingWithoutAnAccount() {
+        assertNull(hardcoverLine(HardcoverSyncStatus(running = true, lastSyncAt = now)))
     }
 
     @Test
-    fun aFinishPromptStaysWithoutAnythingKnownFromHardcover() {
-        val prompts = listOf(FinishPrompt("a", "A"), FinishPrompt("b", "B"), FinishPrompt("c", "C"))
-        // "a" has no observation, "b" no Hardcover link, "c" is seen for another account.
-        val wishes = listOf(wish("a", 1), wish("b", null), wish("c", 3))
-        val observations = listOf(seen(8, 3, 3))
-        assertEquals(emptyList<String>(), settledPrompts(prompts, wishes, observations, 7))
+    fun hardcoverSyncTurnedOffSaysSoWhateverElseIsKnown() {
+        val off =
+            connected.copy(
+                enabled = false,
+                running = true,
+                problem = HardcoverProblem.TOKEN_REJECTED,
+            )
+        assertEquals(HardcoverLine.Off, hardcoverLine(off))
+    }
+
+    @Test
+    fun aRejectedTokenComesBeforeEverythingElse() {
+        val status =
+            connected.copy(
+                running = true,
+                matchingDone = 1,
+                matchingTotal = 9,
+                problem = HardcoverProblem.TOKEN_REJECTED,
+            )
+        assertEquals(HardcoverLine.TokenRejected, hardcoverLine(status))
+    }
+
+    @Test
+    fun theMatchingPassShowsItsCountWhileItRuns() {
+        val status = connected.copy(running = true, matchingDone = 120, matchingTotal = 400)
+        assertEquals(HardcoverLine.Matching(120, 400), hardcoverLine(status))
+        assertEquals(
+            HardcoverLine.Matching(5, 5),
+            hardcoverLine(connected.copy(matchingDone = 7, matchingTotal = 5)),
+        )
+    }
+
+    @Test
+    fun aRunWithoutMatchingIsSyncing() {
+        val status = connected.copy(running = true, problem = HardcoverProblem.OFFLINE)
+        assertEquals(HardcoverLine.Syncing, hardcoverLine(status))
+    }
+
+    @Test
+    fun noConnectionWaits() {
+        val status = connected.copy(lastSyncAt = now, problem = HardcoverProblem.OFFLINE)
+        assertEquals(HardcoverLine.Offline, hardcoverLine(status))
+    }
+
+    @Test
+    fun beforeTheFirstSyncOnlyTheMatchedCountShows() {
+        assertEquals(HardcoverLine.NeverSynced(312), hardcoverLine(connected.copy(toCheck = 3)))
+    }
+
+    @Test
+    fun afterASyncTheLineSaysWhenAndWhatWaits() {
+        val status = connected.copy(lastSyncAt = now - 5 * minute, toCheck = 4)
+        assertEquals(HardcoverLine.Synced(now - 5 * minute, 312, 4), hardcoverLine(status))
     }
 
     @Test

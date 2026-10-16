@@ -21,7 +21,12 @@ import dev.sadking.folio.link.LinkLog
 import dev.sadking.folio.link.Refusal
 import dev.sadking.folio.link.RefusedFile
 import dev.sadking.folio.sync.EreaderSync
-import dev.sadking.folio.sync.FinishPrompt
+import dev.sadking.folio.sync.HardcoverItemState
+import dev.sadking.folio.sync.HardcoverProblem
+import dev.sadking.folio.sync.HardcoverSyncStatus
+import dev.sadking.folio.sync.MatchCandidateView
+import dev.sadking.folio.sync.MatchCheck
+import dev.sadking.folio.sync.StatusQuestion
 
 private val sampleBooks =
     listOf(
@@ -516,11 +521,36 @@ private fun SyncLineRows() {
     }
 }
 
-@Preview(name = "Decisions · light", widthDp = 412, heightDp = 892)
+private val sampleCheck =
+    MatchCheck(
+        "sample2",
+        "Letters from the Coast",
+        listOf("Morgan Wells"),
+        listOf(
+            MatchCandidateView(101, "Letters from the Coast", listOf("Morgan Wells"), 2019, null),
+            MatchCandidateView(
+                102,
+                "Letters from the Coast: Stories",
+                listOf("Morgan Wells", "Ana Ruiz"),
+                2021,
+                null,
+            ),
+            MatchCandidateView(103, "Coastal Letters", emptyList(), null, null),
+        ),
+    )
+
+private val sampleStatusQuestions =
+    listOf(
+        StatusQuestion(201, "sample1", "The Orchard", 3, "Reading"),
+        StatusQuestion(202, "sample3", "A Field Guide to Elsewhere", 0, "Finished"),
+    )
+
+/** Every kind of card: an e-reader question, a match to check, and two Hardcover questions. */
+@Preview(name = "Decisions · light", widthDp = 412, heightDp = 1600)
 @Preview(
     name = "Decisions · dark",
     widthDp = 412,
-    heightDp = 892,
+    heightDp = 1600,
     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
@@ -529,11 +559,20 @@ internal fun DecisionsPreview() {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             DecisionsContent(
                 decisions(listOf(sampleKindle)),
-                listOf(FinishPrompt("sample3", "A Field Guide to Elsewhere")),
-                onAnswer = { _, _ -> },
-                onMarkRead = {},
-                onNotNow = {},
+                listOf(sampleCheck),
+                sampleStatusQuestions,
             )
+        }
+    }
+}
+
+/** Only Hardcover cards, with no e-reader: the first thing an owner without one sees. */
+@Preview(name = "Decisions Hardcover · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun DecisionsHardcoverPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DecisionsContent(emptyList(), listOf(sampleCheck), sampleStatusQuestions.take(1))
         }
     }
 }
@@ -661,7 +700,14 @@ internal fun SettingsPreview() {
                 onDynamic = {},
                 reading = ReadingDefaults(),
                 statistics = sampleStatistics,
-                hardcoverAutomatic = false,
+                hardcoverStatus =
+                    HardcoverSyncStatus(
+                        connected = true,
+                        lastSyncAt = PREVIEW_NOW - 5 * 60_000,
+                        matched = 312,
+                        toCheck = 4,
+                    ),
+                now = PREVIEW_NOW,
                 hardcoverUsername = "alex",
                 count = 9,
                 recordCount = 12,
@@ -669,6 +715,91 @@ internal fun SettingsPreview() {
                 sshHost = "192.168.1.23",
                 phoneFolder = "Internal storage/Books",
             )
+        }
+    }
+}
+
+/** The Hardcover group while the first pass matches the library, and with a rejected token. */
+@Preview(name = "Settings Hardcover · light", widthDp = 412, heightDp = 900)
+@Preview(
+    name = "Settings Hardcover · dark",
+    widthDp = 412,
+    heightDp = 900,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun SettingsHardcoverPreview() {
+    // Inspection mode, as in Android Studio: the running ring stands still for the screenshot.
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalInspectionMode provides true) {
+        FolioTheme(dynamic = false) {
+            Surface(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier.padding(vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    HardcoverSettings(
+                        "alex",
+                        HardcoverSyncStatus(
+                            connected = true,
+                            running = true,
+                            matched = 40,
+                            matchingDone = 120,
+                            matchingTotal = 400,
+                        ),
+                        PREVIEW_NOW,
+                    )
+                    HardcoverSettings(
+                        "alex",
+                        HardcoverSyncStatus(
+                            connected = true,
+                            lastSyncAt = PREVIEW_NOW - 3 * 3_600_000,
+                            matched = 312,
+                            problem = HardcoverProblem.TOKEN_REJECTED,
+                        ),
+                        PREVIEW_NOW,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The book page's Hardcover tile in each state, three to a row as on a book with a file. */
+@Preview(name = "Hardcover tile · light", widthDp = 412, heightDp = 400)
+@Preview(
+    name = "Hardcover tile · dark",
+    widthDp = 412,
+    heightDp = 400,
+    uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+internal fun HardcoverTilePreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                listOf(
+                        listOf(
+                            null to HardcoverItemState.MATCHED,
+                            112 to HardcoverItemState.MATCHED,
+                            null to HardcoverItemState.MATCHING,
+                        ),
+                        listOf(
+                            null to HardcoverItemState.CHECK,
+                            null to HardcoverItemState.NOT_ON_HARDCOVER,
+                            null to HardcoverItemState.NOT_FOUND,
+                        ),
+                        listOf(null to HardcoverItemState.OFF),
+                    )
+                    .forEach { row ->
+                        StatusStrip(
+                            row.map { (page, state) -> hardcoverTile(page, state) },
+                            onClick = {},
+                        )
+                    }
+            }
         }
     }
 }

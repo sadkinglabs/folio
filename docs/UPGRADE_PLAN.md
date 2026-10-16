@@ -630,7 +630,13 @@ Decided with the owner on 2026-10-16. Goal, in the owner's words: "I want seamle
 - **Within Hardcover's limits:** all Hardcover traffic goes through one paced queue (about one request a second), waits and retries on "slow down", survives restarts, and resumes where it stopped.
 - **Never lost:** nothing is deleted on either side because it is missing on the other. A book removed from Hardcover is not removed from Librillo.
 
-**Status:** planned 2026-10-16.
+**Status:** planned 2026-10-16; built 2026-10-16, not committed. Details and rules: `docs/HARDCOVER_SYNC.md` (Part C lists where the code differs from the plan).
+- **Matching:** a one-time pass, then every new book or catalogue entry (a watcher on the library, so import, Inbox, Kindle uploads, scans, search and restores need no hooks). The owner's own Hardcover library first (no requests), then ISBNs (up to 100 ISBN strings per request), then title and author search. Sure → linked like the manual link; unsure → "Check these matches" with up to 3 candidates (cover, title, author, year), or "Not on Hardcover", remembered per item. Matching never writes to Hardcover.
+- **Statuses both ways:** schema 11 (additive `MIGRATION_10_11`: `hardcover_baseline`, `hardcover_matches`, `hardcover_questions`, `wishlist.statusAt`; exported `11.json`; `MigrationTestHelper` test). Each linked item is compared with the last agreed baseline: changes go up (Finished from Currently Reading or Paused on Hardcover gets that day, else no date) or come down; books added on Hardcover become catalogue entries once matching has nothing pending; matched catalogue entries go up; both changed → a question. Unread never changes Hardcover; nothing is deleted for being missing.
+- **Kindle finishes** go up on their own through `RoomSyncLibrary`'s status hook. `HardcoverFinishPrompts`, its sheet card, strings and tests are gone.
+- **One queue:** every request in the app goes through `HardcoverClient`'s process-wide gate (one at a time, 1.1 s apart, a shared wait after 429 using Retry-After or 60 s). Background work is one WorkManager queue (`hardcover-sync`, network required, 8-minute runs that hand over to the next) plus a 4-hourly pull; app open pulls at most every 15 minutes. Progress and Send Finished run in the same queue.
+- **UI:** Settings → Hardcover has "Sync with Hardcover" (same setting as before), a status line and Sync now; Needs your decision has "Check these matches" and the status questions (with "for all" buttons); the Hardcover tile says Matched, Matching…, Check match, Not on Hardcover, Not found or Not matched.
+- **Verified:** JVM, Robolectric and recorded Hardcover answers only; screenshots checked in light, dark and 200% text. `MigrationTest` compiles but needs CI's emulator. Nothing has run against the real Hardcover API or on the phone; `HARDCOVER_SYNC.md` B9 lists the device checks.
 
 ---
 

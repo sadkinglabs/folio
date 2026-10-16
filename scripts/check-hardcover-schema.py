@@ -17,5 +17,5 @@ for token in re.findall(r'"(?:[^"\\]|\\.)*"',source):
         errors=validate(schema,parse(value))
         assert not errors,errors
         operations.append(value)
-assert len(set(operations))==13,f'Expected 13 distinct client operations, found {len(operations)}'
+assert len(set(operations))==14,f'Expected 14 distinct client operations, found {len(set(operations))}'
 print(f'{len(set(operations))} distinct client operations ({len(operations)} occurrences) match official Hardcover schema SHA256 {hashlib.sha256(raw).hexdigest()}; no authenticated calls were made.')

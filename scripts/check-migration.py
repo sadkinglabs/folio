@@ -187,7 +187,7 @@ print('Migration 8→9 matches Room schema; existing books become EPUB and keep 
 old.execute("INSERT INTO books VALUES ('v9-book','Kept','[]','','','','[]','','','[]','A/Kept.pdf','A/Kept.pdf',NULL,'h9','h9',1000,'Finished','pdf')")
 v10=json.loads((schemas/'10.json').read_text())['database']
 assert v10['version']==10
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_9_10',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_9_10',1)[1].split('val MIGRATION_10_11',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==1,statements
 for sql in statements:old.execute(sql)
@@ -201,3 +201,34 @@ assert old.execute("SELECT status,statusAt,format FROM books WHERE id='v9-book'"
 assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 9→10 matches Room schema; books keep their status, with an unknown (0) time of change, and baselines are kept.')
+
+# Schema 11 (M10): Hardcover sync gets baselines, match records and questions; catalogue entries
+# remember when their status last changed. Existing entries get 0, "unknown".
+old.execute("INSERT INTO wishlist (id,catalogKey,title,authors,coverPath,hardcoverId,hardcoverTitle,hardcoverSynced,addedAt,linkedBookId,details,status) VALUES ('wish10','hardcover:10','Kept entry','[]',NULL,10,'Kept entry',1,1000,NULL,'{}','Want to Read')")
+v11=json.loads((schemas/'11.json').read_text())['database']
+assert v11['version']==11
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_10_11',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==4,statements
+for sql in statements:old.execute(sql)
+expected11=sqlite3.connect(':memory:');schema(expected11,v11)
+for entity in v11['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected11.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected11.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected11.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT title,status,statusAt,hardcoverId FROM wishlist WHERE id='wish10'").fetchone()==('Kept entry','Want to Read',0,10)
+assert old.execute("SELECT status,statusAt FROM books WHERE id='v9-book'").fetchone()==('Finished',0)
+assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
+assert old.execute('SELECT count(*) FROM hardcover_observations').fetchone()==(2,)
+old.execute("INSERT INTO hardcover_baseline VALUES (1,10,1,0,2000)")
+old.execute("INSERT INTO hardcover_baseline VALUES (2,10,3,5,2000)")
+old.execute("INSERT INTO hardcover_matches VALUES ('v9-book','UNSURE','[]','key',2000)")
+old.execute("INSERT INTO hardcover_questions VALUES (1,10,'wish10','Kept entry',3,'Reading',2000)")
+for sql in ["INSERT INTO hardcover_baseline VALUES (1,10,2,0,2001)","INSERT INTO hardcover_matches VALUES ('v9-book','NOT_FOUND','[]','key',2001)","INSERT INTO hardcover_questions VALUES (1,10,'wish10','Kept entry',2,'Paused',2001)"]:
+    try:
+        old.execute(sql)
+        raise AssertionError('Duplicate key accepted: '+sql)
+    except sqlite3.IntegrityError:pass
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 10→11 matches Room schema; catalogue entries and books keep their status (entries with an unknown (0) time of change), e-reader baselines and observations are kept, and the Hardcover tables enforce one row per key.')

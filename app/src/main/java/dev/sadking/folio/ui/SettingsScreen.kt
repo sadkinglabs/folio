@@ -7,6 +7,7 @@ package dev.sadking.folio.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -16,8 +17,10 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DoneAll
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -42,7 +45,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import dev.sadking.folio.FolioApplication
@@ -57,6 +63,7 @@ import dev.sadking.folio.reader.ReaderTextActions
 import dev.sadking.folio.reader.ReaderTextSheet
 import dev.sadking.folio.reader.ReaderTextState
 import dev.sadking.folio.reader.ReaderTypography
+import dev.sadking.folio.sync.HardcoverSyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -66,7 +73,9 @@ internal const val SETTINGS_WALLPAPER_TAG = "settings-wallpaper"
 internal const val SETTINGS_TEXT_TAG = "settings-text"
 internal const val SETTINGS_VOLUME_TAG = "settings-volume"
 internal const val SETTINGS_READING_TIME_TAG = "settings-reading-time"
-internal const val SETTINGS_HARDCOVER_AUTOMATIC_TAG = "settings-hardcover-automatic"
+internal const val SETTINGS_HARDCOVER_SYNC_TAG = "settings-hardcover-sync"
+internal const val SETTINGS_HARDCOVER_LINE_TAG = "settings-hardcover-line"
+internal const val SETTINGS_HARDCOVER_SYNC_NOW_TAG = "settings-hardcover-sync-now"
 internal const val SETTINGS_HARDCOVER_SEND_FINISHED_TAG = "settings-hardcover-send-finished"
 internal const val SETTINGS_HARDCOVER_TAG = "settings-hardcover"
 internal const val SETTINGS_HARDCOVER_IMPORT_TAG = "settings-hardcover-import"
@@ -92,9 +101,9 @@ internal data class ReadingDefaults(
 )
 
 /**
- * The Settings tab wired to the app: Folio Link's switches, the reader's defaults and the Hardcover
- * outbox come from the application; everything else is passed through to [SettingsScreen], which
- * previews render directly.
+ * The Settings tab wired to the app: the reader's defaults, Hardcover sync and Send Finished books
+ * come from the application; everything else is passed through to [SettingsScreen], which previews
+ * render directly. [onDecisions] opens Needs your decision.
  */
 @Composable
 internal fun SettingsTab(
@@ -106,6 +115,11 @@ internal fun SettingsTab(
     hardcoverUsername: String,
     onHardcover: () -> Unit,
     onImportHardcover: () -> Unit,
+    hardcoverStatus: HardcoverSyncStatus,
+    onHardcoverSync: (Boolean) -> Unit,
+    onHardcoverSyncNow: () -> Unit,
+    onDecisions: () -> Unit,
+    now: Long,
     count: Int,
     recordCount: Int,
     removedCount: Int,
@@ -124,7 +138,6 @@ internal fun SettingsTab(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
-    var automatic by remember { mutableStateOf(app.hardcoverOutbox.automatic) }
     val dao = remember { app.database.library() }
     val allBooks by dao.books().collectAsState(emptyList())
     val allWishes by dao.wishes().collectAsState(emptyList())
@@ -167,11 +180,11 @@ internal fun SettingsTab(
             ReaderDefaults.saveVolumeKeys(readerPrefs, value.volumeKeys)
         },
         statistics = statistics,
-        hardcoverAutomatic = automatic,
-        onHardcoverAutomatic = {
-            automatic = it
-            app.hardcoverOutbox.automatic = it
-        },
+        hardcoverStatus = hardcoverStatus,
+        onHardcoverSync = onHardcoverSync,
+        onHardcoverSyncNow = onHardcoverSyncNow,
+        onDecisions = onDecisions,
+        now = now,
         finishedToSend = finished,
         finishedSent = finishedSent,
         onSendFinished = {
@@ -212,8 +225,11 @@ internal fun SettingsScreen(
     reading: ReadingDefaults = ReadingDefaults(),
     onReading: (ReadingDefaults) -> Unit = {},
     statistics: DeviceStatistics? = null,
-    hardcoverAutomatic: Boolean = false,
-    onHardcoverAutomatic: (Boolean) -> Unit = {},
+    hardcoverStatus: HardcoverSyncStatus = HardcoverSyncStatus(),
+    onHardcoverSync: (Boolean) -> Unit = {},
+    onHardcoverSyncNow: () -> Unit = {},
+    onDecisions: () -> Unit = {},
+    now: Long = System.currentTimeMillis(),
     finishedToSend: FinishedToSend = FinishedToSend(emptyList(), 0, 0),
     finishedSent: Boolean = false,
     onSendFinished: () -> Unit = {},
@@ -240,7 +256,6 @@ internal fun SettingsScreen(
     val paired = sshHost.isNotBlank()
     var showText by rememberSaveable { mutableStateOf(false) }
     var showReadingTime by rememberSaveable { mutableStateOf(false) }
-    var confirmFinished by rememberSaveable { mutableStateOf(false) }
     var showBackup by rememberSaveable { mutableStateOf(false) }
     var showFolder by rememberSaveable { mutableStateOf(false) }
     var showBooksFolder by rememberSaveable { mutableStateOf(false) }
@@ -302,91 +317,20 @@ internal fun SettingsScreen(
                     onClick = { showReadingTime = true },
                 )
         }
-        SettingsGroup(stringResource(R.string.settings_hardcover)) {
-            SettingsRow(
-                Icons.Outlined.AccountCircle,
-                stringResource(R.string.settings_hardcover_account),
-                if (hardcoverUsername.isBlank())
-                    stringResource(R.string.settings_hardcover_not_connected)
-                else stringResource(R.string.settings_hardcover_connected, hardcoverUsername),
-                Modifier.testTag(SETTINGS_HARDCOVER_TAG),
-                onClick = onHardcover,
-                enabled = !busy,
-            )
-            SettingsRow(
-                Icons.Outlined.CloudDownload,
-                stringResource(R.string.settings_hardcover_import),
-                stringResource(R.string.settings_hardcover_import_value),
-                Modifier.testTag(SETTINGS_HARDCOVER_IMPORT_TAG),
-                onClick = onImportHardcover,
-                enabled = !busy,
-            )
-            SettingsSwitchRow(
-                Icons.Outlined.Sync,
-                stringResource(R.string.hardcover_automatic),
-                hardcoverAutomatic,
-                onHardcoverAutomatic,
-                Modifier.testTag(SETTINGS_HARDCOVER_AUTOMATIC_TAG),
-                value = stringResource(R.string.m9sync_hardcover_automatic_hint),
-            )
-            if (hardcoverUsername.isNotBlank()) {
-                val toSend = finishedToSend.ids.size
-                SettingsRow(
-                    Icons.Outlined.DoneAll,
-                    stringResource(R.string.hardcover_send_finished),
-                    when {
-                        finishedSent -> stringResource(R.string.hardcover_send_finished_queued)
-                        toSend > 0 ->
-                            pluralStringResource(
-                                R.plurals.hardcover_send_finished_value,
-                                toSend,
-                                toSend,
-                            )
-                        finishedToSend.unmatched > 0 ->
-                            pluralStringResource(
-                                R.plurals.hardcover_send_finished_unmatched,
-                                finishedToSend.unmatched,
-                                finishedToSend.unmatched,
-                            )
-                        finishedToSend.alreadyRead > 0 ->
-                            stringResource(R.string.hardcover_send_finished_all_read)
-                        else -> stringResource(R.string.hardcover_send_finished_none)
-                    },
-                    Modifier.testTag(SETTINGS_HARDCOVER_SEND_FINISHED_TAG),
-                    onClick = { confirmFinished = true },
-                    enabled = !busy && !finishedSent && toSend > 0,
-                )
-            }
-        }
-        if (confirmFinished)
-            AlertDialog(
-                onDismissRequest = { confirmFinished = false },
-                title = {
-                    Text(
-                        pluralStringResource(
-                            R.plurals.hardcover_send_finished_title,
-                            finishedToSend.ids.size,
-                            finishedToSend.ids.size,
-                        )
-                    )
-                },
-                text = { Text(stringResource(R.string.hardcover_send_finished_body)) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            confirmFinished = false
-                            onSendFinished()
-                        }
-                    ) {
-                        Text(stringResource(R.string.hardcover_send_finished_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmFinished = false }) {
-                        Text(stringResource(R.string.shell_cancel))
-                    }
-                },
-            )
+        HardcoverSettings(
+            hardcoverUsername,
+            hardcoverStatus,
+            now,
+            onHardcover = onHardcover,
+            onImportHardcover = onImportHardcover,
+            onSync = onHardcoverSync,
+            onSyncNow = onHardcoverSyncNow,
+            onDecisions = onDecisions,
+            finishedToSend = finishedToSend,
+            finishedSent = finishedSent,
+            onSendFinished = onSendFinished,
+            busy = busy,
+        )
         SettingsGroup(stringResource(R.string.settings_library)) {
             SettingsRow(
                 Icons.Outlined.FolderSpecial,
@@ -524,6 +468,232 @@ internal fun SettingsScreen(
             busy = busy,
         ) {
             showFolder = false
+        }
+}
+
+/**
+ * Settings' Hardcover group: the account, the "Sync with Hardcover" switch with its status line and
+ * Sync now, Import library, and Send Finished books.
+ */
+@Composable
+internal fun HardcoverSettings(
+    hardcoverUsername: String,
+    hardcoverStatus: HardcoverSyncStatus,
+    now: Long,
+    onHardcover: () -> Unit = {},
+    onImportHardcover: () -> Unit = {},
+    onSync: (Boolean) -> Unit = {},
+    onSyncNow: () -> Unit = {},
+    onDecisions: () -> Unit = {},
+    finishedToSend: FinishedToSend = FinishedToSend(emptyList(), 0, 0),
+    finishedSent: Boolean = false,
+    onSendFinished: () -> Unit = {},
+    busy: Boolean = false,
+) {
+    var confirmFinished by rememberSaveable { mutableStateOf(false) }
+    SettingsGroup(stringResource(R.string.settings_hardcover)) {
+        SettingsRow(
+            Icons.Outlined.AccountCircle,
+            stringResource(R.string.settings_hardcover_account),
+            if (hardcoverUsername.isBlank())
+                stringResource(R.string.settings_hardcover_not_connected)
+            else stringResource(R.string.settings_hardcover_connected, hardcoverUsername),
+            Modifier.testTag(SETTINGS_HARDCOVER_TAG),
+            onClick = onHardcover,
+            enabled = !busy,
+        )
+        SettingsSwitchRow(
+            Icons.Outlined.Sync,
+            stringResource(R.string.hc10_sync_switch),
+            hardcoverStatus.enabled,
+            onSync,
+            Modifier.testTag(SETTINGS_HARDCOVER_SYNC_TAG),
+            value = stringResource(R.string.hc10_sync_hint),
+        )
+        hardcoverLine(hardcoverStatus)?.let { line ->
+            HardcoverStatusRow(
+                line,
+                now,
+                onSyncNow = onSyncNow,
+                // A rejected token is fixed in the account sheet; matches and questions wait
+                // in Needs your decision.
+                onClick =
+                    when {
+                        line == HardcoverLine.TokenRejected -> onHardcover
+                        hardcoverStatus.toCheck > 0 -> onDecisions
+                        else -> null
+                    },
+                enabled = !busy,
+            )
+        }
+        SettingsRow(
+            Icons.Outlined.CloudDownload,
+            stringResource(R.string.settings_hardcover_import),
+            stringResource(R.string.settings_hardcover_import_value),
+            Modifier.testTag(SETTINGS_HARDCOVER_IMPORT_TAG),
+            onClick = onImportHardcover,
+            enabled = !busy,
+        )
+        if (hardcoverUsername.isNotBlank()) {
+            val toSend = finishedToSend.ids.size
+            SettingsRow(
+                Icons.Outlined.DoneAll,
+                stringResource(R.string.hardcover_send_finished),
+                when {
+                    finishedSent -> stringResource(R.string.hardcover_send_finished_queued)
+                    toSend > 0 ->
+                        pluralStringResource(
+                            R.plurals.hardcover_send_finished_value,
+                            toSend,
+                            toSend,
+                        )
+                    finishedToSend.unmatched > 0 ->
+                        pluralStringResource(
+                            R.plurals.hardcover_send_finished_unmatched,
+                            finishedToSend.unmatched,
+                            finishedToSend.unmatched,
+                        )
+                    finishedToSend.alreadyRead > 0 ->
+                        stringResource(R.string.hardcover_send_finished_all_read)
+                    else -> stringResource(R.string.hardcover_send_finished_none)
+                },
+                Modifier.testTag(SETTINGS_HARDCOVER_SEND_FINISHED_TAG),
+                onClick = { confirmFinished = true },
+                enabled = !busy && !finishedSent && toSend > 0,
+            )
+        }
+    }
+    if (confirmFinished)
+        AlertDialog(
+            onDismissRequest = { confirmFinished = false },
+            title = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.hardcover_send_finished_title,
+                        finishedToSend.ids.size,
+                        finishedToSend.ids.size,
+                    )
+                )
+            },
+            text = { Text(stringResource(R.string.hardcover_send_finished_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmFinished = false
+                        onSendFinished()
+                    }
+                ) {
+                    Text(stringResource(R.string.hardcover_send_finished_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmFinished = false }) {
+                    Text(stringResource(R.string.shell_cancel))
+                }
+            },
+        )
+}
+
+/**
+ * Hardcover sync's state in one line under its switch, with Sync now beside it. While a run is
+ * under way, a small ring takes the button's place. At large text the button goes under the line.
+ * Tapping the line, when [onClick] is set, opens what the line asks for.
+ */
+@Composable
+private fun HardcoverStatusRow(
+    line: HardcoverLine,
+    now: Long,
+    onSyncNow: () -> Unit,
+    onClick: (() -> Unit)?,
+    enabled: Boolean,
+) {
+    val stacked = LocalDensity.current.fontScale > 1.5f
+    val problem = line == HardcoverLine.TokenRejected
+    val running = line == HardcoverLine.Syncing || line is HardcoverLine.Matching
+    val action: @Composable () -> Unit = {
+        when {
+            line == HardcoverLine.Off || problem -> {}
+            running ->
+                // A still ring in previews and screenshots: a spinning one never lets them settle.
+                if (androidx.compose.ui.platform.LocalInspectionMode.current)
+                    CircularProgressIndicator(
+                        progress = { 0.7f },
+                        modifier = Modifier.padding(horizontal = 12.dp).size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                else
+                    CircularProgressIndicator(
+                        Modifier.padding(horizontal = 12.dp).size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+            else ->
+                TextButton(
+                    onClick = onSyncNow,
+                    enabled = enabled,
+                    modifier = Modifier.testTag(SETTINGS_HARDCOVER_SYNC_NOW_TAG),
+                ) {
+                    Text(stringResource(R.string.hc10_sync_now))
+                }
+        }
+    }
+    val text: @Composable (Modifier) -> Unit = { modifier ->
+        Text(
+            hardcoverLineText(line, now),
+            style = MaterialTheme.typography.bodyMedium,
+            color =
+                if (problem) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
+        )
+    }
+    val icon: @Composable () -> Unit = {
+        Icon(
+            if (problem) Icons.Outlined.ErrorOutline else Icons.Outlined.CloudSync,
+            null,
+            tint =
+                if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        )
+    }
+    // The line is one node, read out as it changes; Sync now stays a button of its own.
+    val lineModifier =
+        (if (onClick != null)
+                Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            else Modifier.semantics(mergeDescendants = true) {})
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag(SETTINGS_HARDCOVER_LINE_TAG)
+    if (stacked)
+        Column(
+            Modifier.fillMaxWidth()
+                .then(lineModifier)
+                .heightIn(min = 56.dp)
+                .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                icon()
+                Spacer(Modifier.width(FolioSpace.item))
+                text(Modifier.weight(1f))
+            }
+            action()
+        }
+    else
+        Row(
+            Modifier.fillMaxWidth()
+                .then(lineModifier)
+                .heightIn(min = 56.dp)
+                .padding(
+                    start = FolioSpace.item,
+                    end = FolioSpace.small,
+                    top = 4.dp,
+                    bottom = 4.dp,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon()
+            Spacer(Modifier.width(FolioSpace.item))
+            text(Modifier.weight(1f))
+            Spacer(Modifier.width(FolioSpace.small))
+            action()
         }
 }
 

@@ -365,7 +365,7 @@ private fun EreaderCard(
     onSync: () -> Unit,
     onOpenWifi: () -> Unit,
 ) {
-    val state = syncLine(listOf(ereader), requestedAt, pluginInstalled = true, prompts = 0, now)
+    val state = syncLine(listOf(ereader), requestedAt, pluginInstalled = true, hardcover = 0, now)
     val syncing = state.line is SyncLine.Syncing
     Surface(
         Modifier.fillMaxWidth().testTag(DEVICE_SYNC_CARD_TAG),

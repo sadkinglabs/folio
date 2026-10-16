@@ -1,11 +1,16 @@
 package dev.sadking.folio
 
+import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.ALL_MIGRATIONS
+import dev.sadking.folio.data.HardcoverBaselineRow
+import dev.sadking.folio.data.HardcoverMatchRow
+import dev.sadking.folio.data.HardcoverQuestionRow
 import dev.sadking.folio.data.LibraryDatabase
+import dev.sadking.folio.data.MIGRATION_10_11
 import dev.sadking.folio.data.MIGRATION_7_8
 import dev.sadking.folio.data.MIGRATION_8_9
 import dev.sadking.folio.data.MIGRATION_9_10
@@ -13,6 +18,7 @@ import dev.sadking.folio.data.SyncBaseline
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -162,6 +168,95 @@ class MigrationTest {
                 assertTrue(it.moveToFirst())
                 assertEquals(5L, it.getLong(0))
             }
+        }
+    }
+
+    @Test
+    fun schema11AddsHardcoverTablesAndKeepsEverything() {
+        val name = "hardcover-sync.db"
+        helper.createDatabase(name, 10).use {
+            it.execSQL(
+                "INSERT INTO books (id, title, authors, description, publisher, language, identifiers, series, seriesIndex, tags, originalPath, currentPath, coverPath, originalHash, currentHash, addedAt, status, format, statusAt) VALUES ('book', 'Kept', '[]', '', '', '', '[]', '', '', '[]', 'A/Kept.epub', 'A/Kept.epub', NULL, 'h', 'h', 1, 'Reading', 'epub', 7)"
+            )
+            it.execSQL(
+                "INSERT INTO wishlist (id, catalogKey, title, authors, coverPath, hardcoverId, hardcoverTitle, hardcoverSynced, addedAt, linkedBookId, details, status) VALUES ('wish', 'hardcover:42', 'Kept entry', '[]', NULL, 42, 'Kept entry', 1, 1, 'book', '{}', 'Reading')"
+            )
+            it.execSQL(
+                "INSERT INTO annotations VALUES ('note', 'book', 'kindle', 'text', 'my note', 'Ch 1', '2026-10-01', 'p0', 'p1', 'highlight')"
+            )
+            it.execSQL(
+                "INSERT INTO sync_baseline VALUES ('book', 'kindle', 'Librillo/A/Kept.epub', 'h', 'reading', 7, '[\"note\"]', '[]', 2)"
+            )
+            it.execSQL("INSERT INTO hardcover_observations VALUES (1, 42, 2, 10, 5, 3)")
+        }
+        helper.runMigrationsAndValidate(name, 11, true, MIGRATION_10_11).use { db ->
+            db.query("SELECT status, statusAt, title FROM books WHERE id = 'book'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("Reading", it.getString(0))
+                assertEquals(7L, it.getLong(1))
+                assertEquals("Kept", it.getString(2))
+            }
+            db.query("SELECT status, statusAt, hardcoverId, linkedBookId FROM wishlist").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("Reading", it.getString(0))
+                assertEquals(0L, it.getLong(1))
+                assertEquals(42, it.getInt(2))
+                assertEquals("book", it.getString(3))
+            }
+            for (table in listOf("annotations", "sync_baseline", "hardcover_observations")) {
+                db.query("SELECT COUNT(*) FROM $table").use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals(table, 1, it.getInt(0))
+                }
+            }
+            db.execSQL("INSERT INTO hardcover_baseline VALUES (1, 42, 2, 7, 8)")
+            db.execSQL("INSERT INTO hardcover_baseline VALUES (2, 42, 3, 7, 8)")
+            db.execSQL("INSERT INTO hardcover_matches VALUES ('other', 'UNSURE', '[]', 'key', 8)")
+            db.execSQL(
+                "INSERT INTO hardcover_questions VALUES (1, 42, 'book', 'Kept', 3, 'Reading', 8)"
+            )
+            for (duplicate in
+                listOf(
+                    "INSERT INTO hardcover_baseline VALUES (1, 42, 3, 9, 9)",
+                    "INSERT INTO hardcover_matches VALUES ('other', 'NOT_FOUND', '[]', 'key', 9)",
+                    "INSERT INTO hardcover_questions VALUES (1, 42, 'book', 'Kept', 1, 'Paused', 9)",
+                )) {
+                assertThrows(duplicate, SQLiteConstraintException::class.java) {
+                    db.execSQL(duplicate)
+                }
+            }
+            db.query("SELECT COUNT(*) FROM hardcover_baseline").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(2, it.getInt(0))
+            }
+        }
+    }
+
+    @Test
+    fun roomOpensSchema11AndKeepsHardcoverRows() = runBlocking {
+        val name = "hardcover-dao.db"
+        helper.createDatabase(name, 10).close()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database =
+            Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+                .addMigrations(*ALL_MIGRATIONS)
+                .build()
+        try {
+            val hardcover = database.hardcover()
+            hardcover.saveBaseline(HardcoverBaselineRow(1, 42, 2, 7, 8))
+            hardcover.saveBaseline(HardcoverBaselineRow(1, 42, 3, 9, 10))
+            assertEquals(3, hardcover.baseline(1, 42)!!.status)
+            assertNull(hardcover.baseline(2, 42))
+            hardcover.saveMatch(HardcoverMatchRow("item", "UNSURE", "[]", "key", 1))
+            assertEquals("UNSURE", hardcover.match("item")!!.state)
+            hardcover.saveQuestions(
+                listOf(HardcoverQuestionRow(1, 42, "item", "Title", 3, "Reading", 1))
+            )
+            assertEquals(1, hardcover.allQuestions(1).size)
+            assertEquals(0, hardcover.allQuestions(2).size)
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
         }
     }
 

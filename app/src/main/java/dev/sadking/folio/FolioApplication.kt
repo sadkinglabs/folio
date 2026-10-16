@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.room.Room
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceSettings
+import dev.sadking.folio.sync.HardcoverSync
 
 class FolioApplication : Application() {
     val database by lazy {
@@ -36,13 +37,18 @@ class FolioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Sync with Hardcover (M10): the periodic pull and the watcher that matches new books.
+        HardcoverSync.get(this).start()
         // Folio Link runs while Librillo is open and for 30 minutes after (M9). The process
         // lifecycle covers every activity, the reader included, and ignores rotation.
         ProcessLifecycleOwner.get()
             .lifecycle
             .addObserver(
                 object : DefaultLifecycleObserver {
-                    override fun onStart(owner: LifecycleOwner) = link.onAppForeground()
+                    override fun onStart(owner: LifecycleOwner) {
+                        link.onAppForeground()
+                        HardcoverSync.get(this@FolioApplication).onAppOpen()
+                    }
 
                     override fun onStop(owner: LifecycleOwner) = link.onAppBackground()
                 }

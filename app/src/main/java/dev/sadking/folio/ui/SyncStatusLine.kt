@@ -22,6 +22,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
 import dev.sadking.folio.sync.EreaderSync
+import dev.sadking.folio.sync.HardcoverProblem
+import dev.sadking.folio.sync.HardcoverSyncStatus
 
 internal const val SYNC_LINE_TAG = "sync-line"
 internal const val SYNC_LINE_BUTTON_TAG = "sync-line-button"
@@ -48,23 +50,27 @@ internal sealed interface SyncLine {
     data class Synced(val name: String?, val at: Long) : SyncLine
 }
 
-/** The sync line: what it says, and how many decisions wait (questions and Hardcover prompts). */
+/**
+ * The sync line: what it says, and how many decisions wait (e-reader questions, Hardcover match
+ * checks and Hardcover status questions).
+ */
 internal data class SyncLineState(val line: SyncLine, val decisions: Int = 0)
 
 /**
  * What the Library's sync line shows at [now]. The e-reader shown is the one that synced or started
  * syncing last. [requestedAt] is when Sync was tapped; it counts for [SYNC_REQUEST_SHOWN_MS] and
  * until a sync finishes after it. [pluginInstalled] tells "set up, not synced yet" from "not set
- * up". [prompts] counts the Hardcover finish prompts waiting.
+ * up". [hardcover] counts the Hardcover match checks and status questions waiting; they count even
+ * with no e-reader.
  */
 internal fun syncLine(
     ereaders: Collection<EreaderSync>,
     requestedAt: Long,
     pluginInstalled: Boolean,
-    prompts: Int,
+    hardcover: Int,
     now: Long,
 ): SyncLineState {
-    val decisions = ereaders.sumOf { it.waiting.size } + prompts
+    val decisions = ereaders.sumOf { it.waiting.size } + hardcover
     val ereader = ereaders.maxByOrNull { maxOf(it.lastSync, it.syncingSince) }
     val name = ereader?.name?.takeIf { it.isNotBlank() }
     val requested =
@@ -247,3 +253,72 @@ private fun DecisionsLink(count: Int, onClick: () -> Unit) {
         )
     }
 }
+
+/** What Settings' Hardcover status line says. */
+internal sealed interface HardcoverLine {
+    /** "Sync with Hardcover" is off. */
+    data object Off : HardcoverLine
+
+    /** Hardcover refused the saved token: the owner must reconnect. */
+    data object TokenRejected : HardcoverLine
+
+    /** The pass over the library: [done] of [total] items looked at. */
+    data class Matching(val done: Int, val total: Int) : HardcoverLine
+
+    data object Syncing : HardcoverLine
+
+    /** The last run could not reach Hardcover; WorkManager tries again with a connection. */
+    data object Offline : HardcoverLine
+
+    data class NeverSynced(val matched: Int) : HardcoverLine
+
+    data class Synced(val at: Long, val matched: Int, val toCheck: Int) : HardcoverLine
+}
+
+/**
+ * The Hardcover status line for [status], or null with no account connected (the Account row says
+ * so). A rejected token comes first, since nothing works until it is fixed; then the matching pass
+ * with its count, a run under way, a lost connection, and when it last synced.
+ */
+internal fun hardcoverLine(status: HardcoverSyncStatus): HardcoverLine? =
+    when {
+        !status.connected -> null
+        !status.enabled -> HardcoverLine.Off
+        status.problem == HardcoverProblem.TOKEN_REJECTED -> HardcoverLine.TokenRejected
+        status.matchingTotal > 0 ->
+            HardcoverLine.Matching(
+                status.matchingDone.coerceIn(0, status.matchingTotal),
+                status.matchingTotal,
+            )
+        status.running -> HardcoverLine.Syncing
+        status.problem == HardcoverProblem.OFFLINE -> HardcoverLine.Offline
+        status.lastSyncAt <= 0 -> HardcoverLine.NeverSynced(status.matched)
+        else -> HardcoverLine.Synced(status.lastSyncAt, status.matched, status.toCheck)
+    }
+
+/** "Synced 5 min ago · 312 matched · 4 to check", "Matching your library… 120 of 400". */
+@Composable
+internal fun hardcoverLineText(line: HardcoverLine, now: Long): String =
+    when (line) {
+        HardcoverLine.Off -> stringResource(R.string.hc10_line_off)
+        HardcoverLine.TokenRejected -> stringResource(R.string.hc10_line_token)
+        is HardcoverLine.Matching ->
+            stringResource(R.string.hc10_line_matching, line.done, line.total)
+        HardcoverLine.Syncing -> stringResource(R.string.hc10_line_syncing)
+        HardcoverLine.Offline -> stringResource(R.string.hc10_line_offline)
+        is HardcoverLine.NeverSynced -> stringResource(R.string.hc10_line_never, line.matched)
+        is HardcoverLine.Synced ->
+            if (line.toCheck > 0)
+                stringResource(
+                    R.string.hc10_line_synced,
+                    syncedAgo(line.at, now),
+                    line.matched,
+                    line.toCheck,
+                )
+            else
+                stringResource(
+                    R.string.hc10_line_synced_all_checked,
+                    syncedAgo(line.at, now),
+                    line.matched,
+                )
+    }

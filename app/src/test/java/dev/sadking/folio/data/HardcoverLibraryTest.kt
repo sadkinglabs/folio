@@ -8,7 +8,9 @@ class HardcoverLibraryTest {
     private fun response(rows: String) = JSONObject("{\"data\":{\"user_books\":$rows}}")
 
     private fun row(id: Int, title: String = "Dune") =
-        """{"id":$id,"status_id":2,"edition_id":10,"book":{"id":1,"title":"$title","slug":"dune","cached_contributors":[{"author":{"name":"Frank Herbert"}}]},"user_book_reads":[{"progress_pages":42,"edition_id":10}]}"""
+        """{"id":$id,"status_id":2,"edition_id":10,"updated_at":"2026-10-01T08:30:00.123456+00:00","book":{"id":1,"title":"$title","slug":"dune","release_year":1965,"cached_contributors":[{"author":{"name":"Frank Herbert"}}],"cached_image":{"url":"https://assets.hardcover.app/dune.jpg"}},"user_book_reads":[{"progress_pages":42,"edition_id":10}]}"""
+
+    @org.junit.Before fun setUp() = HardcoverClient.resetPacing()
 
     @Test
     fun paginationIsAccountScopedAndReadOnly() {
@@ -65,5 +67,30 @@ class HardcoverLibraryTest {
         val value =
             HardcoverClient { _, _ -> response("[$obj]") }.libraryPage("token", 1, 0).single()
         assertEquals(20, value.editionId)
+    }
+
+    @Test
+    fun readsWhenHardcoverLastChangedTheEntry() {
+        val client = HardcoverClient { _, body ->
+            assertTrue(body.getString("query").contains("updated_at"))
+            response("[${row(101)}]")
+        }
+        val value = client.libraryPage("token", 1, 0).single()
+        assertEquals(
+            java.time.Instant.parse("2026-10-01T08:30:00.123Z").toEpochMilli(),
+            value.updatedAt,
+        )
+        assertEquals(1965, value.book.releaseYear)
+        assertEquals("https://assets.hardcover.app/dune.jpg", value.book.coverUrl)
+    }
+
+    @Test
+    fun missingOrOddUpdateTimesAreNull() {
+        for (time in listOf(JSONObject.NULL, "yesterday")) {
+            val obj = JSONObject(row(101)).put("updated_at", time)
+            val value =
+                HardcoverClient { _, _ -> response("[$obj]") }.libraryPage("token", 1, 0).single()
+            assertNull(value.updatedAt)
+        }
     }
 }

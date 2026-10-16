@@ -12,6 +12,10 @@ import dev.sadking.folio.core.Epub
 import dev.sadking.folio.core.FileTitle
 import dev.sadking.folio.core.Metadata
 import dev.sadking.folio.core.Pdf
+import dev.sadking.folio.core.hardcover.HardcoverMatching
+import dev.sadking.folio.sync.HardcoverStore
+import dev.sadking.folio.sync.MatchRecord
+import dev.sadking.folio.sync.MatchRecordState
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -23,7 +27,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class LibraryRepository(
-    private val context: Context,
+    internal val context: Context,
     val database: LibraryDatabase,
     /** The visible Books folder (M8); books moved there have their only copy in it. */
     val booksRoot: () -> File = { BooksFolder(context).location },
@@ -476,6 +480,10 @@ class LibraryRepository(
                     }
                     dao.restoreRemoved(group)
                 }
+                // What Hardcover matching knew about them, and its candidate covers.
+                val matches =
+                    HardcoverStore(database, File(context.filesDir, HardcoverStore.COVER_DIR))
+                entries.forEach { matches.deleteMatch(it.id) }
                 val filesGone =
                     folderFiles
                         .map { file ->
@@ -490,24 +498,59 @@ class LibraryRepository(
             }
         }
 
-    suspend fun detach(bookId: String) = lock.withLock {
-        database.withTransaction {
-            require(dao.removedEntry(bookId) == null) { "Restore this book first" }
-            dao.allWishes()
-                .filter { it.linkedBookId == bookId }
-                .forEach { wish ->
-                    dao.allMemberships()
-                        .filter { it.bookId == bookId }
-                        .forEach { dao.addWishMembership(WishMembership(wish.id, it.shelfId)) }
-                    dao.updateWish(wish.copy(linkedBookId = null))
-                }
+    /**
+     * Takes a book's file off its catalogue entry. A book taken off a Hardcover-linked entry is not
+     * matched to Hardcover again on its own (it would go straight back): it reads as Not found
+     * until its details change, and can still be matched by hand.
+     */
+    suspend fun detach(bookId: String) {
+        val book = lock.withLock {
+            database.withTransaction {
+                require(dao.removedEntry(bookId) == null) { "Restore this book first" }
+                var linked = false
+                dao.allWishes()
+                    .filter { it.linkedBookId == bookId }
+                    .forEach { wish ->
+                        dao.allMemberships()
+                            .filter { it.bookId == bookId }
+                            .forEach {
+                                dao.addWishMembership(WishMembership(wish.id, it.shelfId))
+                            }
+                        dao.updateWish(wish.copy(linkedBookId = null))
+                        if (wish.hardcoverId != null) linked = true
+                    }
+                if (linked) dao.book(bookId) else null
+            }
         }
+        if (book != null) keepUnmatched(book)
+    }
+
+    /** Records [book] as Not found for Hardcover matching, with its details as they are now. */
+    private suspend fun keepUnmatched(book: Book) {
+        val authors = runCatching { decode(book.authors) }.getOrDefault(emptyList())
+        val identifiers = runCatching { decode(book.identifiers) }.getOrDefault(emptyList())
+        val key =
+            HardcoverMatching.metadataKey(
+                book.title,
+                authors,
+                HardcoverMatching.isbns(identifiers),
+            )
+        HardcoverStore(database, File(context.filesDir, HardcoverStore.COVER_DIR))
+            .saveMatch(
+                MatchRecord(
+                    book.id,
+                    MatchRecordState.NOT_FOUND,
+                    emptyList(),
+                    key,
+                    System.currentTimeMillis(),
+                )
+            )
     }
 
     /**
      * Adds books to a manual list or takes them out, and/or sets their status. A status that
      * changes records [statusAt] as the time it changed: now, or the time the change was made on an
-     * e-reader.
+     * e-reader or on Hardcover. Catalogue entries record it too.
      */
     suspend fun manageBatch(
         ids: Set<String>,
@@ -538,7 +581,8 @@ class LibraryRepository(
                 }
             }
             wishes.forEach { wish ->
-                if (status != null) dao.updateWish(wish.copy(status = status))
+                if (status != null && status != wish.status)
+                    dao.updateWish(wish.copy(status = status, statusAt = statusAt))
                 if (shelfId != null) {
                     if (add) dao.addWishMembership(WishMembership(wish.id, shelfId))
                     else dao.removeWishMembership(wish.id, shelfId)

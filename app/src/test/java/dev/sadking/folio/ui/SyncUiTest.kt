@@ -9,9 +9,7 @@ import dev.sadking.folio.device.ObservedHostKey
 import dev.sadking.folio.link.Refusal
 import dev.sadking.folio.link.RefusedFile
 import dev.sadking.folio.sync.EreaderSync
-import dev.sadking.folio.sync.FinishPrompt
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,10 +109,7 @@ class SyncUiTest {
             FolioTheme(dynamic = false) {
                 DecisionsContent(
                     listOf(decision),
-                    emptyList(),
                     onAnswer = { d, option -> answered = d to option },
-                    onMarkRead = {},
-                    onNotNow = {},
                 )
             }
         }
@@ -129,52 +124,16 @@ class SyncUiTest {
     fun anAnsweredDecisionShowsTheChoiceAndWhenItApplies() {
         compose.setContent {
             FolioTheme(dynamic = false) {
-                DecisionsContent(
-                    listOf(Decision("kindle-1", null, question, "Finished")),
-                    emptyList(),
-                    onAnswer = { _, _ -> },
-                    onMarkRead = {},
-                    onNotNow = {},
-                )
+                DecisionsContent(listOf(Decision("kindle-1", null, question, "Finished")))
             }
         }
         compose.onNodeWithText("Saved. Your e-reader uses it at its next sync.").assertIsDisplayed()
     }
 
     @Test
-    fun aFinishPromptAsksBeforeMarkingTheBookReadOnHardcover() {
-        var read: FinishPrompt? = null
-        var later: FinishPrompt? = null
-        val prompt = FinishPrompt("b9", "Home")
-        compose.setContent {
-            FolioTheme(dynamic = false) {
-                DecisionsContent(
-                    emptyList(),
-                    listOf(prompt),
-                    onAnswer = { _, _ -> },
-                    onMarkRead = { read = it },
-                    onNotNow = { later = it },
-                )
-            }
-        }
-        compose
-            .onNodeWithText("You finished Home. Mark it as read on Hardcover?")
-            .assertIsDisplayed()
-        compose.runOnIdle { assertNull(read) }
-        compose.onNodeWithTag(finishPromptTag("b9", read = false)).performClick()
-        compose.onNodeWithTag(finishPromptTag("b9", read = true)).performClick()
-        compose.runOnIdle {
-            assertEquals(prompt, later)
-            assertEquals(prompt, read)
-        }
-    }
-
-    @Test
     fun nothingToDecideSaysSo() {
         compose.setContent {
-            FolioTheme(dynamic = false) {
-                DecisionsContent(emptyList(), emptyList(), { _, _ -> }, {}, {})
-            }
+            FolioTheme(dynamic = false) { DecisionsContent(emptyList()) }
         }
         compose.onNodeWithText("Nothing needs your decision.").assertIsDisplayed()
     }

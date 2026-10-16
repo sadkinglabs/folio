@@ -81,6 +81,11 @@ data class WishBook(
     val linkedBookId: String? = null,
     @ColumnInfo(defaultValue = "'{}'") val details: String = "{}",
     @ColumnInfo(defaultValue = "''") val status: String = "",
+    /**
+     * When [status] last changed, in epoch milliseconds. 0 when unknown: entries from before schema
+     * 11, or never given a status. Hardcover sync uses it like [Book.statusAt].
+     */
+    @ColumnInfo(defaultValue = "0") val statusAt: Long = 0,
 ) {
     val authorLabel: String
         get() = decode(authors).joinToString(", ")
@@ -341,6 +346,51 @@ data class SyncBaseline(
     val collections: String = "[]",
     /** When this baseline was recorded, in epoch milliseconds. */
     val syncedAt: Long,
+)
+
+/**
+ * What Librillo and one Hardcover account last agreed about a book's status (M10): the common
+ * ancestor that tells "changed here" from "changed there". [status] is Hardcover's status id 1..5,
+ * or 0 when both agreed the book is not on Hardcover. [statusAt] is Librillo's status time then.
+ * Rules: docs/HARDCOVER_SYNC.md, A3.
+ */
+@Entity(tableName = "hardcover_baseline", primaryKeys = ["accountId", "hardcoverId"])
+data class HardcoverBaselineRow(
+    val accountId: Int,
+    val hardcoverId: Int,
+    /** 0..5; 0 = agreed it is not on Hardcover. */
+    val status: Int,
+    val statusAt: Long,
+    val syncedAt: Long,
+)
+
+/** What matching concluded for an unlinked book or catalogue entry ([itemId]). */
+@Entity(tableName = "hardcover_matches")
+data class HardcoverMatchRow(
+    @PrimaryKey val itemId: String,
+    /** A MatchRecordState name. */
+    val state: String,
+    /**
+     * JSON array: [{"id":1,"title":"…","authors":["…"],"year":2001 or null,"cover":"/path" or
+     * null}]
+     */
+    val candidates: String,
+    val metadataKey: String,
+    val checkedAt: Long,
+)
+
+/** Both sides changed a book's status since they last agreed: the owner decides. */
+@Entity(tableName = "hardcover_questions", primaryKeys = ["accountId", "hardcoverId"])
+data class HardcoverQuestionRow(
+    val accountId: Int,
+    val hardcoverId: Int,
+    val itemId: String,
+    val title: String,
+    /** Hardcover's status id 1..5, or 0: no longer in the Hardcover library. */
+    val hardcoverStatus: Int,
+    /** Librillo's status word. */
+    val librilloStatus: String,
+    val askedAt: Long,
 )
 
 @Dao
@@ -616,6 +666,59 @@ interface SyncBaselineDao {
     @Upsert fun upsertAll(baselines: List<SyncBaseline>)
 }
 
+/** Hardcover sync (M10): baselines, match records, questions and the account's observations. */
+@Dao
+interface HardcoverDao {
+    @Query("SELECT * FROM hardcover_baseline WHERE accountId = :account")
+    suspend fun baselines(account: Int): List<HardcoverBaselineRow>
+
+    @Query("SELECT * FROM hardcover_baseline WHERE accountId = :account AND hardcoverId = :book")
+    suspend fun baseline(account: Int, book: Int): HardcoverBaselineRow?
+
+    @Upsert suspend fun saveBaseline(row: HardcoverBaselineRow)
+
+    @Query("SELECT * FROM hardcover_matches") fun matches(): Flow<List<HardcoverMatchRow>>
+
+    @Query("SELECT * FROM hardcover_matches") suspend fun allMatches(): List<HardcoverMatchRow>
+
+    @Query("SELECT * FROM hardcover_matches WHERE itemId = :itemId")
+    suspend fun match(itemId: String): HardcoverMatchRow?
+
+    @Upsert suspend fun saveMatch(row: HardcoverMatchRow)
+
+    @Query("DELETE FROM hardcover_matches WHERE itemId = :itemId")
+    suspend fun deleteMatch(itemId: String)
+
+    @Query(
+        "SELECT * FROM hardcover_questions WHERE accountId = :account ORDER BY askedAt, hardcoverId"
+    )
+    fun questions(account: Int): Flow<List<HardcoverQuestionRow>>
+
+    @Query("SELECT * FROM hardcover_questions WHERE accountId = :account")
+    suspend fun allQuestions(account: Int): List<HardcoverQuestionRow>
+
+    @Query("SELECT * FROM hardcover_questions WHERE accountId = :account AND hardcoverId = :book")
+    suspend fun question(account: Int, book: Int): HardcoverQuestionRow?
+
+    @Upsert suspend fun saveQuestions(rows: List<HardcoverQuestionRow>)
+
+    @Query("DELETE FROM hardcover_questions WHERE accountId = :account")
+    suspend fun deleteQuestions(account: Int)
+
+    @Query("DELETE FROM hardcover_questions WHERE accountId = :account AND hardcoverId = :book")
+    suspend fun deleteQuestion(account: Int, book: Int)
+
+    @Query("SELECT * FROM hardcover_observations WHERE accountId = :account")
+    suspend fun observations(account: Int): List<HardcoverObservation>
+
+    /** Whether any catalogue entry, Recently removed ones included, has Hardcover book [book]. */
+    @Query("SELECT EXISTS(SELECT 1 FROM wishlist WHERE hardcoverId = :book)")
+    suspend fun hasEntry(book: Int): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM wishlist WHERE catalogKey = :key)")
+    suspend fun catalogKeyTaken(key: String): Boolean
+}
+
 @Database(
     entities =
         [
@@ -637,14 +740,19 @@ interface SyncBaselineDao {
             SyncJob::class,
             SyncTask::class,
             SyncBaseline::class,
+            HardcoverBaselineRow::class,
+            HardcoverMatchRow::class,
+            HardcoverQuestionRow::class,
         ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
 
     abstract fun syncBaselines(): SyncBaselineDao
+
+    abstract fun hardcover(): HardcoverDao
 }
 
 val MIGRATION_1_2 =
@@ -765,6 +873,26 @@ val MIGRATION_9_10 =
         }
     }
 
+/**
+ * Schema 11 (M10, Hardcover sync): baselines, match records and questions, and catalogue entries
+ * remember when their status last changed (0 for every existing entry).
+ */
+val MIGRATION_10_11 =
+    object : androidx.room.migration.Migration(10, 11) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS hardcover_baseline (accountId INTEGER NOT NULL, hardcoverId INTEGER NOT NULL, status INTEGER NOT NULL, statusAt INTEGER NOT NULL, syncedAt INTEGER NOT NULL, PRIMARY KEY(accountId,hardcoverId))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS hardcover_matches (itemId TEXT NOT NULL PRIMARY KEY, state TEXT NOT NULL, candidates TEXT NOT NULL, metadataKey TEXT NOT NULL, checkedAt INTEGER NOT NULL)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS hardcover_questions (accountId INTEGER NOT NULL, hardcoverId INTEGER NOT NULL, itemId TEXT NOT NULL, title TEXT NOT NULL, hardcoverStatus INTEGER NOT NULL, librilloStatus TEXT NOT NULL, askedAt INTEGER NOT NULL, PRIMARY KEY(accountId,hardcoverId))"
+            )
+            db.execSQL("ALTER TABLE wishlist ADD COLUMN statusAt INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
@@ -777,4 +905,5 @@ val ALL_MIGRATIONS =
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
+        MIGRATION_10_11,
     )

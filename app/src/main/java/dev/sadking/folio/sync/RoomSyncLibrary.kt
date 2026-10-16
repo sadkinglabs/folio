@@ -46,8 +46,8 @@ internal constructor(
     /** Where uploads wait when the Books folder can't be used. */
     private val cacheDir: File,
     /**
-     * Told which books' status sync may have changed, so a book that became Finished can offer to
-     * finish its Hardcover read ([HardcoverFinishPrompts.statusChanged]).
+     * Told which books' status sync may have changed, so Hardcover gets them like a change made on
+     * the phone ([HardcoverSync.statusChanged]): a Kindle finish goes to Hardcover on its own.
      */
     private val statusChanged: suspend (Collection<String>) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
@@ -58,7 +58,8 @@ internal constructor(
         app.repository,
         SyncState.of(app),
         app.cacheDir,
-        HardcoverFinishPrompts(app)::statusChanged,
+        // Looked up when a status changes, not when the Link server starts.
+        { ids -> HardcoverSync.get(app).statusChanged(ids) },
     )
 
     private val dao = repo.dao
@@ -173,7 +174,7 @@ internal constructor(
         received: Map<String, String>,
     ) {
         for (action in actions) attempt { io { applyOne(ereaderId, action, received) } }
-        // Books whose status sync set: one that became Finished may offer the Hardcover prompt.
+        // Books whose status sync set go to Hardcover too (M10).
         val statuses = actions.mapNotNull {
             when (it) {
                 is PhoneAction.SetStatus -> it.bookId

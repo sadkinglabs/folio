@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import dev.sadking.folio.sync.HardcoverItemState
 
 internal const val ATTACH_SHEET_TAG = "attach-sheet"
 internal const val ATTACH_PICK_FILE_TAG = "attach-pick-file"
@@ -36,7 +37,8 @@ internal const val ATTACH_PICK_FILE_TAG = "attach-pick-file"
  * A record (a book without an EPUB) on the same page as any other book. Its primary action looks
  * for an EPUB online; Attach takes a file from the phone or an EPUB already in Folio, with a
  * confirm sheet that shows both covers. The record keeps its details, lists and Hardcover match
- * throughout.
+ * throughout. [hardcoverState] is what the Hardcover tile says; while [hardcoverSync] is on, a
+ * matched record reaches Hardcover by itself, so there is no "Add to Hardcover" button.
  */
 @Composable
 fun CatalogueBookDetails(
@@ -50,6 +52,9 @@ fun CatalogueBookDetails(
     onRemove: () -> Unit,
     onLists: () -> Unit,
     onStatus: (String) -> Unit,
+    hardcoverState: HardcoverItemState? = null,
+    hardcoverSync: Boolean = false,
+    onCheckMatch: () -> Unit = {},
 ) {
     val state by model.state.collectAsStateWithLifecycle()
     val observations by model.observations.collectAsStateWithLifecycle()
@@ -75,6 +80,7 @@ fun CatalogueBookDetails(
             signals = catalogueSignals(wish, observed),
             hardcoverLinked = wish.hardcoverId != null,
             hardcoverPage = observed?.pages,
+            hardcoverState = hardcoverState,
             busy = state.busy,
             contentPadding = contentPadding,
             onRead = {
@@ -94,12 +100,14 @@ fun CatalogueBookDetails(
             onAttach = { attaching = true },
             onEdit = onEdit,
             onHardcover = onHardcover,
+            onCheckMatch = onCheckMatch,
             onRemove = onRemove,
             onLists = onLists,
             onStatus = onStatus,
             extra = {
                 if (
-                    wish.hardcoverId != null &&
+                    !hardcoverSync &&
+                        wish.hardcoverId != null &&
                         !wish.hardcoverSynced &&
                         wish.status in listOf("", "Want to Read") &&
                         (observed == null || observed.status == 1)

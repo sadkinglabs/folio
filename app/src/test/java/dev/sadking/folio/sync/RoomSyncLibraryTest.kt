@@ -451,7 +451,7 @@ class RoomSyncLibraryTest {
     }
 
     @Test
-    fun statusesSetBySyncAreReportedForTheHardcoverPrompt() = runBlocking {
+    fun statusesSetBySyncAreReportedForHardcover() = runBlocking {
         val changed = mutableListOf<Collection<String>>()
         val reporting = RoomSyncLibrary(repo, state, cache, { changed += it }) { clock }
         val home = addToFolder("Home", "Ann Lee")

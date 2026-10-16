@@ -61,11 +61,6 @@ fun HardcoverReadingSheet(
     book: Book,
     snapshot: ReadingSnapshot?,
     phoneReading: PhoneReading? = null,
-    /**
-     * Opened from "You finished … Mark it as read on Hardcover?": once the read is loaded and is
-     * Currently Reading, the finish dialog opens with today's date. The owner still taps Finish.
-     */
-    finishOnOpen: Boolean = false,
     onDismiss: () -> Unit,
 ) {
     val username by model.username.collectAsStateWithLifecycle()
@@ -82,14 +77,6 @@ fun HardcoverReadingSheet(
     var startedOn by remember { mutableStateOf(LocalDate.now()) }
     var finishing by remember { mutableStateOf(false) }
     var finishedOn by remember { mutableStateOf(LocalDate.now()) }
-    var offeredFinish by remember(book.id) { mutableStateOf(false) }
-    LaunchedEffect(finishOnOpen, reading) {
-        if (finishOnOpen && !offeredFinish && reading?.status == 2 && reading?.readId != null) {
-            offeredFinish = true
-            finishedOn = LocalDate.now()
-            finishing = true
-        }
-    }
     val reports = linkReports(book)
     ModalBottomSheet(
         onDismissRequest = onDismiss,

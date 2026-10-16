@@ -149,7 +149,10 @@ fun FolioApp(model: LibraryViewModel) {
 
         val ereaders by devices.ereaders.collectAsStateWithLifecycle()
         val syncRequestedAt by devices.syncRequestedAt.collectAsStateWithLifecycle()
-        val finishPrompts by devices.prompts.collectAsStateWithLifecycle()
+        val hardcoverStatus by devices.hardcoverStatus.collectAsStateWithLifecycle()
+        val hardcoverChecks by devices.hardcoverChecks.collectAsStateWithLifecycle()
+        val hardcoverQuestions by devices.hardcoverQuestions.collectAsStateWithLifecycle()
+        val hardcoverItemStates by devices.hardcoverItemStates.collectAsStateWithLifecycle()
         val pluginInstalledAt by devices.pluginInstalledAt.collectAsStateWithLifecycle()
         val libraryFolder by devices.libraryFolder.collectAsStateWithLifecycle()
         val setupProgress by devices.setup.collectAsStateWithLifecycle()
@@ -161,14 +164,13 @@ fun FolioApp(model: LibraryViewModel) {
                     value = System.currentTimeMillis()
                 }
             }
+        val hardcoverWaiting = hardcoverChecks.size + hardcoverQuestions.size
         val syncLineState =
-            remember(ereaders, syncRequestedAt, pluginInstalledAt, finishPrompts, now) {
-                syncLine(ereaders, syncRequestedAt, pluginInstalledAt > 0, finishPrompts.size, now)
+            remember(ereaders, syncRequestedAt, pluginInstalledAt, hardcoverWaiting, now) {
+                syncLine(ereaders, syncRequestedAt, pluginInstalledAt > 0, hardcoverWaiting, now)
             }
         var showDecisions by rememberSaveable { mutableStateOf(false) }
         var showSetup by rememberSaveable { mutableStateOf(false) }
-        // "Mark as read" on a finish prompt opens that book's Hardcover sheet at its finish step.
-        var finishPromptId by rememberSaveable { mutableStateOf<String?>(null) }
         val device by devices.device.collectAsStateWithLifecycle()
         val observedHost by devices.observedHost.collectAsStateWithLifecycle()
         val probeStatus by devices.probeStatus.collectAsStateWithLifecycle()
@@ -244,10 +246,15 @@ fun FolioApp(model: LibraryViewModel) {
                     .sortedByDescending { it.addedAt }
                     .take(3)
             }
-        // A finish prompt whose read Hardcover no longer has as Currently Reading is done with.
-        LaunchedEffect(finishPrompts, wishes, observations, accountId) {
-            settledPrompts(finishPrompts, wishes, observations, accountId).forEach {
-                devices.dismissPrompt(it)
+        // A pick or an answer Hardcover sync refused says why.
+        LaunchedEffect(devices) {
+            devices.hardcoverNotices.collect { message ->
+                snackbar.currentSnackbarData?.dismiss()
+                snackbar.showSnackbar(
+                    message,
+                    withDismissAction = true,
+                    duration = SnackbarDuration.Long,
+                )
             }
         }
         val statistics by model.statistics.collectAsStateWithLifecycle()
@@ -668,6 +675,8 @@ fun FolioApp(model: LibraryViewModel) {
                                                     it.linkedBookId == book.id &&
                                                         it.hardcoverId != null
                                                 },
+                                            hardcoverState = hardcoverItemStates[book.id],
+                                            onCheckMatch = { showDecisions = true },
                                             hardcoverPage =
                                                 wishes
                                                     .firstOrNull {
@@ -746,6 +755,10 @@ fun FolioApp(model: LibraryViewModel) {
                                         onRemove = { removalIds = setOf(catalogue.id) },
                                         onLists = { listEntryId = catalogue.id },
                                         onStatus = { model.status(catalogue.displayBook(), it) },
+                                        hardcoverState = hardcoverItemStates[catalogue.id],
+                                        hardcoverSync =
+                                            hardcoverStatus.connected && hardcoverStatus.enabled,
+                                        onCheckMatch = { showDecisions = true },
                                     )
                                 } else if (nav.discovering) {
                                     DiscoveryScreen(
@@ -951,6 +964,15 @@ fun FolioApp(model: LibraryViewModel) {
                                                                     discovery.loadProfile()
                                                                 }
                                                             },
+                                                            hardcoverStatus = hardcoverStatus,
+                                                            onHardcoverSync =
+                                                                devices::setHardcoverSync,
+                                                            onHardcoverSyncNow =
+                                                                devices::syncHardcoverNow,
+                                                            onDecisions = {
+                                                                showDecisions = true
+                                                            },
+                                                            now = now,
                                                             count = books.size,
                                                             recordCount = library.entries.size,
                                                             removedCount =
@@ -1497,34 +1519,47 @@ fun FolioApp(model: LibraryViewModel) {
         if (showDecisions)
             DecisionsSheet(
                 decisions(ereaders),
-                finishPrompts,
+                hardcoverChecks,
+                hardcoverQuestions,
                 onAnswer = { decision, option ->
                     haptics.confirm()
                     devices.answer(decision.ereaderId, decision.question.id, option)
                 },
-                onMarkRead = { prompt ->
-                    books
-                        .firstOrNull { it.id == prompt.bookId }
-                        ?.let {
-                            showDecisions = false
-                            finishPromptId = it.id
-                            discovery.openReading(it)
-                        }
+                onPick = { check, candidate ->
+                    haptics.confirm()
+                    devices.pickMatch(check, candidate)
                 },
-                onNotNow = { devices.dismissPrompt(it.bookId) },
+                onNotOnHardcover = devices::notOnHardcover,
+                // The book's own Hardcover sheet, which searches by its title and author.
+                onSearch = { check ->
+                    showDecisions = false
+                    // A catalogue entry with a file is searched as its book.
+                    val bookId =
+                        books.firstOrNull { it.id == check.itemId }?.id
+                            ?: wishes.firstOrNull { it.id == check.itemId }?.linkedBookId
+                    val match = books.firstOrNull { it.id == bookId }
+                    if (match != null) {
+                        nav.open(Route.Book(match.id))
+                        showHardcover = true
+                        discovery.openReading(match)
+                    } else
+                        wishes
+                            .firstOrNull { it.id == check.itemId }
+                            ?.let { entry ->
+                                openEntry(entry.id, progress = true)
+                                discovery.openReading(entry.displayBook())
+                            }
+                },
+                onHardcoverAnswer = { question, useHardcover ->
+                    haptics.confirm()
+                    devices.answerHardcover(question, useHardcover)
+                },
+                onAnswerAll = { useHardcover ->
+                    haptics.confirm()
+                    devices.answerAllHardcover(useHardcover)
+                },
                 onDismiss = { showDecisions = false },
             )
-        val promptBook = books.firstOrNull { it.id == finishPromptId }
-        if (promptBook != null)
-            HardcoverReadingSheet(
-                discovery,
-                promptBook,
-                reading.filter { it.bookId == promptBook.id }.maxByOrNull { it.fetchedAt },
-                finishOnOpen = true,
-            ) {
-                finishPromptId = null
-                discovery.clearReading()
-            }
         if (showSetup)
             PluginSetupSheet(
                 reinstall = pluginInstalledAt > 0 || ereaders.isNotEmpty(),

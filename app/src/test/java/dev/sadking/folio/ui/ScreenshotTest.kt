@@ -71,7 +71,13 @@ class ScreenshotTest {
 
     @Test fun syncLine() = shoot("sync-line") { SyncLinePreview() }
 
-    @Test fun decisions() = shoot("decisions") { DecisionsPreview() }
+    @Test fun decisions() = shoot("decisions", tall = true) { DecisionsPreview() }
+
+    @Test
+    fun decisionsHardcover() =
+        shoot("decisions-hardcover", tall = true) { DecisionsHardcoverPreview() }
+
+    @Test fun hardcoverTile() = shoot("hardcover-tile", tall = true) { HardcoverTilePreview() }
 
     @Test fun setup() = shoot("setup", tall = true) { SetupPreview() }
 
@@ -86,6 +92,12 @@ class ScreenshotTest {
 
     @Test
     fun settingsFirstRun() = shoot("settings-first-run", tall = true) { SettingsFirstRunPreview() }
+
+    @Test
+    fun settingsHardcover() =
+        shoot("settings-hardcover", tall = true) {
+            SettingsHardcoverPreview()
+        }
 
     @Test fun readingDefaults() = shoot("settings-text") { ReadingDefaultsPreview() }
 

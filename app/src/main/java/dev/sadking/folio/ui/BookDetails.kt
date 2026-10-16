@@ -69,6 +69,7 @@ import dev.sadking.folio.reader.ReaderStart
 import dev.sadking.folio.reader.koreaderDigest
 import dev.sadking.folio.reader.opensOnPhone
 import dev.sadking.folio.reader.readerKind
+import dev.sadking.folio.sync.HardcoverItemState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flowOf
@@ -108,6 +109,8 @@ fun BookDetails(
     reading: ReadingSnapshot? = null,
     hardcoverLinked: Boolean = signals?.hardcover != null,
     hardcoverPage: Int? = null,
+    /** What the Hardcover tile says; null: Matched or Not matched, from [hardcoverLinked]. */
+    hardcoverState: HardcoverItemState? = null,
     annotations: List<BookAnnotation> = emptyList(),
     nextInSeries: Book? = null,
     busy: Boolean = false,
@@ -122,6 +125,8 @@ fun BookDetails(
     onAttach: () -> Unit = {},
     onEdit: () -> Unit = {},
     onHardcover: () -> Unit = {},
+    /** The Hardcover tile while a match waits for the owner: opens Needs your decision. */
+    onCheckMatch: () -> Unit = {},
     onShare: () -> Unit = {},
     onRemove: () -> Unit = {},
     onLists: () -> Unit = {},
@@ -271,7 +276,14 @@ fun BookDetails(
                 }
             )
             StatusStrip(
-                statusTiles(hasEpub, entries, hardcoverLinked),
+                statusTiles(
+                    hasEpub,
+                    entries,
+                    hardcoverState
+                        ?: if (hardcoverLinked) HardcoverItemState.MATCHED
+                        else HardcoverItemState.OFF,
+                    onCheckMatch,
+                ),
                 onClick = { progressSheet = true },
             )
             reading
@@ -474,18 +486,20 @@ internal fun CoverHero(book: Book, modifier: Modifier = Modifier) {
 /** The cover's tone for the glow; see [coverToneColor]. */
 @Composable private fun coverGlowColor(book: Book): Color = coverToneColor(book)
 
-/** One tile of the status strip. */
+/** One tile of the status strip. [onClick] replaces the strip's own action for this tile. */
 internal class StatusTile(
     val icon: ImageVector,
     val label: String,
     val value: String,
     val detail: String? = null,
     val tag: String,
+    val onClick: (() -> Unit)? = null,
 )
 
 /**
  * Three compact tiles: Phone, E-reader, Hardcover, each with its position or one word of state.
- * Tapping any of them opens the Progress sheet. At large text sizes the tiles stack.
+ * Tapping one opens the Progress sheet, unless the tile has its own action. At large text sizes the
+ * tiles stack.
  */
 @Composable
 internal fun StatusStrip(
@@ -499,7 +513,7 @@ internal fun StatusStrip(
         Surface(
             modifier
                 .clip(FolioSpace.panelShape)
-                .clickable(role = Role.Button, onClick = onClick)
+                .clickable(role = Role.Button, onClick = tile.onClick ?: onClick)
                 .testTag(tile.tag),
             shape = FolioSpace.panelShape,
             color = MaterialTheme.colorScheme.surfaceContainer,
@@ -527,10 +541,11 @@ internal fun StatusStrip(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                // Two lines, so "Not on Hardcover" fits a third of the width.
                 Text(
                     tile.value,
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 tile.detail?.let {
@@ -570,7 +585,8 @@ internal const val STATUS_TILE_HARDCOVER_TAG = "status-tile-hardcover"
 private fun statusTiles(
     hasEpub: Boolean,
     entries: List<ProgressEntry>,
-    hardcoverLinked: Boolean,
+    hardcoverState: HardcoverItemState,
+    onCheckMatch: () -> Unit,
 ): List<StatusTile> {
     val tiles = mutableListOf<StatusTile>()
     if (hasEpub) {
@@ -595,23 +611,61 @@ private fun statusTiles(
                 STATUS_TILE_EREADER_TAG,
             )
     }
-    val hardcover = entries.firstOrNull { it.source == ProgressSource.HARDCOVER }
     tiles +=
-        StatusTile(
-            Icons.Outlined.Link,
-            stringResource(R.string.progress_hardcover),
-            when {
-                hardcover?.page != null ->
-                    stringResource(R.string.rd_hardcover_page, hardcover.page)
-                hardcoverLinked -> stringResource(R.string.rd_hardcover_linked)
-                else -> stringResource(R.string.rd_hardcover_not_linked)
-            },
-            // Until it is matched, Hardcover hears nothing about this book: say so, and how.
-            if (hardcoverLinked) null else stringResource(R.string.rd_hardcover_not_linked_detail),
-            STATUS_TILE_HARDCOVER_TAG,
+        hardcoverTile(
+            entries.firstOrNull { it.source == ProgressSource.HARDCOVER }?.page,
+            hardcoverState,
+            onCheckMatch,
         )
     return tiles
 }
+
+/**
+ * The Hardcover tile: the page Hardcover has when known, else what [state] says. While a match
+ * waits for the owner, tapping it calls [onCheckMatch] instead of opening the Progress sheet.
+ */
+@Composable
+internal fun hardcoverTile(
+    page: Int?,
+    state: HardcoverItemState,
+    onCheckMatch: () -> Unit = {},
+): StatusTile =
+    StatusTile(
+        Icons.Outlined.Link,
+        stringResource(R.string.progress_hardcover),
+        if (page != null) stringResource(R.string.rd_hardcover_page, page)
+        else hardcoverTileValue(state),
+        hardcoverTileDetail(state),
+        STATUS_TILE_HARDCOVER_TAG,
+        onClick = onCheckMatch.takeIf { state == HardcoverItemState.CHECK },
+    )
+
+/** The Hardcover tile's word: Matched, Matching…, Check match, Not on Hardcover, Not found. */
+@Composable
+internal fun hardcoverTileValue(state: HardcoverItemState): String =
+    when (state) {
+        HardcoverItemState.MATCHED -> stringResource(R.string.rd_hardcover_linked)
+        HardcoverItemState.MATCHING -> stringResource(R.string.hc10_tile_matching)
+        HardcoverItemState.CHECK -> stringResource(R.string.hc10_tile_check)
+        HardcoverItemState.NOT_ON_HARDCOVER -> stringResource(R.string.hc10_tile_not_on_hardcover)
+        HardcoverItemState.NOT_FOUND -> stringResource(R.string.hc10_tile_not_found)
+        HardcoverItemState.OFF -> stringResource(R.string.rd_hardcover_not_linked)
+    }
+
+/**
+ * The line under it, when the owner has something to do: "Tap to choose" for a match to check, and
+ * "Tap Hardcover" (the Hardcover action) when no match is coming on its own.
+ */
+@Composable
+internal fun hardcoverTileDetail(state: HardcoverItemState): String? =
+    when (state) {
+        HardcoverItemState.CHECK -> stringResource(R.string.hc10_tile_check_detail)
+        HardcoverItemState.NOT_FOUND,
+        HardcoverItemState.OFF -> stringResource(R.string.rd_hardcover_not_linked_detail)
+        HardcoverItemState.MATCHED,
+        HardcoverItemState.MATCHING,
+        HardcoverItemState.NOT_ON_HARDCOVER -> null
+    }
 
 @Composable
 private fun percentText(fraction: Double): String =

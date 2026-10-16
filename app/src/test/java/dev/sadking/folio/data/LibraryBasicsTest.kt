@@ -34,6 +34,8 @@ class LibraryBasicsTest {
         assertEquals(metadata, restored.displayBook().metadata())
         assertEquals("Reading", restored.status)
         assertEquals(wish.catalogKey, restored.catalogKey)
+        assertEquals(0L, restored.statusAt)
+        assertEquals(1234L, parseWish(wishJson(wish.copy(statusAt = 1234))).statusAt)
     }
 
     @Test
@@ -42,9 +44,11 @@ class LibraryBasicsTest {
         val json = wishJson(WishBook(id, "hardcover:1", "Legacy", "[]"))
         json.remove("details")
         json.remove("status")
+        json.remove("statusAt")
         val wish = parseWish(json)
         assertEquals("Legacy", wish.displayBook().metadata().title)
         assertEquals("", wish.status)
+        assertEquals("A backup from before schema 11 has no status time", 0L, wish.statusAt)
         assertEquals("Want to Read", wish.displayBook().status)
     }
 

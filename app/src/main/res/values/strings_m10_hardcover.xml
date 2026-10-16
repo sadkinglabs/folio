@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M10: sync with Hardcover (docs/HARDCOVER_SYNC.md). Settings, Needs your decision and the
+         book page's Hardcover tile. "Librillo" is the app's name; Hardcover's status names are
+         its own: Want to Read, Currently Reading, Read, Paused, Did Not Finish. -->
+
+    <!-- Settings > Hardcover -->
+    <string name="hc10_sync_switch">Sync with Hardcover</string>
+    <string name="hc10_sync_hint">Statuses, progress and new books.</string>
+    <!-- The status line under the switch. %1$s is how long ago ("5 min ago"), %2$d how many
+         books are matched, %3$d how many matches and questions wait for the owner. -->
+    <string name="hc10_line_synced">Synced %1$s · %2$d matched · %3$d to check</string>
+    <string name="hc10_line_synced_all_checked">Synced %1$s · %2$d matched</string>
+    <string name="hc10_line_never">Not synced yet · %1$d matched</string>
+    <!-- %1$d of %2$d items matched so far in the first pass over the library. -->
+    <string name="hc10_line_matching">Matching your library… %1$d of %2$d</string>
+    <string name="hc10_line_syncing">Syncing…</string>
+    <string name="hc10_line_offline">Waiting for a connection</string>
+    <string name="hc10_line_token">Hardcover turned down the token. Reconnect your account.</string>
+    <string name="hc10_line_off">Sync is off</string>
+    <string name="hc10_sync_now">Sync now</string>
+
+    <!-- Needs your decision: matches Librillo could not settle on its own. -->
+    <string name="hc10_checks_title">Check these matches</string>
+    <string name="hc10_check_question">Which one is it on Hardcover?</string>
+    <!-- A candidate's author and year: "Ursula K. Le Guin · 1969". -->
+    <string name="hc10_candidate_line">%1$s · %2$d</string>
+    <string name="hc10_this_one">This one</string>
+    <string name="hc10_not_on_hardcover">Not on Hardcover</string>
+    <string name="hc10_search">Search Hardcover</string>
+    <!-- A pick or an answer that failed for a reason with no sentence of its own. -->
+    <string name="hc10_action_failed">Librillo couldn\'t save that. Try again.</string>
+
+    <!-- Needs your decision: a book's status changed on both sides since they last agreed.
+         %1$s is the title, %2$s Hardcover's status, %3$s Librillo's. -->
+    <string name="hc10_questions_title">Hardcover and Librillo disagree</string>
+    <string name="hc10_question">%1$s: Hardcover says %2$s, Librillo says %3$s. Which is right?</string>
+    <string name="hc10_question_gone">%1$s is no longer on Hardcover. Librillo says %2$s.</string>
+    <!-- Buttons: "Hardcover: Read", "Librillo: Reading". -->
+    <string name="hc10_use_hardcover">Hardcover: %1$s</string>
+    <string name="hc10_use_librillo">Librillo: %1$s</string>
+    <string name="hc10_leave_off">Leave it off Hardcover</string>
+    <string name="hc10_put_back">Put it back</string>
+    <string name="hc10_all_hardcover">Use Hardcover for all</string>
+    <string name="hc10_all_librillo">Use Librillo for all</string>
+    <string name="hc10_status_want_to_read">Want to Read</string>
+    <string name="hc10_status_currently_reading">Currently Reading</string>
+    <string name="hc10_status_read">Read</string>
+    <string name="hc10_status_paused">Paused</string>
+    <string name="hc10_status_did_not_finish">Did Not Finish</string>
+
+    <!-- Book page: the Hardcover tile. "Matched" and "Not matched" are rd_hardcover_*. -->
+    <string name="hc10_tile_matching">Matching…</string>
+    <string name="hc10_tile_check">Check match</string>
+    <string name="hc10_tile_check_detail">Tap to choose</string>
+    <string name="hc10_tile_not_on_hardcover">Not on Hardcover</string>
+    <string name="hc10_tile_not_found">Not found</string>
+</resources>

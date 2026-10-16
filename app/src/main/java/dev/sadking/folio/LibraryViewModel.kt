@@ -6,7 +6,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
+import dev.sadking.folio.device.HardcoverSettings
 import dev.sadking.folio.reader.koreaderDigest
+import dev.sadking.folio.sync.HardcoverItemState
+import dev.sadking.folio.sync.HardcoverStore
+import dev.sadking.folio.sync.HardcoverSync
+import dev.sadking.folio.sync.hardcoverItemState
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -58,9 +63,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         dao.annotations().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val statistics =
         dao.statistics().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    /** Offers to finish the Hardcover read of a book the owner marks Finished (M9 step 4). */
-    private val finishPrompts by lazy { dev.sadking.folio.sync.HardcoverFinishPrompts(app) }
 
     /** KOReader document digests by revision hash, so each file is sampled once. */
     private val digests = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -154,9 +156,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         onDone: () -> Unit = {},
     ) =
         run(msg(R.string.msg_library_updating_selected)) {
-            val before = if (status != null) statusesOf(ids) else emptyMap()
             repo.manageBatch(ids, shelf, add, status)
-            if (status != null) finishedHere(ids, status, before)
+            if (status != null) statusSetHere(ids)
             withContext(Dispatchers.Main) { onDone() }
             val unmatched = if (status != null) unmatchedOnHardcover(ids) else 0
             if (unmatched == 0) msg(R.string.msg_library_selected_updated)
@@ -502,57 +503,45 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
     /**
-     * After the owner set [status] on [ids] here. Finished is the owner's own tap, so Hardcover is
-     * marked Read straight away (through the outbox, which retries offline) and no prompt is left
-     * asking the same thing. A finish that arrives from the e-reader still asks first.
+     * After the owner set a status on [ids] here: Hardcover sync sends it (M10), Finished with the
+     * day the read ended when Hardcover has the book as Currently Reading or Paused, else as read
+     * long ago. It follows "Sync with Hardcover" and retries offline.
      */
-    private suspend fun finishedHere(
-        ids: Set<String>,
-        status: String,
-        before: Map<String, String>,
-    ) {
-        finishPrompts.statusChanged(ids)
-        if (status != "Finished") return
-        val wishes = dao.allWishes()
-        val today = java.time.LocalDate.now()
-        ids.forEach { id ->
-            // Finishing a book being read ends that read today. A book that goes straight to
-            // Finished was read some time ago: Hardcover gets it as Read with no date.
-            val wasReading = before[id] in setOf("Reading", "Paused")
-            if (before[id] != "Finished")
-                app.hardcoverOutbox.queueFinish(id, if (wasReading) today else null)
-            finishPrompts.dismiss(id)
-            wishes.firstOrNull { it.id == id }?.linkedBookId?.let { finishPrompts.dismiss(it) }
-        }
-    }
+    private suspend fun statusSetHere(ids: Set<String>) = HardcoverSync.get(app).statusChanged(ids)
 
     /**
-     * How many of [ids] Hardcover will not hear about because they are not matched to it. Zero when
-     * no Hardcover account is connected: then nothing goes there anyway.
+     * How many of [ids] Hardcover will not hear about: not matched to it, and no automatic match on
+     * the way (Not on Hardcover, Not found, or sync off). Zero when no Hardcover account is
+     * connected: then nothing goes there anyway.
      */
     private suspend fun unmatchedOnHardcover(ids: Set<String>): Int {
-        if (!dev.sadking.folio.device.HardcoverSettings(app).connected) return 0
+        if (!HardcoverSettings(app).connected) return 0
+        val sync = HardcoverSync.get(app)
+        val books = dao.allBooks()
         val wishes = dao.allWishes()
+        val records = HardcoverStore(app).allMatchRecords().associateBy { it.itemId }
+        val silent =
+            setOf(
+                HardcoverItemState.NOT_ON_HARDCOVER,
+                HardcoverItemState.NOT_FOUND,
+                HardcoverItemState.OFF,
+            )
         return ids.count { id ->
-            wishes.none { (it.linkedBookId == id || it.id == id) && it.hardcoverId != null }
+            hardcoverItemState(
+                id,
+                books,
+                wishes,
+                records,
+                connected = true,
+                enabled = sync.enabled,
+            ) in silent
         }
-    }
-
-    /** Each id's status now: a book's own, or a catalogue entry's book's. */
-    private suspend fun statusesOf(ids: Set<String>): Map<String, String> {
-        val books = dao.allBooks().associateBy { it.id }
-        val wishes = dao.allWishes().associateBy { it.id }
-        return ids.mapNotNull { id ->
-                (books[id] ?: wishes[id]?.linkedBookId?.let(books::get))?.let { id to it.status }
-            }
-            .toMap()
     }
 
     fun status(book: Book, status: String) =
         run(msg(R.string.msg_library_updating_status)) {
-            val before = statusesOf(setOf(book.id))
             repo.manageBatch(setOf(book.id), status = status)
-            finishedHere(setOf(book.id), status, before)
+            statusSetHere(setOf(book.id))
             if (unmatchedOnHardcover(setOf(book.id)) == 0) msg(R.string.msg_library_status_updated)
             else msg(R.string.msg_library_status_updated_unmatched)
         }

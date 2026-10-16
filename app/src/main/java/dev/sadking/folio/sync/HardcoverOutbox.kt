@@ -1,16 +1,8 @@
 package dev.sadking.folio.sync
 
 import android.content.Context
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import dev.sadking.folio.FolioApplication
-import dev.sadking.folio.data.HardcoverClient
 import dev.sadking.folio.data.HardcoverHttpException
 import dev.sadking.folio.data.HardcoverObservation
 import dev.sadking.folio.data.HardcoverReading
@@ -19,10 +11,8 @@ import dev.sadking.folio.data.estimatedHardcoverPage
 import dev.sadking.folio.device.HardcoverSettings
 import dev.sadking.folio.reader.koreaderDigest
 import java.io.File
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -61,7 +51,7 @@ fun outboxStep(fraction: Double, reading: HardcoverReading, editionPages: Int?):
 /**
  * Keeps the phone's copy of what Hardcover says about book [hardcoverId] for [account] current, as
  * the reading sheet does: its status, pages and edition, or nothing when the book is not in the
- * account's library. [HardcoverFinishPrompts] reads it to know a read is "Currently Reading".
+ * account's library.
  */
 internal suspend fun recordObservation(
     dao: LibraryDao,
@@ -86,13 +76,16 @@ internal suspend fun recordObservation(
 
 /**
  * Reading positions waiting to go to Hardcover: one per book, the latest wins. A phone position is
- * keyed by book; an e-reader's Folio Link position by KOReader's document key, which the worker
- * matches to a book. Stored on the phone, so the queue survives restarts.
+ * keyed by book; an e-reader's Folio Link position by KOReader's document key, which the run
+ * matches to a book. Also the explicit finishes of Settings' Send Finished books. Stored on the
+ * phone, so the queue survives restarts. They are sent by the one Hardcover queue ([HardcoverSync],
+ * docs/HARDCOVER_SYNC.md), after status sync.
  */
 class HardcoverOutbox(context: Context) {
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("hardcover-outbox", Context.MODE_PRIVATE)
 
+    /** "Sync with Hardcover" ([HardcoverSync.enabled] is the same preference). */
     var automatic: Boolean
         get() = prefs.getBoolean("automatic", true)
         set(value) = prefs.edit().putBoolean("automatic", value).apply()
@@ -118,10 +111,10 @@ class HardcoverOutbox(context: Context) {
     }
 
     /**
-     * The owner marked [id] (a book, or a catalogue entry) Finished in Librillo: mark it Read on
-     * Hardcover, finished on [finishedOn], or with no date for a book read long ago (null). That
-     * tap is the owner's go-ahead, so nothing asks again. Status changes follow "Update Hardcover
-     * automatically"; an [explicit] request (Settings' Send Finished books) is sent either way.
+     * Mark [id] (a book, or a catalogue entry) Read on Hardcover, finished on [finishedOn], or with
+     * no date for a book read long ago (null). Settings' Send Finished books queues these as
+     * [explicit] requests, sent even with "Sync with Hardcover" off. Everyday status changes go
+     * through status sync instead (HardcoverStatusSync).
      */
     fun queueFinish(id: String, finishedOn: java.time.LocalDate?, explicit: Boolean = false) {
         if ((!automatic && !explicit) || !HardcoverSettings(app).connected) return
@@ -148,21 +141,9 @@ class HardcoverOutbox(context: Context) {
             prefs.edit().remove("finish:$id").apply()
     }
 
-    private fun schedule() {
-        // Waiting a minute turns a run of page turns into one update.
-        WorkManager.getInstance(app)
-            .enqueueUniqueWork(
-                WORK,
-                ExistingWorkPolicy.KEEP,
-                OneTimeWorkRequestBuilder<HardcoverOutboxWorker>()
-                    .setInitialDelay(1, TimeUnit.MINUTES)
-                    .setConstraints(
-                        Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-                    )
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
-                    .build(),
-            )
-    }
+    // Waiting a minute turns a run of page turns into one update.
+    private fun schedule() =
+        HardcoverSync.get(app).kick(pull = false, delayMs = HardcoverSync.PROGRESS_DELAY_MS)
 
     /** Queued keys and fractions, oldest first. */
     fun entries(): List<Pair<String, Double>> =
@@ -189,30 +170,30 @@ class HardcoverOutbox(context: Context) {
             prefs.edit().remove("entry:$key").apply()
     }
 
-    companion object {
-        const val WORK = "hardcover-outbox"
-        internal const val FINISH_PACE_MS = 1_000L
-    }
-}
+    /** Whether positions (when [automatic]) or finishes wait to be sent. */
+    fun hasWork(): Boolean = (automatic && entries().isNotEmpty()) || finishes().isNotEmpty()
 
-class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
-    CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result =
+    /**
+     * Sends the queued positions, when [automatic]. A position that Hardcover cannot take without a
+     * person (see [outboxStep]), or for a book not linked to Hardcover, is dropped. Throws on a
+     * rate limit, a server error, a rejected token or no connection, keeping that position and the
+     * later ones queued.
+     */
+    internal suspend fun sendPositions(
+        api: ClientHardcoverApi,
+        dao: LibraryDao,
+        now: () -> Long = System::currentTimeMillis,
+    ) =
         withContext(Dispatchers.IO) {
-            val app = applicationContext as FolioApplication
-            val outbox = app.hardcoverOutbox
-            val settings = HardcoverSettings(app)
-            // Finishes are the owner's own taps; only positions wait on automatic updates.
-            if (!settings.connected) return@withContext Result.success()
-            val token = settings.token()
-            // The account id saved at connect time saves one request per book.
-            val user = settings.accountId.takeIf { it > 0 }
-            val client = HardcoverClient()
-            val dao = app.database.library()
+            if (!automatic) return@withContext
+            val queued = entries()
+            if (queued.isEmpty()) return@withContext
             val books = dao.allBooks()
             val wishes = dao.allWishes()
-            var retry = false
-            for ((key, fraction) in if (outbox.automatic) outbox.entries() else emptyList()) {
+            val client = api.client
+            val token = api.token
+            val user = api.accountId
+            for ((key, fraction) in queued) {
                 val bookId =
                     when {
                         key.startsWith("book:") -> key.removePrefix("book:")
@@ -230,10 +211,10 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                     wishes.firstOrNull { it.linkedBookId == bookId && bookId != null }?.hardcoverId
                 if (hardcoverId == null) {
                     // Not linked to Hardcover: there is nowhere to send it.
-                    outbox.done(key, fraction)
+                    done(key, fraction)
                     continue
                 }
-                try {
+                needsPerson({ done(key, fraction) }) {
                     val reading = client.reading(token, hardcoverId, user)
                     val pages = reading.editionId?.let { client.editionPages(token, it) }
                     val step = outboxStep(fraction, reading, pages)
@@ -248,33 +229,32 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                             allowDecrease = false,
                             userId = user,
                         )
-                    // What Hardcover now says, so a finish on the phone or e-reader can ask.
-                    if (user != null)
-                        recordObservation(
-                            dao,
-                            user,
-                            hardcoverId,
-                            if (step is OutboxStep.Send) reading.copy(pages = step.page)
-                            else reading,
-                            System.currentTimeMillis(),
-                        )
-                    outbox.done(key, fraction)
-                } catch (e: IOException) {
-                    retry = true
-                } catch (e: HardcoverHttpException) {
-                    if (e.transient) retry = true
-                    // A rejected token stops everything; the queue waits for a reconnect.
-                    else if (e.unauthorized) return@withContext Result.success()
-                    else outbox.done(key, fraction)
-                } catch (e: IllegalArgumentException) {
-                    // Hardcover's state needs a person; the review sheet still offers it.
-                    outbox.done(key, fraction)
-                } catch (e: IllegalStateException) {
-                    outbox.done(key, fraction)
+                    recordObservation(
+                        dao,
+                        user,
+                        hardcoverId,
+                        if (step is OutboxStep.Send) reading.copy(pages = step.page) else reading,
+                        now(),
+                    )
+                    done(key, fraction)
                 }
             }
-            // Finishes after positions: a position queued just before the finish goes first.
-            for ((id, finishedOn) in outbox.finishes()) {
+        }
+
+    /**
+     * Sends the queued finishes (Send Finished books), whatever [automatic] says: the owner asked
+     * for them. Errors as [sendPositions].
+     */
+    internal suspend fun sendFinishes(
+        api: ClientHardcoverApi,
+        dao: LibraryDao,
+        now: () -> Long = System::currentTimeMillis,
+    ) =
+        withContext(Dispatchers.IO) {
+            val queued = finishes()
+            if (queued.isEmpty()) return@withContext
+            val wishes = dao.allWishes()
+            for ((id, finishedOn) in queued) {
                 val hardcoverId =
                     wishes
                         .firstOrNull {
@@ -282,36 +262,58 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                         }
                         ?.hardcoverId
                 if (hardcoverId == null) {
-                    outbox.finishDone(id, finishedOn)
+                    finishDone(id, finishedOn)
                     continue
                 }
-                // About one book a second keeps a long list under Hardcover's request limit.
-                delay(HardcoverOutbox.FINISH_PACE_MS)
-                try {
-                    client.markRead(token, hardcoverId, finishedOn, user)
-                    if (user != null)
-                        recordObservation(
-                            dao,
-                            user,
-                            hardcoverId,
-                            client.reading(token, hardcoverId, user),
-                            System.currentTimeMillis(),
-                        )
-                    outbox.finishDone(id, finishedOn)
-                } catch (e: IOException) {
-                    retry = true
-                } catch (e: HardcoverHttpException) {
-                    if (e.transient) retry = true
-                    else if (e.unauthorized) return@withContext Result.success()
-                    else outbox.finishDone(id, finishedOn)
-                } catch (e: IllegalArgumentException) {
-                    // Hardcover's state needs a person (two entries, two open reads): the book's
-                    // Hardcover sheet still offers Finish.
-                    outbox.finishDone(id, finishedOn)
-                } catch (e: IllegalStateException) {
-                    outbox.finishDone(id, finishedOn)
+                // Hardcover's state needs a person (two entries, two open reads): the book's
+                // Hardcover sheet still offers Finish.
+                needsPerson({ finishDone(id, finishedOn) }) {
+                    api.client.markRead(api.token, hardcoverId, finishedOn, api.accountId)
+                    recordObservation(
+                        dao,
+                        api.accountId,
+                        hardcoverId,
+                        api.client.reading(api.token, hardcoverId, api.accountId),
+                        now(),
+                    )
+                    finishDone(id, finishedOn)
                 }
             }
-            if (retry) Result.retry() else Result.success()
         }
+
+    companion object {
+        /** The queue's work name before M10; [HardcoverOutboxWorker] still answers to it. */
+        const val WORK = "hardcover-outbox"
+    }
+}
+
+/**
+ * Runs [send]. When Hardcover's answer needs a person, or is a client error, calls [drop] instead
+ * of failing. Rate limits, server errors, a rejected token and no connection are thrown.
+ */
+private inline fun needsPerson(drop: () -> Unit, send: () -> Unit) {
+    try {
+        send()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: HardcoverHttpException) {
+        if (e.transient || e.unauthorized) throw e
+        drop()
+    } catch (e: IllegalArgumentException) {
+        drop()
+    } catch (e: IllegalStateException) {
+        drop()
+    }
+}
+
+/**
+ * Work queued as "hardcover-outbox" by the version before M10. It hands over to the one Hardcover
+ * queue ([HardcoverSync.WORK]).
+ */
+class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
+    CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result {
+        HardcoverSync.get(applicationContext).schedule(0)
+        return Result.success()
+    }
 }
