@@ -87,18 +87,25 @@ fun ereadersSeen(
     return seen.values.sortedByDescending { it.lastSeen }
 }
 
-/** A book waiting for Folio Link e-readers. [sent] once any e-reader confirmed this revision. */
-data class QueuedBook(val book: Book, val sent: Boolean)
+/**
+ * A book waiting for Folio Link e-readers. [sent] once any e-reader confirmed this revision, and
+ * [savedPath] is where it said it saved it, most recent first.
+ */
+data class QueuedBook(val book: Book, val sent: Boolean, val savedPath: String? = null)
 
 /** The send queue in the order books were added; books no longer in the library are skipped. */
 fun queuedBooks(ids: List<String>, books: List<Book>, transfers: List<Transfer>): List<QueuedBook> {
     val byId = books.associateBy { it.id }
     val delivered =
-        transfers
-            .filter { it.deviceId.startsWith(LINK_DEVICE_PREFIX) }
-            .groupBy({ it.bookId }, { it.hash })
+        transfers.filter { it.deviceId.startsWith(LINK_DEVICE_PREFIX) }.groupBy { it.bookId }
     return ids.mapNotNull { id ->
-        byId[id]?.let { QueuedBook(it, delivered[id]?.contains(it.currentHash) == true) }
+        byId[id]?.let { book ->
+            val saved =
+                delivered[id]
+                    ?.filter { it.hash == book.currentHash }
+                    ?.maxByOrNull { it.completedAt }
+            QueuedBook(book, saved != null, saved?.remotePath)
+        }
     }
 }
 

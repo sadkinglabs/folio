@@ -283,11 +283,8 @@ function Folio:fetchBooks(automatic)
             if not automatic then message(tostring(result):gsub("^.-:%d+: ", "")) end
             return
         end
-        if automatic and result.fetched == 0 and result.failed == 0 then return end
-        local text = string.format("Librillo: %d new %s.", result.fetched, result.fetched == 1 and "book" or "books")
-        if result.already > 0 then text = text .. string.format(" %d already here.", result.already) end
-        if result.failed > 0 then text = text .. string.format(" %d could not be fetched; they will be tried again.", result.failed) end
-        message(text)
+        local text = Link.summary(result, automatic)
+        if text ~= "" then message(text) end
     end)
 end
 function Folio:onNetworkConnected()

@@ -110,16 +110,18 @@ class RoomLinkLibrary(private val dao: LibraryDao, private val queue: LinkQueue)
         else LibraryRules.matches(field, value, b.metadata(), b.status, false)
     }
 
-    override fun queue(device: String): List<LinkBook> = runBlocking {
-        val delivered = dao.transfers(deviceId(device)).associate { it.bookId to it.hash }
+    // Every queued book, delivered or not: the plugin checks the file is still where it was saved
+    // and fetches it again if it is not, instead of trusting this record.
+    override fun queue(device: String): List<LinkBook> {
         val byId = books().associateBy { it.id }
-        queue
-            .ids()
-            .mapNotNull { byId[it] }
-            .filter { delivered[it.id] != it.currentHash }
-            .map {
-                it.link()
-            }
+        return queue.ids().mapNotNull { byId[it] }.map { it.link() }
+    }
+
+    override fun savedPath(device: String, id: String): String? = runBlocking {
+        val book = dao.book(id) ?: return@runBlocking null
+        dao.transfers(deviceId(device))
+            .firstOrNull { it.bookId == id && it.hash == book.currentHash }
+            ?.remotePath
     }
 
     override fun book(id: String) = books().firstOrNull { it.id == id }?.link()

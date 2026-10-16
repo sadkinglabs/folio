@@ -122,6 +122,66 @@ assert(not pcall(Link.fetch, cfg, deps))
 -- Without Progress sync set up there is nothing to call.
 assert(not pcall(Link.fetch, { folder = "/books" }, deps))
 """)
+# The phone's record is checked, never trusted: a book it thinks was delivered is fetched again
+# when its file is gone, and found where it was saved when it is still there.
+lua.execute(r"""
+local function sha(c) return (string.format("%02x", c:byte()):rep(32)) end
+local files = { ["/old/place/Kept.epub"] = { content = "K", sha = sha("k") } }
+local downloads, acks = 0, {}
+local queue = {
+  { id = "k", title = "Kept", filename = "A - Kept.epub", sha256 = sha("k"), size = 1, saved_path = "/old/place/Kept.epub" },
+  { id = "g", title = "Salem's Lot", filename = "Stephen King - Salem's Lot.epub", sha256 = sha("g"), size = 1, saved_path = "/elsewhere/Gone.epub" },
+  { id = "h", title = "Hostile", filename = "B - Hostile.epub", sha256 = sha("h"), size = 1, saved_path = "/books/../../etc/passwd.epub" },
+}
+local d = {
+  request = function(method, url, headers, body)
+    if url:match("/hello$") then return 200, { api = 1 } end
+    if url:match("/queue$") then return 200, { books = queue } end
+    if url:match("/ack$") then acks[body.id] = body.path; return 200 end
+    return 404
+  end,
+  download = function(url, headers, path)
+    downloads = downloads + 1
+    local id = url:match("/books/(%w+)%.epub$")
+    files[path] = { content = id, sha = sha(id) }
+    return 200
+  end,
+  exists = function(path) return files[path] ~= nil end,
+  size = function(path) return files[path] and #files[path].content end,
+  sha256 = function(path) return files[path] and files[path].sha end,
+  rename = function(from, to) files[to] = files[from]; files[from] = nil; return true end,
+  remove = function(path) files[path] = nil end,
+  decode = function(value) return value end,
+  encode = function(value) return value end,
+}
+local cfg = { server = "http://phone:8765", username = "u", key = "k", device = "kindle", folder = "/books" }
+local result = Link.fetch(cfg, d)
+assert(result.already == 1 and result.fetched == 2, result.already .. " " .. result.fetched)
+assert(acks.k == "/old/place/Kept.epub", "found where it was saved, not copied again")
+assert(files["/books/Stephen King - Salem's Lot.epub"], "a missing book is fetched again")
+assert(acks.g == "/books/Stephen King - Salem's Lot.epub", "the phone learns the new place")
+assert(files["/books/B - Hostile.epub"], "a hostile saved path is ignored, the book still arrives")
+assert(downloads == 2)
+-- The message names each book and where it went.
+local text = Link.summary(result, false)
+assert(text:find("Saved to /books:", 1, true) and text:find("Salem's Lot", 1, true), text)
+assert(text:find("Already on this e-reader:", 1, true) and text:find("/old/place/Kept.epub", 1, true), text)
+-- An automatic fetch only speaks when something arrived or failed.
+assert(Link.summary({ books = { fetched = {}, already = { { title = "x" } }, failed = {} }, folder = "/b" }, true) == "")
+assert(Link.summary({ books = { fetched = {}, already = {}, failed = {} }, folder = "/b" }, false)
+  :find("Send a book from Librillo", 1, true))
+-- Without SHA-256 in this KOReader, a same-size file already in the folder is not copied twice.
+local nosha = {}
+for k, v in pairs(d) do nosha[k] = v end
+nosha.sha256 = function() return nil end
+files = { ["/books/A - Kept.epub"] = { content = "K" } }
+queue = { { id = "k", title = "Kept", filename = "A - Kept.epub", sha256 = sha("k"), size = 1 } }
+downloads = 0
+local again = Link.fetch(cfg, nosha)
+assert(again.already == 1 and downloads == 0 and not files["/books/A - Kept (2).epub"])
+""")
+print('Folio Link fetch: saved path checked, missing book fetched again, hostile path ignored, messages, no-SHA devices.')
+
 # Discovery: only a phone that proves it knows the key is trusted.
 lua.execute(r"""
 local function md5(text) return text == "kn1" and "abc123" or "ffff00" end

@@ -107,6 +107,8 @@ class DeviceTabTest {
             )
         assertEquals(listOf("b", "a"), queue.map { it.book.id })
         assertFalse(queue[0].sent)
+        assertNull(queue[0].savedPath)
         assertTrue(queue[1].sent)
+        assertEquals("/Folio/a.epub", queue[1].savedPath)
     }
 }

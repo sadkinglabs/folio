@@ -124,9 +124,14 @@ class LinkRoutes(
                                 library.queue(device).map {
                                     JSONObject()
                                         .put("id", it.id)
+                                        .put("title", it.title)
                                         .put("filename", it.filename)
                                         .put("size", it.file.length())
                                         .put("sha256", it.sha256)
+                                        .put(
+                                            "saved_path",
+                                            library.savedPath(device, it.id) ?: JSONObject.NULL,
+                                        )
                                 }
                             ),
                         )

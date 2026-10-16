@@ -42,6 +42,9 @@ class LinkRoutesTest {
 
             override fun book(id: String) = books.firstOrNull { it.id == id }
 
+            override fun savedPath(device: String, id: String) =
+                acknowledged.lastOrNull { it.first == device && it.second == id }?.third
+
             override fun acknowledge(device: String, id: String, sha256: String, path: String) =
                 (sha256 == books.first { it.id == id }.sha256).also {
                     if (it) acknowledged += Triple(device, id, path)
@@ -133,6 +136,9 @@ class LinkRoutesTest {
         val queue = JSONObject((get("/folio/v1/queue", headers) as LinkResponse.Text).body)
         val first = queue.getJSONArray("books").getJSONObject(0)
         assertEquals("Jane Austen - Pride & Prejudice.epub", first.getString("filename"))
+        assertEquals("Pride & Prejudice", first.getString("title"))
+        // Never confirmed yet: no saved path for the plugin to check.
+        assertTrue(first.isNull("saved_path"))
         assertEquals(403, get("/folio/v1/queue", mapOf("Authorization" to basic)).status)
 
         fun ack(sha: String) =
@@ -151,6 +157,13 @@ class LinkRoutesTest {
         assertEquals(409, ack("b".repeat(64)).status)
         assertEquals(200, ack("a".repeat(64)).status)
         assertEquals(listOf(Triple("kobo-1", "b1", "/mnt/onboard/b1.epub")), acknowledged)
+        // Once confirmed, the book stays in the list with where it was saved, so the plugin can
+        // check the file is still there.
+        val again = JSONObject((get("/folio/v1/queue", headers) as LinkResponse.Text).body)
+        assertEquals(
+            "/mnt/onboard/b1.epub",
+            again.getJSONArray("books").getJSONObject(0).getString("saved_path"),
+        )
     }
 
     @Test

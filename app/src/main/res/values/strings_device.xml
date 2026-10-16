@@ -26,11 +26,12 @@
     <string name="device_setup_step3">Keep both on the same Wi-Fi. Books you send download on their own.</string>
 
     <!-- Device tab: the send queue -->
-    <string name="device_queue">Send queue</string>
-    <string name="device_queue_empty">Nothing waiting. Send a book from its page.</string>
-    <string name="device_queue_waiting">Waiting</string>
-    <string name="device_queue_sent">Sent</string>
-    <string name="device_queue_remove">Remove %1$s from the queue</string>
+    <string name="device_queue">Sent to your e-reader</string>
+    <string name="device_queue_empty">Nothing sent yet. Send a book from its page.</string>
+    <string name="device_queue_waiting">Waiting for your e-reader. In KOReader: Librillo → Get books from Librillo.</string>
+    <!-- %1$s is the full path on the e-reader. -->
+    <string name="device_queue_saved">On your e-reader: %1$s</string>
+    <string name="device_queue_remove">Remove %1$s from this list</string>
 
     <!-- Device tab: activity -->
     <string name="device_activity">Activity</string>

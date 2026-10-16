@@ -295,7 +295,15 @@ internal fun KindlePreview() {
                         ),
                         EreaderSeen("kobo-clara", "", now - 2 * 86_400_000, null),
                     ),
-                queue = listOf(QueuedBook(sampleBooks[1], false), QueuedBook(sampleBooks[2], true)),
+                queue =
+                    listOf(
+                        QueuedBook(sampleBooks[1], false),
+                        QueuedBook(
+                            sampleBooks[2],
+                            true,
+                            "/mnt/us/Books/Librillo/Sam Reed - A Field Guide to Elsewhere.epub",
+                        ),
+                    ),
                 onOpenBook = {},
                 onRemoveQueued = {},
                 activity =

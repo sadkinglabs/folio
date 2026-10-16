@@ -53,8 +53,19 @@ local function valid(book)
         and type(book.sha256) == "string" and book.sha256:match("^%x+$") and #book.sha256 == 64
 end
 
--- Returns { fetched, already, failed } counts. Raises only when Folio cannot be reached or
--- speaks another version; a failed book is skipped and fetched again next time.
+-- A path the phone says this e-reader saved a book at. Only read, never written; still checked.
+local function saved_path(book)
+    local path = book.saved_path
+    if type(path) == "string" and #path <= 1024 and path:sub(1, 1) == "/"
+        and not path:find("%.%.") and path:match("%.epub$") then
+        return path
+    end
+end
+
+-- Returns { fetched, already, failed } counts, the books by outcome as { title, path } lists in
+-- `books`, and the folder. Raises only when Librillo cannot be reached or speaks another version;
+-- a failed book is skipped and fetched again next time. A book the phone thinks is here is fetched
+-- again when its file is no longer where it was saved.
 function Link.fetch(cfg, d)
     assert(cfg.username and cfg.key and cfg.device, "Log in to Progress sync first")
     local headers = Link.headers(cfg)
@@ -81,15 +92,29 @@ function Link.fetch(cfg, d)
     status, text = d.request("GET", Link.url(cfg.server, "/folio/v1/queue"), headers)
     assert(status == 200, "Librillo did not send the list of books")
     local queue = d.decode(text)
-    local result = { fetched = 0, already = 0, failed = 0 }
+    local result = { fetched = 0, already = 0, failed = 0, folder = cfg.folder,
+        books = { fetched = {}, already = {}, failed = {} } }
+    -- Same book: the same SHA-256, or the same size where this KOReader cannot hash files.
+    local function same(path, book)
+        if not d.exists(path) then return false end
+        local hash = d.sha256(path)
+        if hash then return hash == book.sha256 end
+        return book.size ~= nil and d.size(path) == book.size
+    end
     for _, book in ipairs(queue and queue.books or {}) do
+        local title = type(book) == "table" and type(book.title) == "string" and book.title
+            or type(book) == "table" and type(book.filename) == "string" and book.filename or "?"
+        local outcome, target
         local ok = pcall(function()
             assert(valid(book), "Invalid book entry")
-            local target = cfg.folder .. "/" .. book.filename
-            local outcome = "fetched"
-            if d.exists(target) and d.sha256(target) == book.sha256 then
+            target = cfg.folder .. "/" .. book.filename
+            local earlier = saved_path(book)
+            if earlier and same(earlier, book) then
+                outcome, target = "already", earlier
+            elseif same(target, book) then
                 outcome = "already"
             else
+                outcome = "fetched"
                 -- Never replace a file that is already there; save beside it instead.
                 if d.exists(target) then target = Link.unique(cfg.folder, book.filename, d.exists) end
                 local part = target .. ".part"
@@ -101,14 +126,47 @@ function Link.fetch(cfg, d)
                 end
                 assert(d.rename(part, target), "Could not save the book")
             end
+            -- Confirmed every time, so the phone always knows where the book is now.
             local acked = d.request("POST", Link.url(cfg.server, "/folio/v1/ack"), headers,
                 d.encode({ id = book.id, sha256 = book.sha256, path = target }))
             assert(acked == 200, "Librillo did not confirm")
-            result[outcome] = result[outcome] + 1
         end)
-        if not ok then result.failed = result.failed + 1 end
+        if ok then
+            result[outcome] = result[outcome] + 1
+            table.insert(result.books[outcome], { title = title, path = target })
+        else
+            result.failed = result.failed + 1
+            table.insert(result.books.failed, { title = title })
+        end
     end
     return result
+end
+
+-- What a fetch did, in plain words for the e-reader's screen. Empty when an automatic fetch has
+-- nothing worth saying.
+function Link.summary(result, automatic)
+    local lines = {}
+    local function list(items, with_path)
+        local out = {}
+        for _, item in ipairs(items) do
+            out[#out + 1] = "• " .. item.title .. (with_path and item.path and ("\n   " .. item.path) or "")
+        end
+        return table.concat(out, "\n")
+    end
+    if #result.books.fetched > 0 then
+        lines[#lines + 1] = "Saved to " .. result.folder .. ":\n" .. list(result.books.fetched)
+    end
+    if #result.books.failed > 0 then
+        lines[#lines + 1] = "Couldn't get these; they'll be tried again next time:\n" .. list(result.books.failed)
+    end
+    if automatic then return table.concat(lines, "\n\n") end
+    if #result.books.already > 0 then
+        lines[#lines + 1] = "Already on this e-reader:\n" .. list(result.books.already, true)
+    end
+    if #lines == 0 then
+        return "Nothing to get. Send a book from Librillo on your phone first."
+    end
+    return table.concat(lines, "\n\n")
 end
 
 -- The one-time setup Librillo's installer leaves beside the plugin: the Link address and the

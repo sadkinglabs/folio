@@ -27,8 +27,14 @@ interface LinkLibrary {
 
     fun shelf(id: String): List<LinkBook>
 
-    /** Books waiting to go to [device], oldest first. */
+    /**
+     * Books queued for e-readers, oldest first, including ones [device] already has: the plugin
+     * checks each against [savedPath] and fetches it again if the file is no longer there.
+     */
     fun queue(device: String): List<LinkBook>
+
+    /** Where [device] last saved this revision of [id], or null if it never confirmed it. */
+    fun savedPath(device: String, id: String): String? = null
 
     fun book(id: String): LinkBook?
 

@@ -13,22 +13,18 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.SaveAlt
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.SettingsEthernet
 import androidx.compose.material.icons.outlined.TabletAndroid
 import androidx.compose.material3.*
@@ -147,7 +143,8 @@ internal fun DeviceTab(
         queue = queue,
         onOpenBook = onOpenBook,
         onRemoveQueued = onRemoveQueued,
-        activity = entries,
+        // A check for books is two requests (hello, then the list); show it once.
+        activity = entries.filterNot { it.route == "/folio/v1/hello" },
         onClearActivity = link.log::clear,
         onSavePlugin = { savePlugin.launch("folio.koplugin.zip") },
         pluginSaved = pluginSaved,
@@ -559,9 +556,9 @@ private fun PluginSavedNote(saved: Boolean?, modifier: Modifier = Modifier) {
 }
 
 /**
- * The books waiting for e-readers, as 72 dp covers with a chip under each. The cover opens the
- * book; the small cross takes it out of the queue. A book stays "Sent" until it ages out, so a
- * second e-reader still gets it.
+ * The books sent to e-readers, one row each: the title and either where the e-reader saved it or
+ * that it is waiting for the e-reader to get it. The cover opens the book; the cross takes it out
+ * of the list. E-readers that already have it keep it.
  */
 @Composable
 internal fun SendQueue(
@@ -578,68 +575,43 @@ internal fun SendQueue(
         )
         return
     }
-    LazyRow(
-        Modifier.fillMaxWidth().testTag(DEVICE_QUEUE_TAG),
-        contentPadding = PaddingValues(horizontal = FolioSpace.page, vertical = FolioSpace.small),
-        horizontalArrangement = Arrangement.spacedBy(FolioSpace.item),
-    ) {
-        items(queue, key = { it.book.id }) { item ->
-            val label =
-                stringResource(
-                    if (item.sent) R.string.device_queue_sent else R.string.device_queue_waiting
-                )
-            // The chip may grow wider than the cover at large text sizes.
-            Column(
-                Modifier.widthIn(min = 72.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Box {
+    Column(Modifier.fillMaxWidth().testTag(DEVICE_QUEUE_TAG)) {
+        queue.forEach { item ->
+            val status =
+                item.savedPath?.let { stringResource(R.string.device_queue_saved, it) }
+                    ?: stringResource(R.string.device_queue_waiting)
+            ListItem(
+                headlineContent = {
+                    Text(item.book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                },
+                supportingContent = {
+                    Text(
+                        status,
+                        color =
+                            if (item.sent) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                leadingContent = {
                     CoverTile(
                         item.book,
-                        Modifier.width(72.dp)
-                            .clip(FolioSpace.coverShape)
-                            .clickable(role = Role.Button) { onOpenBook(item.book) }
-                            .semantics {
-                                contentDescription = "${item.book.title}, $label"
-                            },
+                        Modifier.width(40.dp).clip(FolioSpace.coverShape),
                         variant = CoverVariant.Queued,
                     )
-                    IconButton(
-                        onClick = { onRemove(item.book) },
-                        // Bottom corner: generated covers carry their title at the top.
-                        modifier = Modifier.align(Alignment.BottomEnd).size(28.dp).padding(2.dp),
-                        colors =
-                            IconButtonDefaults.filledIconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                contentColor = MaterialTheme.colorScheme.onSurface,
-                            ),
-                    ) {
+                },
+                trailingContent = {
+                    IconButton(onClick = { onRemove(item.book) }) {
                         Icon(
                             Icons.Outlined.Close,
                             stringResource(R.string.device_queue_remove, item.book.title),
-                            Modifier.size(16.dp),
                         )
                     }
-                }
-                Row(
-                    Modifier.clip(RoundedCornerShape(50))
-                        .background(
-                            if (item.sent) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Icon(
-                        if (item.sent) Icons.Outlined.Check else Icons.Outlined.Schedule,
-                        null,
-                        Modifier.size(12.dp),
-                    )
-                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
-            }
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                modifier =
+                    Modifier.clickable(role = Role.Button) { onOpenBook(item.book) }
+                        .padding(horizontal = FolioSpace.small),
+            )
         }
     }
 }
@@ -896,6 +868,11 @@ internal fun describe(entry: LinkLog.Entry): String =
                         R.string.link_log_login
                     entry.route == "/syncs/progress" -> R.string.link_log_sent
                     entry.route.startsWith("/syncs/progress/") -> R.string.link_log_asked
+                    entry.route == "/folio/v1/hello" || entry.route == "/folio/v1/queue" ->
+                        R.string.link_log_checked
+                    entry.route.startsWith("/folio/v1/books/") -> R.string.link_log_downloaded
+                    entry.route == "/folio/v1/ack" -> R.string.link_log_saved
+                    entry.route.startsWith("/opds") -> R.string.link_log_catalogue
                     else -> R.string.link_log_other
                 },
                 entry.remote,
