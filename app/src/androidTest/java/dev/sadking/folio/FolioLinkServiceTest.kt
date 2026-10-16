@@ -163,8 +163,14 @@ class FolioLinkServiceTest {
                     200,
                     call(port, "POST", "/folio/v1/ack", ack.toString(), extra = device).first,
                 )
+                // The book stays listed with where this e-reader saved it, so the plugin can check
+                // the file is still there and fetch it again if it is not.
                 val after = JSONObject(call(port, "GET", "/folio/v1/queue", extra = device).second)
-                assertTrue(after.toString(), !after.toString().contains(id))
+                val saved =
+                    (0 until after.getJSONArray("books").length())
+                        .map { after.getJSONArray("books").getJSONObject(it) }
+                        .single { it.getString("id") == id }
+                assertEquals("/mnt/onboard/Folio/x.epub", saved.getString("saved_path"))
                 // Another e-reader still gets it.
                 val other =
                     call(
