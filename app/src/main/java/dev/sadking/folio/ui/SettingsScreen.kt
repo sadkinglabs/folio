@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -65,6 +66,7 @@ internal const val SETTINGS_TEXT_TAG = "settings-text"
 internal const val SETTINGS_VOLUME_TAG = "settings-volume"
 internal const val SETTINGS_READING_TIME_TAG = "settings-reading-time"
 internal const val SETTINGS_HARDCOVER_AUTOMATIC_TAG = "settings-hardcover-automatic"
+internal const val SETTINGS_HARDCOVER_SEND_FINISHED_TAG = "settings-hardcover-send-finished"
 internal const val SETTINGS_HARDCOVER_TAG = "settings-hardcover"
 internal const val SETTINGS_HARDCOVER_IMPORT_TAG = "settings-hardcover-import"
 internal const val SETTINGS_REMOVED_TAG = "settings-removed"
@@ -122,6 +124,11 @@ internal fun SettingsTab(
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
     var automatic by remember { mutableStateOf(app.hardcoverOutbox.automatic) }
+    val dao = remember { app.database.library() }
+    val allBooks by dao.books().collectAsState(emptyList())
+    val allWishes by dao.wishes().collectAsState(emptyList())
+    val finished = remember(allBooks, allWishes) { finishedOnHardcover(allBooks, allWishes) }
+    var finishedSent by remember { mutableStateOf(false) }
     val readerPrefs = remember { context.getSharedPreferences(ReaderDefaults.PREFERENCES, 0) }
     var reading by remember {
         mutableStateOf(
@@ -149,6 +156,12 @@ internal fun SettingsTab(
         onHardcoverAutomatic = {
             automatic = it
             app.hardcoverOutbox.automatic = it
+        },
+        finishedToSend = finished.size,
+        finishedSent = finishedSent,
+        onSendFinished = {
+            finished.forEach { app.hardcoverOutbox.queueFinish(it, null, explicit = true) }
+            finishedSent = true
         },
         hardcoverUsername = hardcoverUsername,
         onHardcover = onHardcover,
@@ -186,6 +199,9 @@ internal fun SettingsScreen(
     statistics: DeviceStatistics? = null,
     hardcoverAutomatic: Boolean = false,
     onHardcoverAutomatic: (Boolean) -> Unit = {},
+    finishedToSend: Int = 0,
+    finishedSent: Boolean = false,
+    onSendFinished: () -> Unit = {},
     hardcoverUsername: String = "",
     onHardcover: () -> Unit = {},
     onImportHardcover: () -> Unit = {},
@@ -209,6 +225,7 @@ internal fun SettingsScreen(
     val paired = sshHost.isNotBlank()
     var showText by rememberSaveable { mutableStateOf(false) }
     var showReadingTime by rememberSaveable { mutableStateOf(false) }
+    var confirmFinished by rememberSaveable { mutableStateOf(false) }
     var showBackup by rememberSaveable { mutableStateOf(false) }
     var showFolder by rememberSaveable { mutableStateOf(false) }
     var showBooksFolder by rememberSaveable { mutableStateOf(false) }
@@ -297,7 +314,51 @@ internal fun SettingsScreen(
                 Modifier.testTag(SETTINGS_HARDCOVER_AUTOMATIC_TAG),
                 value = stringResource(R.string.m9sync_hardcover_automatic_hint),
             )
+            if (hardcoverUsername.isNotBlank() && (finishedToSend > 0 || finishedSent))
+                SettingsRow(
+                    Icons.Outlined.DoneAll,
+                    stringResource(R.string.hardcover_send_finished),
+                    if (finishedSent) stringResource(R.string.hardcover_send_finished_queued)
+                    else
+                        pluralStringResource(
+                            R.plurals.hardcover_send_finished_value,
+                            finishedToSend,
+                            finishedToSend,
+                        ),
+                    Modifier.testTag(SETTINGS_HARDCOVER_SEND_FINISHED_TAG),
+                    onClick = { confirmFinished = true },
+                    enabled = !busy && !finishedSent,
+                )
         }
+        if (confirmFinished)
+            AlertDialog(
+                onDismissRequest = { confirmFinished = false },
+                title = {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.hardcover_send_finished_title,
+                            finishedToSend,
+                            finishedToSend,
+                        )
+                    )
+                },
+                text = { Text(stringResource(R.string.hardcover_send_finished_body)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            confirmFinished = false
+                            onSendFinished()
+                        }
+                    ) {
+                        Text(stringResource(R.string.hardcover_send_finished_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmFinished = false }) {
+                        Text(stringResource(R.string.shell_cancel))
+                    }
+                },
+            )
         SettingsGroup(stringResource(R.string.settings_library)) {
             SettingsRow(
                 Icons.Outlined.FolderSpecial,
@@ -935,4 +996,16 @@ internal fun BooksFolderContent(
                 modifier = Modifier.padding(horizontal = FolioSpace.section),
             )
     }
+}
+
+/**
+ * Books marked Finished in Librillo that are matched to Hardcover, by book id: what "Send Finished
+ * books to Hardcover" sends. Hardcover leaves those it already has as Read alone.
+ */
+internal fun finishedOnHardcover(
+    books: List<dev.sadking.folio.data.Book>,
+    wishes: List<dev.sadking.folio.data.WishBook>,
+): List<String> {
+    val linked = wishes.filter { it.hardcoverId != null }.mapNotNull { it.linkedBookId }.toSet()
+    return books.filter { it.status == "Finished" && it.id in linked }.map { it.id }
 }

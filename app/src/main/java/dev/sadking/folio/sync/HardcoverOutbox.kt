@@ -118,29 +118,32 @@ class HardcoverOutbox(context: Context) {
 
     /**
      * The owner marked [id] (a book, or a catalogue entry) Finished in Librillo: mark it Read on
-     * Hardcover, finished on [finishedOn]. That tap is the owner's go-ahead, so nothing asks again.
+     * Hardcover, finished on [finishedOn], or with no date for a book read long ago (null). That
+     * tap is the owner's go-ahead, so nothing asks again. Status changes follow "Update Hardcover
+     * automatically"; an [explicit] request (Settings' Send Finished books) is sent either way.
      */
-    fun queueFinish(id: String, finishedOn: java.time.LocalDate = java.time.LocalDate.now()) {
-        if (!automatic || !HardcoverSettings(app).connected) return
-        prefs.edit().putString("finish:$id", finishedOn.toString()).apply()
+    fun queueFinish(id: String, finishedOn: java.time.LocalDate?, explicit: Boolean = false) {
+        if ((!automatic && !explicit) || !HardcoverSettings(app).connected) return
+        prefs.edit().putString("finish:$id", finishedOn?.toString().orEmpty()).apply()
         schedule()
     }
 
-    /** Finishes waiting to go to Hardcover: id and finish date. */
-    fun finishes(): List<Pair<String, java.time.LocalDate>> =
+    /** Finishes waiting to go to Hardcover: id and finish date (null: no date). */
+    fun finishes(): List<Pair<String, java.time.LocalDate?>> =
         prefs.all
             .filterKeys { it.startsWith("finish:") }
             .mapNotNull { (key, value) ->
                 runCatching {
-                        key.removePrefix("finish:") to java.time.LocalDate.parse(value as String)
+                        val day = (value as String).takeIf { it.isNotEmpty() }
+                        key.removePrefix("finish:") to day?.let(java.time.LocalDate::parse)
                     }
                     .getOrNull()
             }
             .sortedBy { it.first }
 
     /** Removes the finish for [id] unless it was queued again with another date meanwhile. */
-    fun finishDone(id: String, finishedOn: java.time.LocalDate) {
-        if (prefs.getString("finish:$id", null) == finishedOn.toString())
+    fun finishDone(id: String, finishedOn: java.time.LocalDate?) {
+        if (prefs.getString("finish:$id", null) == finishedOn?.toString().orEmpty())
             prefs.edit().remove("finish:$id").apply()
     }
 
@@ -197,7 +200,8 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
             val app = applicationContext as FolioApplication
             val outbox = app.hardcoverOutbox
             val settings = HardcoverSettings(app)
-            if (!outbox.automatic || !settings.connected) return@withContext Result.success()
+            // Finishes are the owner's own taps; only positions wait on automatic updates.
+            if (!settings.connected) return@withContext Result.success()
             val token = settings.token()
             // The account id saved at connect time saves one request per book.
             val user = settings.accountId.takeIf { it > 0 }
@@ -206,7 +210,7 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
             val books = dao.allBooks()
             val wishes = dao.allWishes()
             var retry = false
-            for ((key, fraction) in outbox.entries()) {
+            for ((key, fraction) in if (outbox.automatic) outbox.entries() else emptyList()) {
                 val bookId =
                     when {
                         key.startsWith("book:") -> key.removePrefix("book:")

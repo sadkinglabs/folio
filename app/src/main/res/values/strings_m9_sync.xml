@@ -104,4 +104,17 @@
     <string name="m9sync_setup_done_restart">Restart KOReader. If it says to, restart it once more.</string>
     <string name="m9sync_setup_done_sync">Tap Librillo → Sync now.</string>
     <string name="m9sync_setup_done_ssh_off">Turn KOReader\'s SSH server off: gear tab → Network → SSH server.</string>
+    <!-- Settings > Hardcover: books already marked Finished in Librillo, sent once on request. -->
+    <string name="hardcover_send_finished">Send Finished books to Hardcover</string>
+    <plurals name="hardcover_send_finished_value">
+        <item quantity="one">%d book marked Finished here</item>
+        <item quantity="other">%d books marked Finished here</item>
+    </plurals>
+    <string name="hardcover_send_finished_queued">Sending. They reach Hardcover when you\'re online.</string>
+    <plurals name="hardcover_send_finished_title">
+        <item quantity="one">Mark %d book as Read on Hardcover?</item>
+        <item quantity="other">Mark %d books as Read on Hardcover?</item>
+    </plurals>
+    <string name="hardcover_send_finished_body">Hardcover gets them as Read, with no dates. Books it already has as Read stay as they are. Books not matched to Hardcover are skipped.</string>
+    <string name="hardcover_send_finished_confirm">Send</string>
 </resources>

@@ -373,4 +373,35 @@ class HardcoverReadingTest {
         )
         assertTrue(f.writes.isEmpty())
     }
+
+    @Test
+    fun markReadWithNoDateMarksABookReadLongAgoWithoutDates() {
+        val f = AccountFixture()
+        f.status = 1
+        f.readId = null
+        f.client.markRead("token", 44, null)
+        assertEquals(3, f.status)
+        assertNull(f.finished)
+        assertTrue(f.writes.none { it.getString("query").contains("_read") })
+    }
+
+    @Test
+    fun markReadWithNoDateAddsAMissingBookAsReadWithoutDates() {
+        val f = AccountFixture()
+        f.exists = false
+        f.readId = null
+        f.client.markRead("token", 44, null)
+        assertEquals(3, f.status)
+        assertEquals(1, f.writes.size)
+    }
+
+    @Test
+    fun markReadWithNoDateEndsAReadInProgressToday() {
+        val f = AccountFixture()
+        f.status = 2
+        f.started = null
+        f.client.markRead("token", 44, null)
+        assertEquals(3, f.status)
+        assertEquals(java.time.LocalDate.now().toString(), f.finished)
+    }
 }

@@ -154,8 +154,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         onDone: () -> Unit = {},
     ) =
         run(msg(R.string.msg_library_updating_selected)) {
+            val before = if (status != null) statusesOf(ids) else emptyMap()
             repo.manageBatch(ids, shelf, add, status)
-            if (status != null) finishedHere(ids, status)
+            if (status != null) finishedHere(ids, status, before)
             withContext(Dispatchers.Main) { onDone() }
             msg(R.string.msg_library_selected_updated)
         }
@@ -498,21 +499,41 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
      * marked Read straight away (through the outbox, which retries offline) and no prompt is left
      * asking the same thing. A finish that arrives from the e-reader still asks first.
      */
-    private suspend fun finishedHere(ids: Set<String>, status: String) {
+    private suspend fun finishedHere(
+        ids: Set<String>,
+        status: String,
+        before: Map<String, String>,
+    ) {
         finishPrompts.statusChanged(ids)
         if (status != "Finished") return
         val wishes = dao.allWishes()
+        val today = java.time.LocalDate.now()
         ids.forEach { id ->
-            app.hardcoverOutbox.queueFinish(id)
+            // Finishing a book being read ends that read today. A book that goes straight to
+            // Finished was read some time ago: Hardcover gets it as Read with no date.
+            val wasReading = before[id] in setOf("Reading", "Paused")
+            if (before[id] != "Finished")
+                app.hardcoverOutbox.queueFinish(id, if (wasReading) today else null)
             finishPrompts.dismiss(id)
             wishes.firstOrNull { it.id == id }?.linkedBookId?.let { finishPrompts.dismiss(it) }
         }
     }
 
+    /** Each id's status now: a book's own, or a catalogue entry's book's. */
+    private suspend fun statusesOf(ids: Set<String>): Map<String, String> {
+        val books = dao.allBooks().associateBy { it.id }
+        val wishes = dao.allWishes().associateBy { it.id }
+        return ids.mapNotNull { id ->
+                (books[id] ?: wishes[id]?.linkedBookId?.let(books::get))?.let { id to it.status }
+            }
+            .toMap()
+    }
+
     fun status(book: Book, status: String) =
         run(msg(R.string.msg_library_updating_status)) {
+            val before = statusesOf(setOf(book.id))
             repo.manageBatch(setOf(book.id), status = status)
-            finishedHere(setOf(book.id), status)
+            finishedHere(setOf(book.id), status, before)
             msg(R.string.msg_library_status_updated)
         }
 
