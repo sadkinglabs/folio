@@ -563,7 +563,7 @@ Decided with the owner on 2026-10-16, in a question-by-question session. This re
   - edits to title, author or cover (renames on the Kindle keep the `.sdr`);
   - Librillo lists ⇄ KOReader collections, both ways.
 - **Conflicts** (both sides changed the same status or metadata since the last sync) are asked about on whichever device is in use at the next sync. Positions use Progress sync's own prompt.
-- **Hardcover:** progress moves on its own (existing outbox); finishing asks first.
+- **Hardcover:** progress moves on its own (existing outbox). A book marked Finished on the phone is marked Read on Hardcover straight away (owner, 2026-10-16); a finish that comes from the e-reader asks first.
 - **When it syncs:** automatically whenever the Kindle and phone share a Wi‑Fi network (home or the phone's hotspot), while Librillo is open and for 30 minutes after it closes, plus a Sync button on each side. The Kindle syncs when its Wi‑Fi connects, when a book opens or closes, and on "Sync now". Nothing goes through the internet.
 - **Phone UI:**
   - a sync status line at the top of the Library ("Kindle synced 2 min ago", with a Sync button);

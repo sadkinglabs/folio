@@ -60,21 +60,21 @@ class HardcoverReadingTest {
                         val key =
                             when {
                                 q.contains("insert_user_book_read") -> {
+                                    val value = v.getJSONObject("value")
                                     readId = 22
-                                    pages = v.getJSONObject("value").getInt("progress_pages")
-                                    edition = v.getJSONObject("value").getInt("edition_id")
+                                    pages = value.optInt("progress_pages", -1).takeIf { it >= 0 }
+                                    edition = value.optInt("edition_id", -1).takeIf { it >= 0 }
+                                    finished = value.optString("finished_at", "").ifEmpty { null }
                                     "insert_user_book_read"
                                 }
                                 q.contains("update_user_book_read") -> {
                                     assertEquals(readId, v.getInt("id"))
-                                    finished =
-                                        v.getJSONObject("value")
-                                            .optString("finished_at", "")
-                                            .ifEmpty {
-                                                null
-                                            }
-                                    pages = v.getJSONObject("value").getInt("progress_pages")
-                                    edition = v.getJSONObject("value").getInt("edition_id")
+                                    val value = v.getJSONObject("value")
+                                    finished = value.optString("finished_at", "").ifEmpty { null }
+                                    if (value.has("progress_pages"))
+                                        pages = value.getInt("progress_pages")
+                                    if (value.has("edition_id"))
+                                        edition = value.getInt("edition_id")
                                     "update_user_book_read"
                                 }
                                 q.contains("insert_user_book(") -> {
@@ -308,5 +308,69 @@ class HardcoverReadingTest {
         assertEquals(300, estimatedHardcoverPage(100.0, 300))
         assertTrue(runCatching { estimatedHardcoverPage(Double.NaN, 300) }.isFailure)
         assertTrue(runCatching { estimatedHardcoverPage(10.0, 0) }.isFailure)
+    }
+
+    @Test
+    fun markReadFinishesAReadInProgress() {
+        val f = AccountFixture()
+        f.status = 2
+        val day = java.time.LocalDate.of(2026, 10, 2)
+        f.client.markRead("token", 44, day)
+        assertEquals(3, f.status)
+        assertEquals("2026-10-02", f.finished)
+        assertEquals(300, f.pages)
+    }
+
+    @Test
+    fun markReadAddsAFinishedReadToAWantToReadBook() {
+        val f = AccountFixture()
+        f.status = 1
+        f.readId = null
+        val day = java.time.LocalDate.of(2026, 10, 2)
+        f.client.markRead("token", 44, day)
+        assertEquals(3, f.status)
+        assertEquals("2026-10-02", f.finished)
+        // The book's own edition goes on the new read; earlier reads are not touched.
+        assertEquals(8, f.edition)
+        assertTrue(f.writes.none { it.getString("query").contains("update_user_book_read") })
+    }
+
+    @Test
+    fun markReadAddsABookThatIsNotOnHardcoverYet() {
+        val f = AccountFixture()
+        f.exists = false
+        f.readId = null
+        f.parentEdition = null
+        f.client.markRead("token", 44, java.time.LocalDate.of(2026, 10, 2))
+        assertEquals(3, f.status)
+        assertEquals("2026-10-02", f.finished)
+        assertEquals(
+            listOf("insert_user_book(", "insert_user_book_read"),
+            f.writes.map { w ->
+                listOf("insert_user_book(", "insert_user_book_read").first {
+                    w.getString("query").contains(it)
+                }
+            },
+        )
+    }
+
+    @Test
+    fun markReadLeavesABookAlreadyReadAlone() {
+        val f = AccountFixture()
+        f.status = 3
+        f.readId = null
+        f.client.markRead("token", 44, java.time.LocalDate.of(2026, 10, 2))
+        assertTrue(f.writes.isEmpty())
+    }
+
+    @Test
+    fun markReadRefusesAFutureDate() {
+        val f = AccountFixture()
+        f.status = 2
+        assertTrue(
+            runCatching { f.client.markRead("token", 44, java.time.LocalDate.now().plusDays(1)) }
+                .isFailure
+        )
+        assertTrue(f.writes.isEmpty())
     }
 }

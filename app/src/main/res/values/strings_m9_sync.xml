@@ -81,7 +81,7 @@
     <!-- Book page: the e-reader tile when it has no position for the book. -->
     <string name="m9sync_ereader_no_position">Not opened</string>
     <!-- Settings: under "Update Hardcover automatically". -->
-    <string name="m9sync_hardcover_automatic_hint">Reading progress only. Finishing a book always asks first.</string>
+    <string name="m9sync_hardcover_automatic_hint">Reading progress, and books you mark Finished in Librillo. A book finished on your e-reader asks first.</string>
 
     <!-- Setting the e-reader up over SSH (PluginSetupSheet.kt) -->
     <string name="m9sync_setup_title">Set up your e-reader</string>

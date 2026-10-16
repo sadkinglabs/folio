@@ -313,6 +313,8 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 - `uploadDir()` is `Books/.librillo/uploads` when the Books folder is ready, else `cacheDir/sync-uploads`; uploads left over for more than a day are deleted.
 
 ## Hardcover finish prompt (step 4)
+
+**Marked Finished on the phone (2026-10-16, owner's request):** that tap is the owner's go-ahead. `LibraryViewModel` queues the book in `HardcoverOutbox.queueFinish`, and the outbox worker calls `HardcoverClient.markRead` with that day's date: a read in progress is finished at its last page; a book with no read in progress (Want to Read, or Read before) or not on Hardcover yet gets a new finished read; a book already Read with no read in progress is left alone. It follows "Update Hardcover automatically" and retries offline. No prompt is left for that finish. The prompt below is for finishes that arrive from the e-reader.
 Reading progress goes to Hardcover on its own (`HardcoverOutbox`), and only ever moves an open read forward. Finishing a read on Hardcover is never automatic.
 
 When a book becomes Finished, by a sync (`SetStatus`, or an `Import` with that status) or on the phone (the book page or the Library's selection), `HardcoverFinishPrompts.statusChanged(ids)` checks it. A prompt is kept when:

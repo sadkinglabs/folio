@@ -435,6 +435,81 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         return "Marked Read on Hardcover, finished $finishedOn"
     }
 
+    /**
+     * Marks the book Read on Hardcover, finished on [finishedOn], whatever its state there. A read
+     * in progress on an edition with a page count is finished as [finish] does; another read in
+     * progress just gets the date; a book with no read in progress, or not in the library yet, gets
+     * a new finished read. Earlier reads, rating and review are kept. A book already Read with no
+     * read in progress is left alone.
+     */
+    fun markRead(token: String, bookId: Int, finishedOn: LocalDate, userId: Int? = null): String {
+        require(!finishedOn.isAfter(LocalDate.now())) {
+            "Choose a finish date that is not in the future"
+        }
+        val current = reading(token, bookId, userId)
+        if (current.status == 3 && current.readId == null) return "Already marked Read on Hardcover"
+        if (current.readId != null && current.editionId?.let { editionPages(token, it) } != null)
+            return finish(token, bookId, finishedOn, current)
+        val userBookId =
+            if (current.userBookId == null) {
+                val me = account(token)
+                checkedWrite(
+                    query(
+                        token,
+                        "mutation(\$object:UserBookCreateInput!) { insert_user_book(object:\$object) { id error } }",
+                        JSONObject()
+                            .put(
+                                "object",
+                                JSONObject()
+                                    .put("book_id", bookId)
+                                    .put("status_id", 3)
+                                    .put("privacy_setting_id", me.privacy),
+                            ),
+                    ),
+                    "insert_user_book",
+                )
+            } else current.userBookId
+        if (current.readId != null)
+            checkedWrite(
+                query(
+                    token,
+                    "mutation(\$id:Int!,\$value:DatesReadInput!) { update_user_book_read(id:\$id,object:\$value) { id error } }",
+                    JSONObject()
+                        .put("id", current.readId)
+                        .put("value", JSONObject().put("finished_at", finishedOn.toString())),
+                ),
+                "update_user_book_read",
+            )
+        else
+            checkedWrite(
+                query(
+                    token,
+                    "mutation(\$id:Int!,\$value:DatesReadInput!) { insert_user_book_read(user_book_id:\$id,user_book_read:\$value) { id error } }",
+                    JSONObject()
+                        .put("id", userBookId)
+                        .put(
+                            "value",
+                            JSONObject().put("finished_at", finishedOn.toString()).apply {
+                                current.bookEditionId?.let { put("edition_id", it) }
+                            },
+                        ),
+                ),
+                "insert_user_book_read",
+            )
+        if (current.userBookId != null && current.status != 3)
+            checkedWrite(
+                query(
+                    token,
+                    "mutation(\$id:Int!,\$object:UserBookUpdateInput!) { update_user_book(id:\$id,object:\$object) { id error } }",
+                    JSONObject()
+                        .put("id", current.userBookId)
+                        .put("object", JSONObject().put("status_id", 3)),
+                ),
+                "update_user_book",
+            )
+        return "Marked Read on Hardcover, finished $finishedOn"
+    }
+
     fun currentlyReading(token: String, bookId: Int): String {
         val state = reading(token, bookId)
         if (state.status == 2) return "Already marked Currently Reading on Hardcover"

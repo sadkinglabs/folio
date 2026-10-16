@@ -155,7 +155,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     ) =
         run(msg(R.string.msg_library_updating_selected)) {
             repo.manageBatch(ids, shelf, add, status)
-            if (status != null) finishPrompts.statusChanged(ids)
+            if (status != null) finishedHere(ids, status)
             withContext(Dispatchers.Main) { onDone() }
             msg(R.string.msg_library_selected_updated)
         }
@@ -493,10 +493,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             msg(R.string.msg_library_changes_saved)
         }
 
+    /**
+     * After the owner set [status] on [ids] here. Finished is the owner's own tap, so Hardcover is
+     * marked Read straight away (through the outbox, which retries offline) and no prompt is left
+     * asking the same thing. A finish that arrives from the e-reader still asks first.
+     */
+    private suspend fun finishedHere(ids: Set<String>, status: String) {
+        finishPrompts.statusChanged(ids)
+        if (status != "Finished") return
+        val wishes = dao.allWishes()
+        ids.forEach { id ->
+            app.hardcoverOutbox.queueFinish(id)
+            finishPrompts.dismiss(id)
+            wishes.firstOrNull { it.id == id }?.linkedBookId?.let { finishPrompts.dismiss(it) }
+        }
+    }
+
     fun status(book: Book, status: String) =
         run(msg(R.string.msg_library_updating_status)) {
             repo.manageBatch(setOf(book.id), status = status)
-            finishPrompts.statusChanged(setOf(book.id))
+            finishedHere(setOf(book.id), status)
             msg(R.string.msg_library_status_updated)
         }
 

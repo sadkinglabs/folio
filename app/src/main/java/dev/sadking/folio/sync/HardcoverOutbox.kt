@@ -113,6 +113,38 @@ class HardcoverOutbox(context: Context) {
                     .toString(),
             )
             .apply()
+        schedule()
+    }
+
+    /**
+     * The owner marked [id] (a book, or a catalogue entry) Finished in Librillo: mark it Read on
+     * Hardcover, finished on [finishedOn]. That tap is the owner's go-ahead, so nothing asks again.
+     */
+    fun queueFinish(id: String, finishedOn: java.time.LocalDate = java.time.LocalDate.now()) {
+        if (!automatic || !HardcoverSettings(app).connected) return
+        prefs.edit().putString("finish:$id", finishedOn.toString()).apply()
+        schedule()
+    }
+
+    /** Finishes waiting to go to Hardcover: id and finish date. */
+    fun finishes(): List<Pair<String, java.time.LocalDate>> =
+        prefs.all
+            .filterKeys { it.startsWith("finish:") }
+            .mapNotNull { (key, value) ->
+                runCatching {
+                        key.removePrefix("finish:") to java.time.LocalDate.parse(value as String)
+                    }
+                    .getOrNull()
+            }
+            .sortedBy { it.first }
+
+    /** Removes the finish for [id] unless it was queued again with another date meanwhile. */
+    fun finishDone(id: String, finishedOn: java.time.LocalDate) {
+        if (prefs.getString("finish:$id", null) == finishedOn.toString())
+            prefs.edit().remove("finish:$id").apply()
+    }
+
+    private fun schedule() {
         // Waiting a minute turns a run of page turns into one update.
         WorkManager.getInstance(app)
             .enqueueUniqueWork(
@@ -233,6 +265,43 @@ class HardcoverOutboxWorker(context: Context, parameters: WorkerParameters) :
                     outbox.done(key, fraction)
                 } catch (e: IllegalStateException) {
                     outbox.done(key, fraction)
+                }
+            }
+            // Finishes after positions: a position queued just before the finish goes first.
+            for ((id, finishedOn) in outbox.finishes()) {
+                val hardcoverId =
+                    wishes
+                        .firstOrNull {
+                            (it.linkedBookId == id || it.id == id) && it.hardcoverId != null
+                        }
+                        ?.hardcoverId
+                if (hardcoverId == null) {
+                    outbox.finishDone(id, finishedOn)
+                    continue
+                }
+                try {
+                    client.markRead(token, hardcoverId, finishedOn, user)
+                    if (user != null)
+                        recordObservation(
+                            dao,
+                            user,
+                            hardcoverId,
+                            client.reading(token, hardcoverId, user),
+                            System.currentTimeMillis(),
+                        )
+                    outbox.finishDone(id, finishedOn)
+                } catch (e: IOException) {
+                    retry = true
+                } catch (e: HardcoverHttpException) {
+                    if (e.transient) retry = true
+                    else if (e.unauthorized) return@withContext Result.success()
+                    else outbox.finishDone(id, finishedOn)
+                } catch (e: IllegalArgumentException) {
+                    // Hardcover's state needs a person (two entries, two open reads): the book's
+                    // Hardcover sheet still offers Finish.
+                    outbox.finishDone(id, finishedOn)
+                } catch (e: IllegalStateException) {
+                    outbox.finishDone(id, finishedOn)
                 }
             }
             if (retry) Result.retry() else Result.success()
