@@ -23,6 +23,7 @@ local FROM_KOREADER = {
     abandoned = "abandoned", ["on hold"] = "abandoned",
 }
 local KINDS = { highlight = true, note = true, bookmark = true }
+local DATETIME = "^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d$"
 
 -- Errors meant for the e-reader's screen: plain words, no file position.
 local function fail(text) error(text, 0) end
@@ -35,6 +36,19 @@ local function nonempty(value)
 end
 
 local function strip(server) return (server or ""):gsub("/+$", "") end
+
+-- A colour or drawing style as both sides keep it: lower case, short, else nil.
+local function style_word(value)
+    if type(value) ~= "string" or value == "" or #value > 32 or value:find("%c") then return nil end
+    return value:lower()
+end
+
+-- When the note, colour or style last changed: KOReader's own time, if it has one.
+local function updated_of(item)
+    local value = item.datetime_updated
+    if type(value) == "string" and value:match(DATETIME) then return value end
+    return ""
+end
 
 local function sha256_hex(value)
     return type(value) == "string" and #value == 64 and value:match("^[0-9a-f]+$") ~= nil
@@ -197,17 +211,21 @@ function Sync.wire(item)
     return {
         id = item.id, text = str(item.text), note = str(item.note), chapter = str(item.chapter),
         datetime = str(item.datetime), pos0 = Sync.anchor(item.pos0), pos1 = Sync.anchor(item.pos1),
-        kind = kind,
+        kind = kind, color = style_word(item.color) or "", drawer = style_word(item.drawer) or "",
+        updated = type(item.updated) == "string" and item.updated:match(DATETIME) and item.updated or "",
     }
 end
 
 -- The book's annotations in the protocol's form. Each gets a stable id: the one stored with it
 -- (`librillo_id`), else first 32 hex of SHA-256 of device id, datetime and start, which is then
--- stored on the annotation. Returns the list and whether any id was new. Annotations Librillo
--- sent that KOReader can't show yet (`librillo_pending`) are listed too, so they are kept.
+-- stored on the annotation. Returns the list, whether any id was new, and whether the list is
+-- complete: KOReader's annotations list was there to read (a sidecar from KOReader 2024 or later).
+-- Only a complete list lets Librillo take a missing annotation as deleted here. Annotations
+-- Librillo sent that KOReader can't show yet (`librillo_pending`) are listed too, so they are kept.
 function Sync.annotations(data, device, d)
     local out, seen, changed = {}, {}, false
-    local list = type(data.annotations) == "table" and data.annotations or {}
+    local complete = type(data.annotations) == "table"
+    local list = complete and data.annotations or {}
     for _, item in ipairs(list) do
         if type(item) == "table" then
             local kind = kind_of(item)
@@ -234,6 +252,8 @@ function Sync.annotations(data, device, d)
                     id = id, text = str(item.text), note = str(item.note), chapter = str(item.chapter),
                     datetime = datetime, pos0 = anchor,
                     pos1 = item.pos1 ~= nil and Sync.anchor(item.pos1) or anchor, kind = kind,
+                    color = style_word(item.color) or "", drawer = style_word(item.drawer) or "",
+                    updated = updated_of(item),
                 }
             end
         end
@@ -246,7 +266,7 @@ function Sync.annotations(data, device, d)
             end
         end
     end
-    return out, changed
+    return out, changed, complete
 end
 
 -- KOReader's status in the protocol's words, and when it last changed (epoch milliseconds).
@@ -315,6 +335,9 @@ function Sync.to_koreader(item, paging, style, now)
     end
     local base = { datetime = datetime, text = nonempty(item.text), note = nonempty(item.note),
         chapter = nonempty(item.chapter), librillo_id = item.id }
+    if type(item.updated) == "string" and item.updated:match(DATETIME) then
+        base.datetime_updated = item.updated
+    end
     if paging then
         -- PDF and comics: a page bookmark on the right page, holding the text and the note.
         local page = tonumber(item.pos0)
@@ -328,8 +351,9 @@ function Sync.to_koreader(item, paging, style, now)
     if item.kind ~= "bookmark" then
         local pos1 = type(item.pos1) == "string" and item.pos1:sub(1, 1) == "/" and item.pos1 or pos0
         base.pos0, base.pos1 = pos0, pos1
-        base.drawer = style and style.drawer or "lighten"
-        base.color = style and style.color or nil
+        -- The colour and style picked on the phone, else KOReader's own default.
+        base.drawer = style_word(item.drawer) or style and style.drawer or "lighten"
+        base.color = style_word(item.color) or style and style.color or nil
         base.text = base.text or ""
     end
     return base
@@ -381,6 +405,81 @@ function Sync.add_annotations(data, incoming, paging, device, d, style, now)
     return added
 end
 
+-- Finds each annotation by its id, giving ids to the ones without one first. Returns a table from
+-- id to { list = the table holding it, index = its place }.
+local function by_id(data, device, d)
+    Sync.annotations(data, device, d)
+    local found = {}
+    for _, name in ipairs({ "annotations", "librillo_pending" }) do
+        local list = data[name]
+        if type(list) == "table" then
+            for i, item in ipairs(list) do
+                local id = type(item) == "table" and (nonempty(item.librillo_id) or nonempty(item.id))
+                if id and not found[id] then found[id] = { list = list, index = i, item = item } end
+            end
+        end
+    end
+    return found
+end
+
+-- Sets the note, colour, style and edit time Librillo sent, for the annotations here with those
+-- ids. A bookmark never gets a drawing style (KOReader would take it for a highlight), and a blank
+-- style leaves KOReader's alone. Returns how many changed.
+function Sync.edit_annotations(data, incoming, device, d)
+    local found = by_id(data, device, d)
+    local edited = 0
+    for _, wanted in ipairs(incoming) do
+        local hit = type(wanted) == "table" and type(wanted.id) == "string" and found[wanted.id]
+        if hit then
+            local item = hit.item
+            item.note = nonempty(wanted.note)
+            if hit.list == data.librillo_pending then
+                item.color = style_word(wanted.color) or ""
+                item.drawer = style_word(wanted.drawer) or ""
+                item.updated = type(wanted.updated) == "string" and wanted.updated or ""
+                item.kind = item.note and "note" or (item.kind == "bookmark" and "bookmark" or "highlight")
+            else
+                if item.drawer then
+                    item.color = style_word(wanted.color)
+                    if style_word(wanted.drawer) then item.drawer = style_word(wanted.drawer) end
+                end
+                if type(wanted.updated) == "string" and wanted.updated:match(DATETIME) then
+                    item.datetime_updated = wanted.updated
+                end
+            end
+            edited = edited + 1
+        end
+    end
+    if edited > 0 then data.annotations_externally_modified = true end
+    return edited
+end
+
+-- Deletes the annotations with these ids: the owner deleted them on the phone, which keeps them
+-- there for 30 days. Returns how many were deleted.
+function Sync.delete_annotations(data, ids, device, d)
+    local wanted = {}
+    for _, id in ipairs(ids) do
+        if type(id) == "string" and id ~= "" then wanted[id] = true end
+    end
+    by_id(data, device, d)
+    local deleted = 0
+    for _, name in ipairs({ "annotations", "librillo_pending" }) do
+        local list = data[name]
+        if type(list) == "table" then
+            for i = #list, 1, -1 do
+                local item = list[i]
+                local id = type(item) == "table" and (nonempty(item.librillo_id) or nonempty(item.id))
+                if id and wanted[id] then
+                    table.remove(list, i)
+                    deleted = deleted + 1
+                end
+            end
+        end
+    end
+    if deleted > 0 then data.annotations_externally_modified = true end
+    return deleted
+end
+
 -- ---- The manifest ----
 
 -- Every book file with its hash, status, annotations and collections. Hashes are cached by path,
@@ -425,8 +524,11 @@ function Sync.manifest(cfg, d, state, progress)
         local annotations = {}
         if type(data) == "table" then
             entry.status, entry.statusAt = Sync.status(data, d.sidecar_mtime(file.abs), d)
-            local changed
-            annotations, changed = Sync.annotations(data, cfg.device, d)
+            local changed, complete
+            annotations, changed, complete = Sync.annotations(data, cfg.device, d)
+            -- Only a list read in full can tell Librillo an annotation was deleted here; it also
+            -- says this plugin takes edits and deletions. A book without notes says nothing.
+            if complete then entry.annotationsComplete = true end
             if changed and file.abs ~= open then
                 -- Keep the new ids with the annotations, so they never change.
                 pcall(d.write_sidecar, file.abs, function(stored)
@@ -722,6 +824,33 @@ function ACTIONS.annotations(ctx, a)
         if ctx.d.reset then pcall(ctx.d.reset, abs) end
         ctx.changed[rel] = true
     end
+end
+
+-- Edits and deletions Librillo sends to a plugin that reported a complete list (rule 7).
+local function change_annotations(ctx, a, field, change)
+    local rel = need_path(ctx.actual(a.path))
+    if type(a[field]) ~= "table" then fail("Invalid notes.") end
+    need_file(ctx, rel)
+    local abs = ctx.home .. "/" .. rel
+    check_closed(ctx, abs)
+    local count = 0
+    ctx.d.write_sidecar(abs, function(data) count = change(data, a[field]) end)
+    if count > 0 then
+        if ctx.d.reset then pcall(ctx.d.reset, abs) end
+        ctx.changed[rel] = true
+    end
+end
+
+ACTIONS["edit-annotations"] = function(ctx, a)
+    change_annotations(ctx, a, "annotations", function(data, list)
+        return Sync.edit_annotations(data, list, ctx.cfg.device, ctx.d)
+    end)
+end
+
+ACTIONS["delete-annotations"] = function(ctx, a)
+    change_annotations(ctx, a, "ids", function(data, ids)
+        return Sync.delete_annotations(data, ids, ctx.cfg.device, ctx.d)
+    end)
 end
 
 function ACTIONS.collections(ctx, a)

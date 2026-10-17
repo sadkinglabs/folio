@@ -12,6 +12,10 @@ import dev.sadking.folio.data.LINK_DEVICE_PREFIX
  * the same highlight under its sync id. Such an older row is the same annotation as a synced row
  * with the same time and start, so it is left out of what sync sees once that synced row exists: it
  * is kept in Room, never deleted, and never sent twice.
+ *
+ * A row the owner deleted ([BookAnnotation.deletedAt]) goes to sync as a tombstone
+ * ([SyncAnnotation.deleted]). It still hides older copies of itself, so a deleted highlight never
+ * comes back through one.
  */
 object SyncAnnotations {
     private val KINDS = setOf("highlight", "note", "bookmark")
@@ -26,6 +30,10 @@ object SyncAnnotations {
             pos0 = row.position,
             pos1 = row.endPosition,
             kind = row.kind.takeIf { it in KINDS } ?: "highlight",
+            color = row.color,
+            drawer = row.drawer,
+            updated = row.editedAt,
+            deleted = row.deleted,
         )
 
     fun toRow(annotation: SyncAnnotation, bookId: String, ereaderId: String): BookAnnotation =
@@ -40,6 +48,9 @@ object SyncAnnotations {
             position = annotation.pos0,
             endPosition = annotation.pos1,
             kind = annotation.kind,
+            color = annotation.color,
+            drawer = annotation.drawer,
+            editedAt = annotation.updated,
         )
 
     /**
@@ -49,7 +60,21 @@ object SyncAnnotations {
      */
     fun forSync(rows: List<BookAnnotation>): List<SyncAnnotation> = visible(rows).map(::toSync)
 
-    /** The rows of one book that [forSync] keeps, in id order. The screens can show the same. */
+    /**
+     * The rows of one book the owner sees: [visible] without the deleted ones, in id order. The
+     * reader, the book page and exports show these.
+     */
+    fun live(rows: List<BookAnnotation>): List<BookAnnotation> =
+        visible(rows).filter { !it.deleted }
+
+    /** Every book's [live] rows, for lists that hold several books' annotations. */
+    fun liveByBook(rows: List<BookAnnotation>): List<BookAnnotation> =
+        rows.groupBy { it.bookId }.values.flatMap(::live)
+
+    /**
+     * The rows of one book that [forSync] keeps, deleted ones included, in id order. A deleted row
+     * still hides older copies of itself.
+     */
     fun visible(rows: List<BookAnnotation>): List<BookAnnotation> {
         val (synced, older) = rows.sortedBy { it.id }.partition { it.isSynced() }
         val syncedKeys = synced.mapNotNull(::key).toSet()

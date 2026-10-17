@@ -671,7 +671,15 @@ internal fun annotationJson(a: BookAnnotation) =
         .put("position", a.position)
         .put("endPosition", a.endPosition)
         .put("kind", a.kind)
+        .put("color", a.color)
+        .put("drawer", a.drawer)
+        .put("editedAt", a.editedAt)
+        .put("deletedAt", a.deletedAt)
 
+/**
+ * An annotation from a backup. Backups made before schema 13 have no colour, style, edit time or
+ * deletion: such a row comes back as it was, live and unedited.
+ */
 internal fun parseAnnotation(o: JSONObject) =
     BookAnnotation(
         o.getString("id"),
@@ -684,6 +692,10 @@ internal fun parseAnnotation(o: JSONObject) =
         o.getString("position"),
         o.getString("endPosition"),
         o.getString("kind"),
+        color = o.optString("color").also { require(it.length <= 32) },
+        drawer = o.optString("drawer").also { require(it.length <= 32) },
+        editedAt = o.optString("editedAt").also { require(it.length <= 32) },
+        deletedAt = o.optLong("deletedAt").coerceAtLeast(0),
     )
 
 internal fun validateStatistics(value: DeviceStatistics) {

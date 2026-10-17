@@ -12,8 +12,9 @@ object SyncPending {
     /**
      * True when a book in [phone] changed since [baselines] in a way the e-reader must follow: a
      * new book to send, a book removed or purged on the phone, a new file, a new title or author, a
-     * new status, a new annotation, or a changed list. Books in [waiting] have a question open
-     * about them; they don't count, or every poll would sync again just to ask it again.
+     * new status, a new annotation, an annotation edited or deleted (for an e-reader that takes
+     * edits), or a changed list. Books in [waiting] have a question open about them; they don't
+     * count, or every poll would sync again just to ask it again.
      *
      * [root] is the library folder on the e-reader. When null, any folder holding the book's
      * `Author/Title.ext` counts as in place, so a library folder changed on the e-reader doesn't
@@ -45,7 +46,18 @@ object SyncPending {
         // A blank baseline status means the sides didn't agree last time: a question or no record.
         val agreed = SyncStatus.normalize(b.status)
         if (status != null && agreed != null && status != agreed) return true
-        if (book.annotations.any { it.id !in b.annotationIds }) return true
+        if (book.annotations.any { !it.deleted && it.id !in b.annotationIds }) return true
+        // Edits and deletions only count for an e-reader that takes them (its states are known).
+        val states = b.annotationStates
+        if (states != null) {
+            if (book.annotations.any { it.deleted && it.id in b.annotationIds }) return true
+            if (
+                book.annotations.any { a ->
+                    !a.deleted && states[a.id]?.let { it != AnnotationMerge.state(a) } == true
+                }
+            )
+                return true
+        }
         return SyncPlanner.names(book.lists) != SyncPlanner.names(b.collections)
     }
 

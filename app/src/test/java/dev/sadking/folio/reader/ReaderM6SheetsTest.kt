@@ -43,10 +43,16 @@ class ReaderM6SheetsTest {
     @Test
     fun theSelectionMenuOffersDefineBetweenNoteAndCopy() {
         assertEquals(
-            listOf(SELECTION_HIGHLIGHT, SELECTION_NOTE, SELECTION_DEFINE, SELECTION_COPY),
+            listOf(
+                SELECTION_HIGHLIGHT,
+                SELECTION_COLOUR,
+                SELECTION_NOTE,
+                SELECTION_DEFINE,
+                SELECTION_COPY,
+            ),
             SELECTION_MENU.map { it.first },
         )
-        assertEquals(dev.sadking.folio.R.string.rd6_define_action, SELECTION_MENU[2].second)
+        assertEquals(dev.sadking.folio.R.string.rd6_define_action, SELECTION_MENU[3].second)
     }
 
     @Test

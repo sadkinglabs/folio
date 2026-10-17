@@ -376,6 +376,104 @@ assert(#ssh.annotations == 2 and ssh.annotations[1].librillo_id == own and ssh.a
 ''')
 print('Notes from the phone: KOReader fields for EPUB highlights and bookmarks, PDF page bookmarks, unshowable notes kept and reported, old sidecars untouched, no duplicates (by id, or by time and start for notes imported before sync).')
 
+# M11: colours, notes and deletions both ways. The manifest says when its list is complete, and the
+# plugin applies the phone's edits and deletions to KOReader's notes.
+lua.execute(r'''
+local K, P, d = fake("/x")
+local data = { annotations = {
+  { datetime = "2026-01-01 10:00:00", drawer = "lighten", color = "Yellow", page = "/a", pos0 = "/a", pos1 = "/b", librillo_id = "h1" },
+  { datetime = "2026-01-02 10:00:00", drawer = "underscore", color = "green", note = "n", datetime_updated = "2026-01-05 08:00:00",
+    page = "/c", pos0 = "/c", pos1 = "/d", librillo_id = "h2" },
+  { datetime = "2026-01-03 10:00:00", page = "/e", librillo_id = "bm" },
+  { datetime = "2026-01-04 10:00:00", drawer = "lighten", page = "/f", pos0 = "/f", pos1 = "/g" },
+}, librillo_pending = { { id = "pend", text = "t", pos0 = "", pos1 = "", kind = "highlight" } } }
+local list, _, complete = Sync.annotations(data, "dev1", d)
+assert(complete == true, "a KOReader annotations list is complete")
+assert(list[1].color == "yellow" and list[1].drawer == "lighten" and list[1].updated == "")
+assert(list[2].color == "green" and list[2].drawer == "underscore" and list[2].updated == "2026-01-05 08:00:00")
+assert(list[3].kind == "bookmark" and list[3].drawer == "" and list[3].color == "")
+local _, _, old_complete = Sync.annotations({ bookmarks = { { page = "/z" } } }, "dev1", d)
+assert(old_complete == false, "a sidecar from before KOReader 2024 is never complete")
+-- Edits: note, colour, style and time; a bookmark keeps no style; unknown ids are ignored.
+local fourth = list[4].id
+local n = Sync.edit_annotations(data, {
+  { id = "h1", note = "new note", color = "purple", drawer = "underscore", updated = "2026-02-01 09:00:00" },
+  { id = "h2", note = "", color = "blue", drawer = "", updated = "bad time" },
+  { id = "bm", note = "for the mark", color = "green", drawer = "lighten" },
+  { id = fourth, note = "fourth", color = "", drawer = "lighten" },
+  { id = "pend", note = "waits", color = "green", drawer = "lighten", updated = "2026-02-02 09:00:00" },
+  { id = "nobody", note = "x" },
+}, "dev1", d)
+assert(n == 5, n)
+local a = data.annotations
+assert(a[1].note == "new note" and a[1].color == "purple" and a[1].drawer == "underscore" and a[1].datetime_updated == "2026-02-01 09:00:00")
+assert(a[2].note == nil and a[2].color == "blue" and a[2].drawer == "underscore", "a blank style keeps KOReader's")
+assert(a[2].datetime_updated == "2026-01-05 08:00:00", "an odd time is not written")
+assert(a[3].drawer == nil and a[3].color == nil and a[3].note == "for the mark", "a bookmark stays a bookmark")
+assert(a[4].librillo_id == fourth and a[4].note == "fourth" and a[4].color == nil)
+assert(data.librillo_pending[1].note == "waits" and data.librillo_pending[1].color == "green")
+assert(data.annotations_externally_modified == true)
+local again = Sync.annotations(data, "dev1", d)
+assert(again[1].kind == "note" and again[1].color == "purple" and again[1].updated == "2026-02-01 09:00:00")
+assert(again[3].kind == "bookmark", "still a bookmark")
+local pending_out = again[5]
+assert(pending_out.id == "pend" and pending_out.note == "waits" and pending_out.kind == "note" and pending_out.updated == "2026-02-02 09:00:00")
+-- Deletions: by stored id, by recipe id and from the notes waiting aside; the rest stay.
+data.annotations_externally_modified = nil
+assert(Sync.delete_annotations(data, { "h2", fourth, "pend", "nobody" }, "dev1", d) == 3)
+local left = {}
+for _, x in ipairs(Sync.annotations(data, "dev1", d)) do left[#left + 1] = x.id end
+assert(#left == 2 and left[1] == "h1" and left[2] == "bm", table.concat(left, ","))
+assert(#data.librillo_pending == 0 and data.annotations_externally_modified == true)
+assert(Sync.delete_annotations(data, { "nobody" }, "dev1", d) == 0, "nothing else is touched")
+-- A note from the phone keeps the colour, style and edit time picked there.
+local fresh = { annotations = {} }
+Sync.add_annotations(fresh, { { id = "c1", text = "t", datetime = "2026-03-01 08:00:00", pos0 = "/p", pos1 = "/q",
+  kind = "highlight", color = "green", drawer = "underscore", updated = "2026-03-02 08:00:00" } }, false, "dev1", d,
+  { drawer = "lighten", color = "yellow" }, 1)
+assert(fresh.annotations[1].color == "green" and fresh.annotations[1].drawer == "underscore" and fresh.annotations[1].datetime_updated == "2026-03-02 08:00:00")
+''')
+with tempfile.TemporaryDirectory(prefix='folio-sync-edits-') as tmp:
+    home=str(Path(tmp)/'home'); os.mkdir(home); g.home=home
+    py_write(home+'/Librillo/A/Notes.epub','notes',1790000000)
+    py_write(home+'/Librillo/A/Bare.epub','bare',1790000000)
+    py_write(home+'/Librillo/A/Old.epub','old',1790000000)
+    py_write(home+'/Librillo/A/Open.epub','open',1790000000)
+    lua.execute(r'''
+    K, P, d, cfg = fake(home)
+    local N = home .. "/Librillo/A/Notes.epub"
+    local O = home .. "/Librillo/A/Open.epub"
+    K.sidecars[N] = { doc_path = N, annotations = {
+      { datetime = "2026-01-01 10:00:00", drawer = "lighten", page = "/a", pos0 = "/a", pos1 = "/b", librillo_id = "keep" },
+      { datetime = "2026-01-02 10:00:00", drawer = "lighten", page = "/c", pos0 = "/c", pos1 = "/d", librillo_id = "gone" } } }
+    K.sidecars[home .. "/Librillo/A/Old.epub"] = { doc_path = "old", bookmarks = { { page = "/z" } } }
+    K.sidecars[O] = { doc_path = O, annotations = { { datetime = "2026-01-01 10:00:00", drawer = "lighten", page = "/a", pos0 = "/a", pos1 = "/b", librillo_id = "o1" } } }
+    K.open = O
+    P.plan = { session = "e1", questions = {}, kindle = {
+      { index = 0, op = "edit-annotations", path = "Librillo/A/Notes.epub", annotations = { { id = "keep", note = "edited", color = "blue", drawer = "lighten", updated = "2026-02-01 10:00:00" } } },
+      { index = 1, op = "delete-annotations", path = "Librillo/A/Notes.epub", ids = { "gone" } },
+      { index = 2, op = "delete-annotations", path = "Librillo/A/Open.epub", ids = { "o1" } },
+      { index = 3, op = "edit-annotations", path = "Librillo/A/Notes.epub", annotations = "bad" },
+    } }
+    state = { hashes = {}, answers = {}, questions = {} }
+    result = Sync.run(cfg, d, state)
+    ''')
+    mf=lua.eval('P.manifest.files')
+    by={mf[i]['path']:mf[i] for i in range(1,len(mf)+1)}
+    assert by['Librillo/A/Notes.epub']['annotationsComplete'] is True
+    assert by['Librillo/A/Bare.epub']['annotationsComplete'] is None, 'no notes file: nothing can look deleted'
+    assert by['Librillo/A/Old.epub']['annotationsComplete'] is None, 'an old notes file is never complete'
+    assert by['Librillo/A/Open.epub']['annotationsComplete'] is True, "the open book's live notes are whole"
+    R=lua.eval('P.finish.results'); ok={R[i]['index']:R[i]['ok'] for i in range(1,len(R)+1)}
+    assert ok=={0:True,1:True,2:False,3:False}, ok
+    assert lua.eval('P.finish.results[3].error')=='open on the e-reader'
+    notes=lua.eval('K.sidecars[home .. "/Librillo/A/Notes.epub"].annotations')
+    assert len(notes)==1 and notes[1]['librillo_id']=='keep' and notes[1]['note']=='edited' and notes[1]['color']=='blue'
+    assert notes[1]['datetime_updated']=='2026-02-01 10:00:00'
+    assert len(lua.eval('K.sidecars[home .. "/Librillo/A/Open.epub"].annotations'))==1, 'the open book is never written'
+    assert lua.eval('K.reset[home .. "/Librillo/A/Notes.epub"]'), 'KOReader reloads the notes'
+    print('Colours, notes and deletions (M11): a complete list is flagged (never for a book without a notes file or an old one), colour, style, note and edit time read and written both ways, bookmarks stay bookmarks, deletions by id only, the open book untouched.')
+
 # A whole sync: every action, with refusals.
 with tempfile.TemporaryDirectory(prefix='folio-sync-run-') as tmp:
     home=str(Path(tmp)/'home'); os.mkdir(home); g.home=home

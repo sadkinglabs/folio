@@ -13,6 +13,7 @@ import dev.sadking.folio.data.Book
 import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.PhoneReading
 import dev.sadking.folio.reader.HIGHLIGHT_NOTE_DIALOG_TAG
+import dev.sadking.folio.reader.HIGHLIGHT_SHEET_TAG
 import dev.sadking.folio.reader.PHONE_ANNOTATION_DEVICE
 import dev.sadking.folio.reader.ReaderActivity
 import dev.sadking.folio.reader.SELECTION_HIGHLIGHT
@@ -36,7 +37,8 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
 /**
  * Real WebView: highlights from the e-reader are drawn where their KOReader pointers point, one
  * that cannot be placed is kept, and a passage highlighted on the phone is stored with pointers
- * that the reader places again (the round trip KOReader relies on).
+ * that the reader places again (the round trip KOReader relies on). Selecting a highlighted passage
+ * again opens it instead of adding another, and Delete takes it off the page at once (M11).
  */
 class ReaderHighlightsTest {
     @get:Rule val compose = createEmptyComposeRule()
@@ -220,6 +222,27 @@ class ReaderHighlightsTest {
                     note.position.startsWith("/body/DocFragment[3]/body/p[3]/"),
                 )
                 compose.waitUntil(30000) { runCatching { note.id in drawn() }.getOrDefault(false) }
+
+                // 5. Selecting "enough" again opens its highlight; no second one is added.
+                page(
+                    """(function(){var t=document.getElementsByTagName('p')[1].firstChild;""" +
+                        """var i=t.data.indexOf('enough');var r=document.createRange();""" +
+                        """r.setStart(t,i);r.setEnd(t,i+6);var s=getSelection();""" +
+                        """s.removeAllRanges();s.addRange(r);return true;})()"""
+                )
+                scenario.onActivity { it.selectionAction(SELECTION_HIGHLIGHT) }
+                compose.waitUntil(30000) {
+                    compose
+                        .onAllNodesWithTag(HIGHLIGHT_SHEET_TAG)
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                }
+                assertEquals(1, phoneRows().count { it.kind == "highlight" })
+
+                // 6. Delete: soft (the row stays), and it is no longer drawn.
+                compose.onNodeWithText("Delete").performClick()
+                compose.waitUntil(30000) { runBlocking { dao.annotationById(made.id) }!!.deleted }
+                compose.waitUntil(30000) { runCatching { made.id !in drawn() }.getOrDefault(false) }
 
                 // Both e-reader rows are still stored.
                 val stored = runBlocking { dao.allAnnotations() }.map { it.id }

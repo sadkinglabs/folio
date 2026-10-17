@@ -11,6 +11,7 @@ import dev.sadking.folio.reader.koreaderDigest
 import dev.sadking.folio.sync.HardcoverItemState
 import dev.sadking.folio.sync.HardcoverStore
 import dev.sadking.folio.sync.HardcoverSync
+import dev.sadking.folio.sync.SyncAnnotations
 import dev.sadking.folio.sync.hardcoverItemState
 import java.io.File
 import java.util.UUID
@@ -59,8 +60,43 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val reading =
         dao.reading().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** Every book's live highlights, notes and bookmarks, each once (deleted ones left out). */
     val annotations =
-        dao.annotations().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        dao.annotations()
+            .map { SyncAnnotations.liveByBook(it) }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val highlightEdits = HighlightEdits(dao)
+    /** Highlights deleted in the last 30 days, which the book page can restore. */
+    val deletedAnnotations =
+        dao.deletedAnnotations(System.currentTimeMillis() - HighlightEdits.KEEP_DELETED_MS)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        // Deleted highlights past their 30 days lose their text; the rows stay for sync.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                highlightEdits.clearExpired()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {}
+        }
+    }
+
+    /** Brings a deleted highlight back (Recently deleted highlights on the book page). */
+    fun restoreAnnotation(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (highlightEdits.restore(id))
+                    runner.notices.emit(
+                        Operation(message = msg(R.string.reader_highlight_restored))
+                    )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {}
+        }
+    }
+
     val statistics =
         dao.statistics().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -684,8 +720,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun exportHighlights(book: Book, uri: Uri) =
         run(msg(R.string.msg_library_exporting_highlights)) {
             val values =
-                dao.allAnnotations()
-                    .filter { it.bookId == book.id }
+                SyncAnnotations.live(dao.allAnnotations().filter { it.bookId == book.id })
+                    .sortedBy { it.date }
                     .map {
                         ReaderAnnotation(
                             it.id,

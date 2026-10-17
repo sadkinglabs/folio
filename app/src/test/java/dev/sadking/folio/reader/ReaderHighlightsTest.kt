@@ -225,4 +225,89 @@ class ReaderHighlightsTest {
         assertEquals("The orchard.\n\nMine", highlightCopyText(plain.copy(note = "Mine ")))
         assertNotEquals(highlightTint(plain), highlightTint(plain.copy(note = "Mine")))
     }
+
+    // ---- M11: one highlight per passage, colours ----
+
+    @Test
+    fun selectingTheSamePassageOpensItsHighlight() {
+        val mine = row("mine", pos0, pos1)
+        assertEquals(mine, existingHighlight(passage, listOf(row("other", pos1, pos1 + "9"), mine)))
+    }
+
+    @Test
+    fun selectingInsideAHighlightOpensTheSmallestThatHoldsIt() {
+        val wide = row("wide", "/a", "/z").copy(text = "a long passage around it")
+        val narrow = row("narrow", "/b", "/y").copy(text = "around it")
+        val elsewhere = row("elsewhere", "/c", "/d").copy(text = "x")
+        val inside = passage.copy(inside = listOf("wide", "narrow"))
+        assertEquals(narrow, existingHighlight(inside, listOf(wide, narrow, elsewhere)))
+    }
+
+    @Test
+    fun anOverlapOrADeletedOneOrABookmarkIsANewHighlight() {
+        // Overlapping only: the page does not list it as holding the selection.
+        assertNull(existingHighlight(passage, listOf(row("overlap", "/a", pos1 + "x"))))
+        assertNull(existingHighlight(passage, listOf(row("gone", pos0, pos1).copy(deletedAt = 5))))
+        assertNull(existingHighlight(passage, listOf(row("mark", pos0, pos1, kind = "bookmark"))))
+    }
+
+    @Test
+    fun thePageSaysWhichHighlightsHoldTheSelection() {
+        val answer =
+            JSONObject()
+                .put("pos0", pos0)
+                .put("pos1", pos1)
+                .put("text", "orchard")
+                .put("inside", JSONArray(listOf("h1", "", "h2")))
+        assertEquals(
+            passage.copy(inside = listOf("h1", "h2")),
+            parseSelection(fromPage(answer), 2, 3),
+        )
+        val call = selectionCall(2, listOf(row("h1", pos0, pos1)))
+        assertTrue(call, call.startsWith("JSON.stringify(FolioHighlights.selection(2, [{"))
+        assertTrue(call, call.contains("\"id\":\"h1\""))
+    }
+
+    @Test
+    fun aColourIsDrawnInItsTintAndAnUnderlineAsALine() {
+        val plain = row("a", pos0, pos1)
+        assertEquals(HIGHLIGHT_TINT, highlightTint(plain))
+        assertEquals(HIGHLIGHT_TINT, highlightTint(plain.copy(color = "yellow")))
+        assertNotEquals(HIGHLIGHT_TINT, highlightTint(plain.copy(color = "green")))
+        assertEquals(
+            swatchTint(dev.sadking.folio.data.HighlightColour.PINK),
+            highlightTint(plain.copy(color = "purple")),
+        )
+        assertTrue(
+            highlightStyle(plain.copy(drawer = "underscore"))
+                is org.readium.r2.navigator.Decoration.Style.Underline
+        )
+        assertTrue(highlightStyle(plain) is org.readium.r2.navigator.Decoration.Style.Highlight)
+    }
+
+    @Test
+    fun aPhoneHighlightKeepsThePickedColour() {
+        val made =
+            phoneAnnotation(
+                "b1",
+                passage,
+                "",
+                "One",
+                "2026-10-16 09:05:03",
+                colour = dev.sadking.folio.data.HighlightColour.UNDERLINE,
+            )
+        assertEquals("underscore", made.drawer)
+        assertEquals("", made.color)
+        val green =
+            phoneAnnotation(
+                "b1",
+                passage,
+                "",
+                "One",
+                "2026-10-16 09:05:03",
+                colour = dev.sadking.folio.data.HighlightColour.GREEN,
+            )
+        assertEquals("green" to "lighten", green.color to green.drawer)
+        assertEquals("green", SyncAnnotations.toSync(green).color)
+    }
 }

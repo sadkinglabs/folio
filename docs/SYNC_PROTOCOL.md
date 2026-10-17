@@ -15,7 +15,7 @@ Reading positions are not part of this protocol. KOReader's Progress sync (kosyn
 - **Deletions, both ways.** Deleting on the Kindle sends the phone's book to Recently removed, where it can be restored. Removing on the phone deletes it from the Kindle. Restoring on the phone sends it back.
 - **Formats:** EPUB, PDF, CBZ and CBR. Other files are ignored and never touched.
 - **Status:** unread, reading, finished, on hold.
-- **Highlights, notes and bookmarks:** merged. Nothing is ever deleted.
+- **Highlights, notes and bookmarks:** merged, with their colour, style and note. A deletion on one side deletes on the other, but only when the baseline says both had it, and an edit beats a deletion (rule 7). An older plugin keeps the old rule: merged, never deleted.
 - **Lists ⇄ KOReader collections**, matched by name.
 - **Edits:** a new title or author renames the file on the Kindle. A new version of the file on one side replaces it on the other.
 
@@ -38,6 +38,7 @@ All paths are relative to KOReader's home folder and use `/`. Hashes are lowerca
 | `annotations` | List of annotations (below). |
 | `collections` | Names of the KOReader collections the book is in. |
 | `title`, `authors` | KOReader's metadata for the file. Used to name a book the phone doesn't have yet. When the title is missing, the file name is used. |
+| `annotationsComplete` | `true` only when the plugin read KOReader's annotations list in full (a sidecar from KOReader 2024 or later) and takes edits and deletions for this file. Missing for a book without a sidecar, an older sidecar, and from plugins before M11. |
 
 ### SyncAnnotation
 
@@ -48,6 +49,13 @@ All paths are relative to KOReader's home folder and use `/`. Hashes are lowerca
 | `datetime` | KOReader's creation time, `YYYY-MM-DD HH:MM:SS`. |
 | `pos0`, `pos1` | Start and end: an xpointer for EPUB, a page for PDF and comics. |
 | `kind` | `highlight`, `note` or `bookmark`. |
+| `color` | KOReader's highlight colour (`yellow`, `green`, `blue`, `purple`, `red`, `orange`, `olive`, `cyan`, `gray`), lower case; blank when unknown. |
+| `drawer` | KOReader's drawing style (`lighten`, `underscore`, `strikeout`, `invert`); blank for a bookmark or when unknown. |
+| `updated` | When the note, colour or style last changed, `YYYY-MM-DD HH:MM:SS` in local time (KOReader's `datetime_updated`); blank when never. |
+
+The phone's colours map to KOReader's: Yellow `yellow`, Green `green`, Blue `blue`, Pink `purple` (KOReader has no pink; its purple is a magenta), Underline `underscore` (the colour is kept). Other KOReader colours are kept as they are and drawn on the phone in a matching tint. Colour and style are read and written in lower case; one longer than 32 characters arrives blank.
+
+The phone also passes the planner a `deleted` flag (never on the wire): the owner deleted the annotation on the phone, and its row is kept as a tombstone.
 
 The side that creates an annotation gives it its id, and every side keeps that id from then on. The recipe: the first 32 hex characters of SHA-256 of `device id + "\n" + datetime + "\n" + pos0`. The planner treats ids as opaque text. The plugin stores a received id with the annotation (field `librillo_id`) so it can send the same id back.
 
@@ -67,9 +75,11 @@ A book purged from Recently removed is simply absent.
 
 ### Baseline: what both sides agreed at the last sync
 
-One row per book per e-reader: `bookId`, `path` on the Kindle, `sha256`, `status` (in the Kindle's words, or empty when the sides did not agree), `statusAt`, `annotationIds`, `collections`. The app stores it in the `sync_baseline` table.
+One row per book per e-reader: `bookId`, `path` on the Kindle, `sha256`, `status` (in the Kindle's words, or empty when the sides did not agree), `statusAt`, `annotationIds`, `collections`, `annotationStates`. The app stores it in the `sync_baseline` table.
 
-Without a baseline, "deleted on one side" can't be told apart from "never there". With one, a book missing on one side since the last sync was deleted there.
+Without a baseline, "deleted on one side" can't be told apart from "never there". With one, a book missing on one side since the last sync was deleted there, and so is an annotation (rule 7).
+
+`annotationIds` are the annotations both sides had live. An id the baseline had stays in it while exactly one side still has it live (a deletion or an addition not carried over yet), and leaves once neither has it. `annotationStates` maps an id to its state when both sides agreed on it: the first 16 hex characters of SHA-256 of `note + "\n" + color + "\n" + drawer`, colour and style in lower case (`AnnotationMerge.state`). It is null when the e-reader's file was not `annotationsComplete` and no earlier states were kept: rows from before schema 13, and every row for an older plugin. An unreadable value is null too.
 
 ### Status words
 
@@ -134,7 +144,21 @@ Both sides are put in the Kindle's words first.
 A status copied to the phone carries the Kindle's `statusAt` (or the phone's own when the Kindle has none).
 
 ### 7. Annotations
-Union by id. Each side gets the ones it lacks. Nothing is ever deleted, so an annotation deleted on one side comes back from the other.
+Per id (`AnnotationMerge`), comparing the phone (tombstones included), the Kindle and the baseline. "Agreed" means the id is in the baseline's `annotationIds` and the Kindle's file is `annotationsComplete`. "Edited since" means its state differs from `annotationStates[id]`; without a state for it, that it was ever edited (`updated` later than `datetime`), so an unsure case is never a deletion.
+
+| Phone | Kindle | Result |
+|---|---|---|
+| live | missing | Agreed and not edited on the phone since: deleted on the Kindle, so **deleted on the phone** (soft). Otherwise **added to the Kindle**. |
+| deleted | present | Agreed: if edited on the Kindle since, the edit wins and the phone **takes the Kindle's version back** (restored); else **deleted on the Kindle**. Not agreed: nothing either way. |
+| deleted | missing | Nothing. A tombstone is never sent. |
+| missing | present | **Added to the phone.** |
+| live | present | When the file is `annotationsComplete` and the states differ: the side still at the baseline's state takes the other's note, colour and style. When both changed, or there is no state, each field goes to the newer `updated` (else `datetime`); a tie goes to the phone; a blank never beats a value unless its side is strictly newer. The result goes to whichever side differs from it. |
+
+`kind` follows the note: a highlight with a note is a `note`, and back; a bookmark stays a bookmark.
+
+**Never deleted:** without a baseline, for an id the baseline doesn't know (or can't read), for a file without `annotationsComplete` (an older plugin, a book without a sidecar, an older sidecar), and when the other side edited it since. With an older plugin the old rule holds: each side gets the ones it lacks, nothing is edited or deleted, and the phone's tombstones stay on the phone; the baseline keeps their ids, so the deletion reaches the Kindle once its plugin is updated.
+
+**Deleting is soft on the phone:** the row keeps its text for 30 days and can be restored from the book page; after that its text and note are cleared and the row stays as a tombstone. On the Kindle the annotation is removed from KOReader's list; the phone still holds it.
 
 ### 8. Lists and collections
 Per list name, against the baseline's collections:
@@ -155,7 +179,7 @@ Every path the Kindle uses counts as taken, compared ignoring case and accents' 
 Files outside the library folder are moved in after they are imported. Files inside it at the wrong path are moved to the right one.
 
 ### 12. Order
-The plan doesn't depend on the order of its input. Kindle actions run in phases: uploads, moves, downloads, deletes, statuses, annotations, collections. Within a phase they are sorted by path, ignoring case. Phone actions: imports, restores, revisions, removals, statuses, annotations, lists, each sorted by book id (imports by path). Questions are sorted by path.
+The plan doesn't depend on the order of its input. Kindle actions run in phases: uploads, moves, downloads, deletes, statuses, annotations added, edited and deleted, collections. Within a phase they are sorted by path, ignoring case. Phone actions: imports, restores, revisions, removals, statuses, annotations added, edited and deleted, lists, each sorted by book id (imports by path). Questions are sorted by path.
 
 ### 13. Files the phone refused
 A Kindle file the phone would not take (not a book Librillo can read, larger than it takes, or a new version in another format than the book) is remembered by its hash, per e-reader (`SyncLibrary.refused`). The planner leaves a file with that content alone:
@@ -201,7 +225,9 @@ Header `x-folio-device: <device id>`.
      "status": "reading", "statusAt": 1760000000000,
      "annotations": [{"id": "…", "text": "…", "note": "", "chapter": "One",
                       "datetime": "2026-10-01 21:14:03", "pos0": "/body/DocFragment[3]/…",
-                      "pos1": "/body/DocFragment[3]/…", "kind": "highlight"}],
+                      "pos1": "/body/DocFragment[3]/…", "kind": "highlight",
+                      "color": "yellow", "drawer": "lighten", "updated": ""}],
+     "annotationsComplete": true,
      "collections": ["Sundays"], "title": "Home", "authors": ["Ann Lee"]}
   ],
   "answers": {"q-1a2b3c4d5e6f7a8b": "Finished"}
@@ -221,7 +247,9 @@ Answer:
     {"index": 3, "op": "delete", "path": "Librillo/Old/Gone.pdf"},
     {"index": 4, "op": "status", "path": "Librillo/Ann Lee/Home.epub", "status": "finished"},
     {"index": 5, "op": "annotations", "path": "Librillo/Ann Lee/Home.epub", "annotations": [ … ]},
-    {"index": 6, "op": "collections", "path": "Librillo/Ann Lee/Home.epub", "collections": ["Sundays"]}
+    {"index": 6, "op": "edit-annotations", "path": "Librillo/Ann Lee/Home.epub", "annotations": [ … ]},
+    {"index": 7, "op": "delete-annotations", "path": "Librillo/Ann Lee/Home.epub", "ids": ["…"]},
+    {"index": 8, "op": "collections", "path": "Librillo/Ann Lee/Home.epub", "collections": ["Sundays"]}
   ],
   "questions": [
     {"id": "q-1a2b3c4d5e6f7a8b", "bookId": "b1", "path": "Librillo/Ann Lee/Home.epub",
@@ -241,7 +269,9 @@ Actions, one object each, by `op`:
 | `download` | `bookId`, `sha256`, `size`, `to`, `replaces`, `url` | GETs `url` to a temporary file and checks its hash. With `replaces` null, saves it at `to`, which must be free. With `replaces` set, `to` must hold a file with that hash, which is replaced in place, keeping its `.sdr`; anything else at `to` is a failure, never an overwrite. |
 | `delete` | `path` | Deletes the file and its `.sdr`. |
 | `status` | `path`, `status` | Sets KOReader's status (`finished` is KOReader's `complete`). |
-| `annotations` | `path`, `annotations` | Adds the ones whose id isn't there yet. |
+| `annotations` | `path`, `annotations` | Adds the ones whose id isn't there yet, in their colour and style (else KOReader's defaults). |
+| `edit-annotations` | `path`, `annotations` | Sets the note, colour, style and `datetime_updated` of the ones with these ids. A bookmark gets no style; a blank style leaves KOReader's. Only sent for an `annotationsComplete` file. |
+| `delete-annotations` | `path`, `ids` | Removes the annotations with these ids (from KOReader's list and from `librillo_pending`). Only sent for an `annotationsComplete` file. |
 | `collections` | `path`, `collections` | Makes the book's collections exactly these. |
 
 The plugin runs them in the order given. Every action has `index`, its position in `kindle` from 0. Within one plan no action depends on another's new name except `download` with `replaces`, which names the `to` of an earlier `move`; actions that name a path a `move` has just renamed (status, annotations, collections) already use the new path. When the plugin had to pick another name than `to`, it reports it in `/finish` and uses it for the rest of the plan.
@@ -303,7 +333,8 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 
 ### The app's SyncLibrary (`RoomSyncLibrary`, step 3b)
 - `phoneBooks()` lists every row of the `books` table, Recently removed included. `hasFile` is false when the current file is gone, except for a Books folder path while All files access is off (the folder can't be seen, so it is not taken as missing). `statusAt` is the `books.statusAt` column (schema 10), set whenever the status changes; 0 means unknown. Lists are the manual lists the book is in; smart lists are rules, not memberships.
-- Annotations map `BookAnnotation.id` → `id`, `position` → `pos0`, `endPosition` → `pos1`, `date` → `datetime`. Rows added by sync get the device id `link:<e-reader id>`. Rows imported over SSH before sync have other ids; once a synced row with the same `datetime` and `pos0` exists, the older row is hidden from sync (kept in Room, never deleted). The plugin skips an incoming annotation with the same `datetime` and start as one it already has, so such a note is never added twice on the e-reader.
+- Annotations map `BookAnnotation.id` → `id`, `position` → `pos0`, `endPosition` → `pos1`, `date` → `datetime`, `color` → `color`, `drawer` → `drawer`, `editedAt` → `updated`, and `deletedAt > 0` → `deleted` (schema 13). Rows added by sync get the device id `link:<e-reader id>`. Rows imported over SSH before sync have other ids; once a synced row with the same `datetime` and `pos0` exists, the older row is hidden from sync (kept in Room, never deleted). A deleted synced row still hides it, so a deleted highlight never comes back through an old copy. The plugin skips an incoming annotation with the same `datetime` and start as one it already has, so such a note is never added twice on the e-reader.
+- `EditAnnotations` sets the note, kind, colour, style and edit time by id and clears `deletedAt` (an edit beats a delete); an id the phone lacks is added. `DeleteAnnotations` sets `deletedAt` (soft). Baselines keep `annotationStates` as a JSON object in `sync_baseline.annotationStates`.
 - `receive` refuses a file over the import limit (256 MiB, `TOO_LARGE`) and one the import can't read (`NOT_A_BOOK`: not an EPUB, PDF, CBZ or CBR, or damaged). `revise` refuses the same, and another format than the book's (`OTHER_FORMAT`). A file that vanished or a storage error is not a refusal: the next sync tries again.
 - `receive` uses the normal import path (format from the file's bytes, `Books/Author/Title.ext` when the Books folder is ready, else private storage, " (2)" on a clash). Content the library already has returns that book without restoring it. `revise` refuses another format; in the Books folder the old file moves to `.librillo/originals/<id>.<ext>` (the original) or `.librillo/previous/<id>-<ms>.<ext>`, and the new file takes its path.
 - `apply` runs each action on its own; one that fails is skipped and the next sync tries again. `Remove` goes to Recently removed. `SetLists` creates missing manual lists by exact name and skips a name a smart list already uses.
@@ -319,9 +350,11 @@ The "Mark it as read on Hardcover?" prompt of step 4 is gone (M10, 2026-10-16). 
 ## Highlights made on the phone (step 4c)
 EPUB only. The reader draws every annotation of the book whose `pos0` and `pos1` are xpointers in the same chapter, from the e-reader or the phone, as Readium decorations. The page script `assets/reader/highlights.js` turns the xpointers into a DOM range with the same resolver as reading positions (`positions.js`) and returns a quote with 32 characters of context on each side, which Readium anchors. A highlight that can't be placed is not drawn, but it stays in the database and on the book page.
 
-Selecting text offers Highlight, Add note and Copy. The phone stores a `BookAnnotation` with device id `phone`, `pos0`/`pos1` as KOReader xpointers built from the selection, the selected text, the chapter title from the table of contents, `datetime` in local time (`YYYY-MM-DD HH:MM:SS`), kind `highlight` (or `note` with a note), and the id from the recipe above with device id `phone`. When another annotation already has that id (same second and start), the id is the first 32 hex of SHA-256 of `phone\n<datetime>\n<pos0>\n<pos1>\nhighlight`, as the plugin does. Phone rows have no `link:` prefix, so `SyncAnnotations.forSync` sends them to the e-reader at the next sync.
+Selecting text offers Highlight, Colour…, Add note, Define and Copy. Highlight uses the colour picked last (Yellow at first); Colour… asks for one of Yellow, Green, Blue, Pink or Underline, and remembers it. The phone stores a `BookAnnotation` with device id `phone`, `pos0`/`pos1` as KOReader xpointers built from the selection, the selected text, the chapter title from the table of contents, `datetime` in local time (`YYYY-MM-DD HH:MM:SS`), kind `highlight` (or `note` with a note), its `color` and `drawer`, and the id from the recipe above with device id `phone`. When another annotation already has that id (same second and start), the id is the first 32 hex of SHA-256 of `phone\n<datetime>\n<pos0>\n<pos1>\nhighlight`, as the plugin does. Phone rows have no `link:` prefix, so `SyncAnnotations.forSync` sends them to the e-reader at the next sync.
 
-Tapping a highlight shows its passage, its note and where it was made, read-only, with Copy. There is no delete: sync never deletes annotations (rule 7), so a deleted one would come back.
+**One highlight per passage.** Selecting a passage that is already highlighted opens that highlight (its sheet, or its note for Add note) instead of adding a second one: the same start and end, or a passage inside a live highlight (the page checks this on its own words, `FolioHighlights.selection(index, items)`; the smallest one that holds it wins). A selection that only overlaps a highlight, or covers one and more, is a new highlight: it is a different passage, and the old one is not changed.
+
+Tapping a highlight opens its sheet: the passage, its note, where it was made, its colour (five swatches), Edit note (or Add note), Copy and Delete. Every change sets `editedAt` to the local time, so the newest edit wins at sync. Delete is soft (`deletedAt`): the highlight stops drawing at once, Undo is offered, and the book page lists it under Recently deleted highlights with Restore for 30 days. After 30 days its text and note are cleared (when the library opens); the row stays as a tombstone so sync keeps it deleted. The book page, exports and the reader show only live highlights. `HighlightEdits` (app) holds these changes for every screen.
 
 The end of a KOReader range is taken as exclusive, like a DOM range end. That is not checked on a device yet.
 
@@ -329,6 +362,7 @@ The end of a KOReader range is taken as exclusive, like a DOM range end. That is
 - **Manifest:** every EPUB, PDF, CBZ and CBR under KOReader's home folder, except hidden folders, `.sdr` folders, symbolic links and KOReader's own data folder. Hashes are cached by path, size and modification time in `settings/folio-hashes.lua`. An unreadable folder or a failed hash stops the sync, so nothing looks deleted.
 - **Status:** KOReader's `summary.status` (`reading`, `complete` → `finished`, `abandoned`), a sidecar without one → `unread`, no sidecar → `null`. `statusAt` is the plugin's own exact time when it matches `summary.modified`, else that date at noon, else the sidecar's time.
 - **Annotation ids:** the stored `librillo_id`, else the recipe above (for a bookmark, `page` stands for `pos0`). Ids are written back once. Notes from the phone KOReader can't show (a PDF highlight without coordinates, a missing position) wait in `librillo_pending` and are reported back, so they are never lost.
+- **Colours, notes and deletions (M11):** each annotation is reported with KOReader's `color`, `drawer` and `datetime_updated` (as `updated`). A file whose sidecar has KOReader's `annotations` list is sent with `annotationsComplete`; a book without a sidecar, or with a sidecar from before KOReader 2024, is not, so nothing missing there can look deleted. For the open book the live list is used, and it is complete. `edit-annotations` and `delete-annotations` change KOReader's list (never for the open book) and tell KOReader to reload it.
 - **Delete** moves the file and its `.sdr` to `<home>/.librillo/trash`. The trash is emptied after `/finish` answers ok; otherwise the books are put back, and leftovers are put back at the start of the next sync.
 - **Download** lands in `<home>/.librillo/parts/<sha256>.part`, is checked for size and hash, checked again just before it is renamed into place.
 - **The open book** is never moved, replaced, deleted or written: those actions fail with "open on the e-reader" and the next sync tries again.
@@ -349,6 +383,6 @@ On the phone, Link runs while Librillo is in the foreground and for 30 minutes a
 - Nothing is changed on either side until the Kindle reports at `/finish`, and then only what succeeded.
 - A file that is missing is a deletion only when a baseline says both sides had it. Otherwise it is sent.
 - Deleting on the phone always means Recently removed. Only purging is permanent.
-- Annotations are only ever added. Before the Kindle deletes a book, its annotations are copied to the phone.
+- An annotation is deleted only for the owner's own delete on one side, when the baseline says both had it, the e-reader's list was read in full, and the other side didn't edit it since. A phone delete is soft and restorable for 30 days. Before the Kindle deletes a book, its annotations are copied to the phone.
 - The Kindle never overwrites a file it was not told to replace, and checks the hash before replacing.
 - No credentials, tokens or book content are logged.

@@ -3,7 +3,13 @@ package dev.sadking.folio.core.sync
 /**
  * One highlight, note or bookmark, as both sides exchange it. [id] is its identity across devices:
  * the sender builds it from the device that made it, [datetime] and [pos0]. Two annotations with
- * the same id are the same annotation; annotations are only ever added, never deleted.
+ * the same id are the same annotation.
+ *
+ * [color] and [drawer] are KOReader's highlight colour ("yellow", "green", ...) and drawing style
+ * ("lighten", "underscore", ...), blank when unknown. [updated] is when the note, colour or style
+ * last changed, in KOReader's form (`YYYY-MM-DD HH:MM:SS`, local time), blank when never. [deleted]
+ * is only ever set on the phone's side: the owner deleted it there, and the row is kept as a
+ * tombstone. Rule 7 of docs/SYNC_PROTOCOL.md says when a deletion or an edit crosses over.
  */
 data class SyncAnnotation(
     val id: String,
@@ -15,6 +21,10 @@ data class SyncAnnotation(
     val pos1: String,
     /** "highlight", "note" or "bookmark". */
     val kind: String,
+    val color: String = "",
+    val drawer: String = "",
+    val updated: String = "",
+    val deleted: Boolean = false,
 )
 
 /**
@@ -23,6 +33,10 @@ data class SyncAnnotation(
  * "reading", "finished", "abandoned", or null when KOReader has no record of the book. [statusAt]
  * is when it last changed, in epoch milliseconds. [title] and [authors] are KOReader's metadata for
  * the file, used to name a book the phone doesn't have yet.
+ *
+ * [annotationsComplete] is true when the plugin read the book's notes in full and takes edits and
+ * deletions for them (plugin 2026-10 and later). Only then can an annotation missing here be a
+ * deletion, and only then are edits and deletions sent. Older plugins never set it.
  */
 data class KindleFile(
     val path: String,
@@ -35,6 +49,7 @@ data class KindleFile(
     val collections: List<String> = emptyList(),
     val title: String? = null,
     val authors: List<String> = emptyList(),
+    val annotationsComplete: Boolean = false,
 )
 
 /**
@@ -62,6 +77,9 @@ data class PhoneBook(
 /**
  * What the phone and one e-reader agreed about a book at their last sync: the common ancestor of
  * the 3-way compare. [status] is in the e-reader's words, or "" when the two sides did not agree.
+ * [annotationIds] are the annotations both sides had. [annotationStates] maps each of them whose
+ * note, colour and style both sides agreed on to [AnnotationMerge.state]; it is null when the
+ * e-reader did not take edits and deletions at that sync (an older plugin).
  */
 data class Baseline(
     val bookId: String,
@@ -71,6 +89,7 @@ data class Baseline(
     val statusAt: Long,
     val annotationIds: Set<String> = emptySet(),
     val collections: Set<String> = emptySet(),
+    val annotationStates: Map<String, String>? = null,
 )
 
 /** What the e-reader does. Paths are relative to KOReader's home folder. */
@@ -104,6 +123,19 @@ sealed interface KindleAction {
     data class AddAnnotations(val path: String, val annotations: List<SyncAnnotation>) :
         KindleAction
 
+    /**
+     * Set the note, colour, style and edit time of these annotations, found by id. Only sent to a
+     * plugin that takes it ([KindleFile.annotationsComplete]).
+     */
+    data class EditAnnotations(val path: String, val annotations: List<SyncAnnotation>) :
+        KindleAction
+
+    /**
+     * Delete these annotations, by id. Only sent to a plugin that takes it, for annotations the
+     * owner deleted on the phone that both sides had at the last sync.
+     */
+    data class DeleteAnnotations(val path: String, val ids: List<String>) : KindleAction
+
     /** The book's collections become exactly these. */
     data class SetCollections(val path: String, val collections: List<String>) : KindleAction
 }
@@ -134,6 +166,16 @@ sealed interface PhoneAction {
     /** Add these annotations; the ones already there (same id) are skipped. */
     data class AddAnnotations(val bookId: String, val annotations: List<SyncAnnotation>) :
         PhoneAction
+
+    /**
+     * Set the note, colour, style and edit time of these annotations, by id. One the owner had
+     * deleted on the phone comes back: it was edited on the e-reader, and an edit beats a delete.
+     */
+    data class EditAnnotations(val bookId: String, val annotations: List<SyncAnnotation>) :
+        PhoneAction
+
+    /** Delete these annotations (deleted on the e-reader): soft, so they can be restored. */
+    data class DeleteAnnotations(val bookId: String, val ids: List<String>) : PhoneAction
 
     /** The book's lists become exactly these. */
     data class SetLists(val bookId: String, val lists: List<String>) : PhoneAction

@@ -238,7 +238,7 @@ print('Migration 10→11 matches Room schema; catalogue entries and books keep t
 old.execute("INSERT INTO kosync_progress VALUES ('doc11','kindle-11','KindlePaperWhite5SE','/body/p',0.5,20,20000)")
 v12=json.loads((schemas/'12.json').read_text())['database']
 assert v12['version']==12
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_11_12',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_11_12',1)[1].split('val MIGRATION_12_13',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==1,statements
 for sql in statements:old.execute(sql)
@@ -260,3 +260,28 @@ try:
 except sqlite3.IntegrityError:pass
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 11→12 matches Room schema; device profiles default to shown and unnamed, one per device, and reports, old positions and the library are kept.')
+
+# Schema 13 (M11): highlights get a colour, a drawing style, an edit time and a soft delete; sync
+# baselines can remember the annotation states both sides agreed on. Every existing row keeps its
+# look, is unedited and live; every baseline's states are unknown (NULL).
+old.execute("INSERT INTO annotations VALUES ('n12','v9-book','link:kindle-11','A line','My note','One','2026-10-01 10:00:00','/body/p[1]','/body/p[2]','note')")
+v13=json.loads((schemas/'13.json').read_text())['database']
+assert v13['version']==13
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_12_13',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==5,statements
+assert all(sql.startswith('ALTER TABLE') and 'ADD COLUMN' in sql for sql in statements),'additive only'
+for sql in statements:old.execute(sql)
+expected13=sqlite3.connect(':memory:');schema(expected13,v13)
+for entity in v13['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected13.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected13.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected13.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT text,note,kind,color,drawer,editedAt,deletedAt FROM annotations WHERE id='n12'").fetchone()==('A line','My note','note','','','',0)
+assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
+assert old.execute('SELECT annotationStates FROM sync_baseline').fetchone()==(None,)
+assert old.execute("SELECT count(*) FROM device_profiles").fetchone()==(2,)
+assert old.execute("SELECT status,statusAt FROM books WHERE id='v9-book'").fetchone()==('Finished',0)
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 12→13 matches Room schema; existing highlights keep their text, note and look, unedited and live; baselines are kept with unknown annotation states.')

@@ -1,21 +1,39 @@
 package dev.sadking.folio.reader
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BookAnnotation
+import dev.sadking.folio.data.HighlightColour
+import dev.sadking.folio.data.UNDERSCORE
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
 import java.security.MessageDigest
@@ -25,14 +43,22 @@ import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import org.readium.r2.navigator.Decoration
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Publication
 
 /**
- * Highlights and notes in the phone reader (EPUB only). Every annotation of the book is drawn where
- * its KOReader pointers resolve, from any device; the owner adds new ones from the text selection
- * menu. They are stored with KOReader pointers so the e-reader can place them, and they are never
- * edited or deleted here: sync merges annotations and never deletes one (docs/SYNC_PROTOCOL.md).
+ * Highlights and notes in the phone reader (EPUB only). Every live annotation of the book is drawn
+ * where its KOReader pointers resolve, from any device, in its colour; the owner adds new ones from
+ * the text selection menu. They are stored with KOReader pointers so the e-reader can place them.
+ * Tapping one opens its sheet: colour, note, Copy and Delete. A delete is soft, with Undo, and
+ * restorable from the book page for 30 days (data/HighlightEdits.kt). Sync carries deletions,
+ * colours and notes to the e-reader and back (docs/SYNC_PROTOCOL.md, rule 7).
+ *
+ * Selecting text that is already highlighted opens that highlight instead of adding another: the
+ * same passage (the same start and end), or a passage inside one. A selection that only overlaps a
+ * highlight, or covers more than one, is a new highlight: it is a different passage, and nothing
+ * else is changed.
  */
 
 /** Device id of highlights and notes made in Librillo's own reader. */
@@ -43,25 +69,55 @@ internal const val HIGHLIGHT_GROUP = "highlights"
 
 internal const val HIGHLIGHT_SHEET_TAG = "reader-highlight-sheet"
 internal const val HIGHLIGHT_NOTE_DIALOG_TAG = "reader-note-dialog"
+internal const val HIGHLIGHT_COLOURS_TAG = "reader-highlight-colours"
 
 /** Items of the menu over selected text. */
 internal const val SELECTION_HIGHLIGHT = 0x5f01
 internal const val SELECTION_NOTE = 0x5f02
 internal const val SELECTION_COPY = 0x5f03
 internal const val SELECTION_DEFINE = 0x5f04
+internal const val SELECTION_COLOUR = 0x5f05
 
-/** The selection menu in order, as item id and label: Highlight, Add note, Define, Copy. */
+/**
+ * The selection menu in order, as item id and label: Highlight (in the last colour picked),
+ * Colour…, Add note, Define, Copy.
+ */
 internal val SELECTION_MENU =
     listOf(
         SELECTION_HIGHLIGHT to R.string.reader_highlight_action,
+        SELECTION_COLOUR to R.string.reader_highlight_colour_action,
         SELECTION_NOTE to R.string.reader_highlight_note_action,
         SELECTION_DEFINE to R.string.rd6_define_action,
         SELECTION_COPY to R.string.reader_highlight_copy_action,
     )
 
-/** Highlight colours: amber for a highlight, blue for one with a note. Readium tints them. */
+/**
+ * The default look, for a row without a colour (every one from before schema 13): amber for a
+ * highlight, blue for one with a note. Readium tints them.
+ */
 internal const val HIGHLIGHT_TINT = 0xFFF9A825.toInt()
 internal const val NOTE_TINT = 0xFF42A5F5.toInt()
+
+/**
+ * The tint for each KOReader colour name. Yellow is the old default amber, so a highlight looks the
+ * same after it gets a colour; "purple" is the phone's Pink.
+ */
+private val KOREADER_TINTS =
+    mapOf(
+        "yellow" to HIGHLIGHT_TINT,
+        "green" to 0xFF43A047.toInt(),
+        "blue" to NOTE_TINT,
+        "purple" to 0xFFEC407A.toInt(),
+        "red" to 0xFFE53935.toInt(),
+        "orange" to 0xFFFB8C00.toInt(),
+        "olive" to 0xFF9E9D24.toInt(),
+        "cyan" to 0xFF26C6DA.toInt(),
+        "gray" to 0xFF9E9E9E.toInt(),
+    )
+
+/** The tint a swatch shows. */
+internal fun swatchTint(colour: HighlightColour): Int =
+    KOREADER_TINTS[colour.color] ?: HIGHLIGHT_TINT
 
 private val DATETIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
 
@@ -78,13 +134,22 @@ fun annotationId(deviceId: String, datetime: String, pos0: String): String =
         .joinToString("") { "%02x".format(it) }
         .take(32)
 
-/** The passage the owner selected, as KOReader pointers into one chapter. */
-data class SelectedPassage(val pos0: String, val pos1: String, val text: String)
+/**
+ * The passage the owner selected, as KOReader pointers into one chapter. [inside] holds the ids of
+ * the highlights that contain it (the page works that out on its own words).
+ */
+data class SelectedPassage(
+    val pos0: String,
+    val pos1: String,
+    val text: String,
+    val inside: List<String> = emptyList(),
+)
 
 /**
  * The row stored for a highlight made on the phone: kind "note" when [note] has text, else
- * "highlight". When [sameStartTaken] (another annotation already has the plain id: same second,
- * same start), the id also covers the end and kind, as the plugin does for the same case.
+ * "highlight", in [colour] (KOReader's colour and style; none keeps the default look). When
+ * [sameStartTaken] (another annotation already has the plain id: same second, same start), the id
+ * also covers the end and kind, as the plugin does for the same case.
  */
 internal fun phoneAnnotation(
     bookId: String,
@@ -93,6 +158,7 @@ internal fun phoneAnnotation(
     chapter: String,
     datetime: String,
     sameStartTaken: Boolean = false,
+    colour: HighlightColour? = null,
 ): BookAnnotation {
     val written = note.trim()
     val kind = if (written.isEmpty()) "highlight" else "note"
@@ -108,6 +174,8 @@ internal fun phoneAnnotation(
         position = passage.pos0,
         endPosition = passage.pos1,
         kind = kind,
+        color = colour?.color.orEmpty(),
+        drawer = colour?.drawer.orEmpty(),
     )
 }
 
@@ -132,7 +200,39 @@ internal fun parseSelection(raw: String?, index: Int, spineSize: Int): SelectedP
     if (text.isEmpty()) return null
     if (xpointerSpineIndex(pos0, spineSize) != index) return null
     if (xpointerSpineIndex(pos1, spineSize) != index) return null
-    return SelectedPassage(pos0, pos1, text)
+    val inside = value.optJSONArray("inside")
+    return SelectedPassage(
+        pos0,
+        pos1,
+        text,
+        (0 until (inside?.length() ?: 0)).mapNotNull { inside?.optString(it)?.ifEmpty { null } },
+    )
+}
+
+/**
+ * The page call that reads the selection in chapter [index], and which of [rows] (this chapter's
+ * highlights) hold it.
+ */
+internal fun selectionCall(index: Int, rows: List<BookAnnotation>): String =
+    "JSON.stringify(FolioHighlights.selection($index, ${items(rows)}));"
+
+/**
+ * The live highlight the owner meant when selecting [passage], or null for a new one: the one with
+ * the same start and end, else the smallest one that contains it. A bookmark is never one.
+ */
+internal fun existingHighlight(
+    passage: SelectedPassage,
+    highlights: List<BookAnnotation>,
+): BookAnnotation? {
+    val live = highlights.filter { !it.deleted && it.kind != "bookmark" }
+    live
+        .firstOrNull { it.position == passage.pos0 && it.endPosition == passage.pos1 }
+        ?.let {
+            return it
+        }
+    return live
+        .filter { it.id in passage.inside }
+        .minWithOrNull(compareBy<BookAnnotation> { it.text.length }.thenByDescending { it.date })
 }
 
 /** An annotation the reader can try to draw, in the chapter with KOReader index [chapter]. */
@@ -153,14 +253,17 @@ internal fun placeableHighlights(
 }
 
 /** The page call that places [rows] in the chapter on screen. */
-internal fun placementCall(rows: List<BookAnnotation>): String {
+internal fun placementCall(rows: List<BookAnnotation>): String =
+    "JSON.stringify(FolioHighlights.place(${items(rows)}));"
+
+private fun items(rows: List<BookAnnotation>): JSONArray {
     val items = JSONArray()
     rows.forEach {
         items.put(
             JSONObject().put("id", it.id).put("pos0", it.position).put("pos1", it.endPosition)
         )
     }
-    return "JSON.stringify(FolioHighlights.place($items));"
+    return items
 }
 
 /** Where one highlight sits in its page, the way Readium anchors a decoration. */
@@ -201,8 +304,16 @@ internal fun samePage(pagePath: String, spinePath: String): Boolean {
     return path == spinePath || path.endsWith("/$spinePath")
 }
 
+/** The highlight's tint: its colour, or the old default look when it has none. */
 internal fun highlightTint(annotation: BookAnnotation): Int =
-    if (annotation.note.isBlank()) HIGHLIGHT_TINT else NOTE_TINT
+    KOREADER_TINTS[annotation.color.lowercase()]
+        ?: if (annotation.note.isBlank()) HIGHLIGHT_TINT else NOTE_TINT
+
+/** How Readium draws the highlight: a line for KOReader's underline, else a filled highlight. */
+internal fun highlightStyle(annotation: BookAnnotation): Decoration.Style =
+    if (annotation.drawer == UNDERSCORE)
+        Decoration.Style.Underline(tint = highlightTint(annotation))
+    else Decoration.Style.Highlight(tint = highlightTint(annotation))
 
 /** What Copy puts on the clipboard: the passage, then the note when there is one. */
 internal fun highlightCopyText(annotation: BookAnnotation): String =
@@ -226,12 +337,24 @@ internal fun chapterTitle(publication: Publication, href: String): String {
 /** A note being written for a passage the owner selected. */
 internal data class PendingNote(val passage: SelectedPassage, val chapter: String)
 
+/** A passage waiting for the owner to pick its colour (Colour… in the selection menu). */
+internal data class PendingHighlight(val passage: SelectedPassage, val chapter: String)
+
+/** What the highlight sheet can do. */
+internal class HighlightSheetActions(
+    val onCopy: () -> Unit = {},
+    val onColour: (HighlightColour) -> Unit = {},
+    val onNote: () -> Unit = {},
+    val onDelete: () -> Unit = {},
+)
+
 /**
- * The sheet after tapping a highlight: the passage, its note read-only, where it was made, and
- * Copy. Nothing here edits or deletes it.
+ * The sheet after tapping a highlight: the passage, its note, where it was made, its colour, and
+ * Edit note (or Add note), Copy and Delete.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun HighlightSheet(annotation: BookAnnotation, onCopy: () -> Unit) {
+internal fun HighlightSheet(annotation: BookAnnotation, actions: HighlightSheetActions) {
     Column(
         Modifier.fillMaxWidth()
             .verticalScroll(rememberScrollState())
@@ -273,31 +396,158 @@ internal fun HighlightSheet(annotation: BookAnnotation, onCopy: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(Modifier.fillMaxWidth().padding(top = FolioSpace.small)) {
-            FilledTonalButton(onClick = onCopy) {
+        if (annotation.kind != "bookmark") {
+            Text(
+                stringResource(R.string.reader_highlight_colour),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = FolioSpace.small),
+            )
+            HighlightColours(HighlightColour.of(annotation), actions.onColour)
+        }
+        FlowRow(
+            Modifier.fillMaxWidth().padding(top = FolioSpace.small),
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+        ) {
+            FilledTonalButton(onClick = actions.onNote) {
+                Icon(Icons.Outlined.EditNote, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(FolioSpace.small))
+                Text(
+                    stringResource(
+                        if (annotation.note.isBlank()) R.string.reader_highlight_add_note
+                        else R.string.reader_highlight_edit_note
+                    )
+                )
+            }
+            OutlinedButton(onClick = actions.onCopy) {
                 Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(FolioSpace.small))
                 Text(stringResource(R.string.reader_highlight_copy))
             }
+            TextButton(
+                onClick = actions.onDelete,
+                colors =
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Icon(Icons.Outlined.DeleteOutline, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(FolioSpace.small))
+                Text(stringResource(R.string.reader_highlight_delete))
+            }
         }
         Text(
-            stringResource(R.string.reader_highlight_kept),
+            stringResource(R.string.reader_highlight_sync_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
+/** The five swatches: Yellow, Green, Blue, Pink and Underline. [selected] has a check. */
+@Composable
+internal fun HighlightColours(selected: HighlightColour?, onPick: (HighlightColour) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().testTag(HIGHLIGHT_COLOURS_TAG),
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+    ) {
+        HighlightColour.entries.forEach { colour ->
+            val label = stringResource(colourLabel(colour))
+            val tint = Color(swatchTint(colour))
+            val chosen = colour == selected
+            Box(
+                Modifier.size(48.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (colour == HighlightColour.UNDERLINE)
+                            Modifier.border(
+                                BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
+                                CircleShape,
+                            )
+                        else Modifier.background(tint)
+                    )
+                    .then(
+                        if (chosen)
+                            Modifier.border(
+                                BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface),
+                                CircleShape,
+                            )
+                        else Modifier
+                    )
+                    .selectable(selected = chosen, role = Role.RadioButton) { onPick(colour) }
+                    .semantics { contentDescription = label },
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    chosen && colour != HighlightColour.UNDERLINE ->
+                        Icon(Icons.Outlined.Check, null, tint = Color.Black.copy(alpha = 0.8f))
+                    colour == HighlightColour.UNDERLINE ->
+                        Text(
+                            "A",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            textDecoration = TextDecoration.Underline,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                }
+            }
+        }
+    }
+}
+
+private fun colourLabel(colour: HighlightColour): Int =
+    when (colour) {
+        HighlightColour.YELLOW -> R.string.reader_highlight_yellow
+        HighlightColour.GREEN -> R.string.reader_highlight_green
+        HighlightColour.BLUE -> R.string.reader_highlight_blue
+        HighlightColour.PINK -> R.string.reader_highlight_pink
+        HighlightColour.UNDERLINE -> R.string.reader_highlight_underline
+    }
+
+/** Colour… from the selection menu: pick one, and the passage is highlighted in it. */
+@Composable
+internal fun HighlightColourSheet(passage: String, onPick: (HighlightColour) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = FolioSpace.section).padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+    ) {
+        Text(
+            stringResource(R.string.reader_highlight_colour_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            passage,
+            maxLines = 3,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = FontFamily.Serif,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HighlightColours(null, onPick)
+    }
+}
+
 /**
- * Add note: the selected passage and a field for the note. Save stores it; Cancel keeps nothing.
+ * Add note or Edit note: the passage and a field for the note, starting from [initial]. Save stores
+ * it (a blank note removes one); Cancel keeps nothing.
  */
 @Composable
-internal fun HighlightNoteDialog(passage: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
-    var note by rememberSaveable { mutableStateOf("") }
+internal fun HighlightNoteDialog(
+    passage: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+    initial: String = "",
+) {
+    var note by rememberSaveable { mutableStateOf(initial) }
+    val editing = initial.isNotBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag(HIGHLIGHT_NOTE_DIALOG_TAG),
-        title = { Text(stringResource(R.string.reader_note_title)) },
+        title = {
+            Text(
+                stringResource(
+                    if (editing) R.string.reader_note_edit_title else R.string.reader_note_title
+                )
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
                 Text(
@@ -318,7 +568,10 @@ internal fun HighlightNoteDialog(passage: String, onSave: (String) -> Unit, onDi
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(note) }, enabled = note.isNotBlank()) {
+            TextButton(
+                onClick = { onSave(note) },
+                enabled = if (editing) note.trim() != initial.trim() else note.isNotBlank(),
+            ) {
                 Text(stringResource(R.string.reader_note_save))
             }
         },
@@ -341,14 +594,26 @@ private val sampleHighlight =
         position = "/body/DocFragment[3]/body/p[2]/text().0",
         endPosition = "/body/DocFragment[3]/body/p[2]/text().91",
         kind = "note",
+        color = "green",
+        drawer = "lighten",
     )
 
-@Preview(name = "Reader highlight · light", widthDp = 412, heightDp = 420)
+@Preview(name = "Reader highlight · light", widthDp = 412, heightDp = 560)
 @Composable
 internal fun ReaderHighlightPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            HighlightSheet(sampleHighlight, onCopy = {})
+            HighlightSheet(sampleHighlight, HighlightSheetActions())
+        }
+    }
+}
+
+@Preview(name = "Reader highlight colour · light", widthDp = 412, heightDp = 260)
+@Composable
+internal fun ReaderHighlightColourPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            HighlightColourSheet(sampleHighlight.text, onPick = {})
         }
     }
 }

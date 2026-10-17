@@ -18,6 +18,8 @@ internal object SyncWire {
     val STATUSES = setOf("unread", "reading", "finished", "abandoned")
     val KINDS = setOf("highlight", "note", "bookmark")
     const val MAX_PATH = 1024
+    /** Longest colour or drawing style kept; anything longer is taken as unknown (blank). */
+    const val MAX_STYLE = 32
     private val SHA256 = Regex("[0-9a-f]{64}")
 
     /** Relative to KOReader's home, "/" separators, no empty, "." or ".." parts. */
@@ -51,6 +53,7 @@ internal object SyncWire {
             collections = strings(json, "collections"),
             title = text(json, "title"),
             authors = strings(json, "authors"),
+            annotationsComplete = json.optBoolean("annotationsComplete", false),
         )
     }
 
@@ -66,6 +69,7 @@ internal object SyncWire {
             .put("collections", JSONArray(file.collections))
             .put("title", file.title ?: JSONObject.NULL)
             .put("authors", JSONArray(file.authors))
+            .put("annotationsComplete", file.annotationsComplete)
 
     fun annotation(json: JSONObject): SyncAnnotation {
         val id = json.getString("id")
@@ -81,7 +85,16 @@ internal object SyncWire {
             pos0 = text(json, "pos0").orEmpty(),
             pos1 = text(json, "pos1").orEmpty(),
             kind = kind,
+            color = style(json, "color"),
+            drawer = style(json, "drawer"),
+            updated = text(json, "updated").orEmpty().trim().take(MAX_STYLE),
         )
+    }
+
+    /** A colour or drawing style: lower case, or blank when missing or odd. */
+    private fun style(json: JSONObject, key: String): String {
+        val value = text(json, key).orEmpty().trim().lowercase()
+        return if (value.length <= MAX_STYLE && value.none { it < ' ' }) value else ""
     }
 
     fun toJson(annotation: SyncAnnotation): JSONObject =
@@ -94,6 +107,9 @@ internal object SyncWire {
             .put("pos0", annotation.pos0)
             .put("pos1", annotation.pos1)
             .put("kind", annotation.kind)
+            .put("color", annotation.color)
+            .put("drawer", annotation.drawer)
+            .put("updated", annotation.updated)
 
     fun toJson(question: Question): JSONObject =
         JSONObject()
@@ -160,6 +176,16 @@ internal object SyncWire {
                     .put("op", "annotations")
                     .put("path", action.path)
                     .put("annotations", JSONArray(action.annotations.map(::toJson)))
+            is KindleAction.EditAnnotations ->
+                json
+                    .put("op", "edit-annotations")
+                    .put("path", action.path)
+                    .put("annotations", JSONArray(action.annotations.map(::toJson)))
+            is KindleAction.DeleteAnnotations ->
+                json
+                    .put("op", "delete-annotations")
+                    .put("path", action.path)
+                    .put("ids", JSONArray(action.ids))
             is KindleAction.SetCollections ->
                 json
                     .put("op", "collections")

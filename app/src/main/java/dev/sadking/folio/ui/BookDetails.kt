@@ -116,6 +116,9 @@ fun BookDetails(
     /** What the Hardcover tile says; null: Matched or Not matched, from [hardcoverLinked]. */
     hardcoverState: HardcoverItemState? = null,
     annotations: List<BookAnnotation> = emptyList(),
+    /** Highlights deleted in the last 30 days, which can be restored. */
+    deletedAnnotations: List<BookAnnotation> = emptyList(),
+    onRestoreAnnotation: (String) -> Unit = {},
     nextInSeries: Book? = null,
     busy: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(),
@@ -321,7 +324,11 @@ fun BookDetails(
             if (book.description.isNotBlank()) Description(book)
             if (nextInSeries != null) NextInSeries(book, nextInSeries) { onNext(nextInSeries) }
             DetailsSection(book, busy, onLookup)
-            if (hasEpub) NotesSection(annotations, busy, onExport)
+            if (hasEpub) {
+                NotesSection(annotations, busy, onExport)
+                if (deletedAnnotations.isNotEmpty())
+                    DeletedHighlightsSection(deletedAnnotations, busy, onRestoreAnnotation)
+            }
             Spacer(Modifier.height(FolioSpace.item))
         }
     }
@@ -1017,6 +1024,49 @@ private fun NotesSection(annotations: List<BookAnnotation>, busy: Boolean, onExp
                     stringResource(R.string.library_book_notes_limited),
                     style = MaterialTheme.typography.bodySmall,
                 )
+        }
+    }
+}
+
+/**
+ * Recently deleted highlights: each with Restore, for 30 days. After that the text is gone; the
+ * deletion itself stays so sync never brings it back.
+ */
+@Composable
+private fun DeletedHighlightsSection(
+    deleted: List<BookAnnotation>,
+    busy: Boolean,
+    onRestore: (String) -> Unit,
+) {
+    ExpandableSection(
+        stringResource(R.string.library_book_deleted_highlights),
+        deleted.size.toString(),
+    ) {
+        Text(
+            stringResource(R.string.library_book_deleted_highlights_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        deleted.take(100).forEach { note ->
+            if (note.chapter.isNotBlank())
+                Text(
+                    note.chapter,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            if (note.text.isNotBlank())
+                Text(note.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            if (note.note.isNotBlank()) Text(note.note, style = MaterialTheme.typography.bodyMedium)
+            TextButton(
+                onClick = { onRestore(note.id) },
+                enabled = !busy,
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Icon(Icons.Outlined.Replay, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(FolioSpace.small))
+                Text(stringResource(R.string.library_book_restore_highlight))
+            }
+            HorizontalDivider()
         }
     }
 }

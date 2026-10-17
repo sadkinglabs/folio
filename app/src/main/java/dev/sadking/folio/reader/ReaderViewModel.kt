@@ -101,10 +101,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
 
     /**
-     * This book's highlights and notes from every device, each once (see
-     * [SyncAnnotations.visible]). EPUB only; empty until the book opens.
+     * This book's live highlights and notes from every device, each once (see
+     * [SyncAnnotations.live]); deleted ones are left out. EPUB only; empty until the book opens.
      */
     var highlights by mutableStateOf<List<BookAnnotation>>(emptyList())
+        private set
+
+    /** The owner's own changes to highlights: delete, undo, colour and note. */
+    private val highlightEdits = HighlightEdits(dao)
+
+    /** The colour Highlight uses: the last one picked. */
+    var highlightColour by
+        mutableStateOf(
+            settings.getString("highlightColour", null)?.let { name ->
+                HighlightColour.entries.firstOrNull { it.name == name }
+            } ?: HighlightColour.YELLOW
+        )
+        private set
+
+    /** The highlight just deleted, until its Undo is shown and done with. */
+    var deletedHighlight by mutableStateOf<BookAnnotation?>(null)
         private set
 
     var fontSize by mutableDoubleStateOf(settings.getFloat("fontSize", 110f).toDouble())
@@ -851,18 +867,29 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private fun watchHighlights(bookId: String) {
         viewModelScope.launch {
             dao.bookAnnotations(bookId)
-                .map { SyncAnnotations.visible(it) }
+                .map { SyncAnnotations.live(it) }
                 .flowOn(Dispatchers.Default)
                 .collect { highlights = it }
         }
     }
 
     /**
-     * Saves a highlight made on the phone, or a note when [note] has text. It goes to the e-reader
-     * at the next sync and is never edited or deleted afterwards.
+     * Saves a highlight made on the phone in [colour] (the last one picked when null), or a note
+     * when [note] has text. It goes to the e-reader at the next sync. Picking a colour makes it the
+     * one Highlight uses next.
      */
-    fun addHighlight(passage: SelectedPassage, note: String, chapter: String) {
+    fun addHighlight(
+        passage: SelectedPassage,
+        note: String,
+        chapter: String,
+        colour: HighlightColour? = null,
+    ) {
         val current = book ?: return
+        if (colour != null && colour != highlightColour) {
+            highlightColour = colour
+            settings.edit().putString("highlightColour", colour.name).apply()
+        }
+        val look = colour ?: highlightColour
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -876,6 +903,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                             chapter,
                             datetime,
                             sameStartTaken = dao.annotationById(plainId) != null,
+                            colour = look,
                         )
                     )
                 }
@@ -888,6 +916,52 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 throw cancel
             } catch (_: Exception) {
                 message = app.getString(R.string.reader_highlight_save_failed)
+            }
+        }
+    }
+
+    /**
+     * The live highlight the owner meant by selecting [passage] (the same passage, or one inside
+     * it), or null when it is a new one. See [existingHighlight].
+     */
+    fun highlightFor(passage: SelectedPassage): BookAnnotation? =
+        existingHighlight(passage, highlights)
+
+    /**
+     * Deletes highlight [id] softly: it stops drawing at once, Undo is offered
+     * ([deletedHighlight]), and it can be restored from the book page for 30 days.
+     */
+    fun deleteHighlight(id: String) =
+        changeHighlight({ highlightEdits.delete(id) }) { row -> row?.let { deletedHighlight = it } }
+
+    /** Undo for the highlight just deleted, or any deleted in the last 30 days. */
+    fun restoreHighlight(id: String) {
+        if (deletedHighlight?.id == id) deletedHighlight = null
+        changeHighlight({ highlightEdits.restore(id) })
+    }
+
+    /** The Undo offer for [deletedHighlight] is over (shown, or dismissed). */
+    fun forgetDeletedHighlight() {
+        deletedHighlight = null
+    }
+
+    /** Gives highlight [id] a new colour or an underline. */
+    fun recolourHighlight(id: String, colour: HighlightColour) =
+        changeHighlight({ highlightEdits.recolour(id, colour) })
+
+    /** Sets highlight [id]'s note; a blank one removes it. */
+    fun editHighlightNote(id: String, note: String) =
+        changeHighlight({ highlightEdits.editNote(id, note) })
+
+    /** Runs [change] off the main thread, then [then] with its result on it. */
+    private fun <T> changeHighlight(change: suspend () -> T, then: (T) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                then(withContext(Dispatchers.IO) { change() })
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_highlight_change_failed)
             }
         }
     }

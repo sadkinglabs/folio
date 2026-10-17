@@ -134,6 +134,20 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
                                 (it.annotations + action.annotations).distinctBy { a -> a.id }
                         )
                     }
+                is PhoneAction.EditAnnotations ->
+                    edit(action.bookId) { b ->
+                        val edits = action.annotations.associateBy { it.id }
+                        b.copy(annotations = b.annotations.map { edits[it.id] ?: it })
+                    }
+                is PhoneAction.DeleteAnnotations ->
+                    edit(action.bookId) { b ->
+                        b.copy(
+                            annotations =
+                                b.annotations.map {
+                                    if (it.id in action.ids) it.copy(deleted = true) else it
+                                }
+                        )
+                    }
                 is PhoneAction.SetLists -> edit(action.bookId) { it.copy(lists = action.lists) }
                 is PhoneAction.Revise -> Unit // revise already took the file.
             }
@@ -180,6 +194,8 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
 class FakeKindle(
     private val call: (KosyncRequest, InputStream?) -> LinkResponse,
     val id: String = "kindle-1",
+    /** A plugin that reads notes in full and takes edits and deletions (M11). */
+    var takesEdits: Boolean = false,
 ) {
     class Book(
         val bytes: ByteArray,
@@ -211,6 +227,7 @@ class FakeKindle(
             collections = book.collections,
             title = book.title,
             authors = book.authors,
+            annotationsComplete = takesEdits,
         )
     }
 
@@ -302,6 +319,24 @@ class FakeKindle(
                                 (0 until list.length()).map {
                                     SyncWire.annotation(list.getJSONObject(it))
                                 }
+                            true
+                        }
+                        "edit-annotations" -> {
+                            val list = action.getJSONArray("annotations")
+                            val edits =
+                                (0 until list.length())
+                                    .map { SyncWire.annotation(list.getJSONObject(it)) }
+                                    .associateBy { it.id }
+                            val notes = books.getValue(at(action.getString("path"))).annotations
+                            notes.replaceAll { edits[it.id] ?: it }
+                            true
+                        }
+                        "delete-annotations" -> {
+                            val ids = action.getJSONArray("ids")
+                            val gone = (0 until ids.length()).map { ids.getString(it) }.toSet()
+                            books.getValue(at(action.getString("path"))).annotations.removeAll {
+                                it.id in gone
+                            }
                             true
                         }
                         "collections" -> {
@@ -979,6 +1014,104 @@ class SyncRoutesTest {
         val gone = kindle.sync()
         assertEquals(200, kindle.finish(gone, kindle.run(gone)).status)
         assertTrue(library.refused("kindle-1").isEmpty())
+    }
+
+    // ---- Rule 7: deletions and edits (M11) ----
+
+    /** Emma on both sides with [note], as agreed at the last sync. */
+    private fun emmaWithNote(kindleTakesEdits: Boolean) {
+        library.add("b1", "Emma", "Jane Austen", emma)
+        library.books["b1"] = library.books.getValue("b1").copy(annotations = listOf(note))
+        kindle.books["Librillo/Jane Austen/Emma.epub"] =
+            FakeKindle.Book(emma, "Emma", listOf("Jane Austen"), annotations = mutableListOf(note))
+        kindle.takesEdits = kindleTakesEdits
+        val first = kindle.sync()
+        assertEquals(200, kindle.finish(first, kindle.run(first)).status)
+        assertEquals(setOf(note.id), library.baselines("kindle-1").single().annotationIds)
+    }
+
+    @Test
+    fun aHighlightDeletedOnThePhoneIsDeletedOnAKindleThatTakesIt() {
+        emmaWithNote(kindleTakesEdits = true)
+        assertNotNull(library.baselines("kindle-1").single().annotationStates)
+        library.books["b1"] =
+            library.books.getValue("b1").copy(annotations = listOf(note.copy(deleted = true)))
+        val plan = kindle.sync()
+        assertEquals(listOf("delete-annotations"), ops(plan))
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertTrue(kindle.books.getValue("Librillo/Jane Austen/Emma.epub").annotations.isEmpty())
+        assertTrue(library.baselines("kindle-1").single().annotationIds.isEmpty())
+        assertEquals(emptyList<String>(), ops(kindle.sync()))
+    }
+
+    @Test
+    fun aHighlightDeletedOnTheKindleIsDeletedOnThePhoneSoftly() {
+        emmaWithNote(kindleTakesEdits = true)
+        kindle.books.getValue("Librillo/Jane Austen/Emma.epub").annotations.clear()
+        val plan = kindle.sync()
+        assertEquals(emptyList<String>(), ops(plan))
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertEquals(
+            listOf(PhoneAction.DeleteAnnotations("b1", listOf(note.id))),
+            library.applied.last(),
+        )
+        assertTrue(library.books.getValue("b1").annotations.single().deleted)
+        assertEquals(emptyList<String>(), ops(kindle.sync()))
+    }
+
+    @Test
+    fun anOldPluginNeverCausesADeletion() {
+        emmaWithNote(kindleTakesEdits = false)
+        assertNull(library.baselines("kindle-1").single().annotationStates)
+        // Deleted on the Kindle: it goes back, as before.
+        kindle.books.getValue("Librillo/Jane Austen/Emma.epub").annotations.clear()
+        val plan = kindle.sync()
+        assertEquals(listOf("annotations"), ops(plan))
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertFalse(library.books.getValue("b1").annotations.single().deleted)
+        assertEquals(
+            listOf(note),
+            kindle.books.getValue("Librillo/Jane Austen/Emma.epub").annotations,
+        )
+        // Deleted on the phone: the Kindle is not asked to delete it.
+        library.books["b1"] =
+            library.books.getValue("b1").copy(annotations = listOf(note.copy(deleted = true)))
+        assertEquals(emptyList<String>(), ops(kindle.sync()))
+    }
+
+    @Test
+    fun aColourAndANoteTravelOnTheWire() {
+        emmaWithNote(kindleTakesEdits = true)
+        val edited =
+            note.copy(
+                note = "Litany",
+                kind = "note",
+                color = "green",
+                drawer = "underscore",
+                updated = "2026-10-17 09:00:00",
+            )
+        library.books["b1"] = library.books.getValue("b1").copy(annotations = listOf(edited))
+        val plan = kindle.sync()
+        val sent = action(plan, "edit-annotations").getJSONArray("annotations").getJSONObject(0)
+        assertEquals("green", sent.getString("color"))
+        assertEquals("underscore", sent.getString("drawer"))
+        assertEquals("2026-10-17 09:00:00", sent.getString("updated"))
+        assertEquals(200, kindle.finish(plan, kindle.run(plan)).status)
+        assertEquals(
+            listOf(edited),
+            kindle.books.getValue("Librillo/Jane Austen/Emma.epub").annotations,
+        )
+        assertEquals(emptyList<String>(), ops(kindle.sync()))
+    }
+
+    @Test
+    fun anOddColourFromThePluginIsTakenAsUnknown() {
+        val json = SyncWire.toJson(note).put("color", "x".repeat(40)).put("drawer", "LIGHTEN")
+        val read = SyncWire.annotation(json)
+        assertEquals("", read.color)
+        assertEquals("lighten", read.drawer)
+        assertFalse("a tombstone flag never comes from the wire", read.deleted)
+        assertFalse(SyncWire.toJson(note.copy(deleted = true)).has("deleted"))
     }
 
     @Test

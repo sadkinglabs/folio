@@ -66,8 +66,17 @@ object SyncPlanner {
             val phoneStatus = SyncStatus.fromPhone(book.status)
             val kindleStatus = SyncStatus.normalize(file.status) ?: SyncStatus.UNREAD
             val agreed = phoneStatus != null && phoneStatus == kindleStatus
-            val phoneIds = book.annotations.map { it.id }.toSet()
-            val kindleIds = file.annotations.map { it.id }.toSet()
+            val live = book.annotations.filter { !it.deleted }.associateBy { it.id }
+            val onKindle = file.annotations.associateBy { it.id }
+            val knew = before?.annotationIds.orEmpty()
+            // Both have it; or the baseline had it and only one side still does, so the
+            // difference still counts as a change (a deletion not yet carried over) next time.
+            val annotationIds =
+                (live.keys + onKindle.keys + knew)
+                    .filter { id ->
+                        if ((id in live) == (id in onKindle)) id in live else id in knew
+                    }
+                    .toSet()
             val lists = names(book.lists)
             val collections = names(file.collections)
             val was = before?.collections.orEmpty()
@@ -78,7 +87,24 @@ object SyncPlanner {
                     sha256 = file.sha256,
                     status = if (agreed) kindleStatus else before?.status.orEmpty(),
                     statusAt = if (agreed) book.statusAt else before?.statusAt ?: 0,
-                    annotationIds = phoneIds intersect kindleIds,
+                    annotationIds = annotationIds,
+                    annotationStates =
+                        if (!file.annotationsComplete)
+                            before?.annotationStates?.filterKeys { it in annotationIds }
+                        else
+                            annotationIds
+                                .mapNotNull { id ->
+                                    val p = live[id]
+                                    val k = onKindle[id]
+                                    val agreed =
+                                        if (p == null || k == null) null
+                                        else
+                                            AnnotationMerge.state(p).takeIf {
+                                                it == AnnotationMerge.state(k)
+                                            }
+                                    (agreed ?: before?.annotationStates?.get(id))?.let { id to it }
+                                }
+                                .toMap(),
                     collections =
                         (lists + collections + was)
                             .filter { name ->
@@ -130,6 +156,9 @@ object SyncPlanner {
                                 format = book?.format ?: to.substringAfterLast('.'),
                                 title = book?.title,
                                 authors = book?.authors.orEmpty(),
+                                // A new book's notes are the ones just sent, when the plugin
+                                // takes edits.
+                                annotationsComplete = kindle.any { it.annotationsComplete },
                             )
                 }
                 is KindleAction.Move -> {
@@ -151,6 +180,29 @@ object SyncPlanner {
                             annotations =
                                 f.annotations + action.annotations.filter { it.id !in have }
                         )
+                    }
+                is KindleAction.EditAnnotations ->
+                    files.computeIfPresent(at(action.path)) { _, f ->
+                        val edits = action.annotations.associateBy { it.id }
+                        f.copy(
+                            annotations =
+                                f.annotations.map { a ->
+                                    edits[a.id]?.let {
+                                        a.copy(
+                                            note = it.note,
+                                            color = it.color,
+                                            drawer = it.drawer,
+                                            updated = it.updated,
+                                            kind = it.kind,
+                                        )
+                                    } ?: a
+                                }
+                        )
+                    }
+                is KindleAction.DeleteAnnotations ->
+                    files.computeIfPresent(at(action.path)) { _, f ->
+                        val gone = action.ids.toSet()
+                        f.copy(annotations = f.annotations.filter { it.id !in gone })
                     }
                 is KindleAction.SetCollections ->
                     files.computeIfPresent(at(action.path)) { _, f ->
@@ -419,11 +471,26 @@ private class Planner(
     /** Syncs what [book] and [file] (now at [to]) say about reading, against [b]. */
     fun metadata(book: PhoneBook, file: KindleFile, to: String, b: Baseline?) {
         status(book, file, to, b)
-        val toKindle = lacking(file.annotations, book.annotations)
-        if (toKindle.isNotEmpty()) kindleActions += KindleAction.AddAnnotations(to, toKindle)
-        val toPhone = lacking(book.annotations, file.annotations)
-        if (toPhone.isNotEmpty()) phoneActions += PhoneAction.AddAnnotations(book.id, toPhone)
+        annotations(book, file, to, b)
         collections(book, file, to, b)
+    }
+
+    /** Rule 7: each side gets what it lacks; edits and deletions cross over ([AnnotationMerge]). */
+    fun annotations(book: PhoneBook, file: KindleFile, to: String, b: Baseline?) {
+        val r =
+            AnnotationMerge.plan(book.annotations, file.annotations, b, file.annotationsComplete)
+        if (r.addToKindle.isNotEmpty())
+            kindleActions += KindleAction.AddAnnotations(to, r.addToKindle)
+        if (r.editOnKindle.isNotEmpty())
+            kindleActions += KindleAction.EditAnnotations(to, r.editOnKindle)
+        if (r.deleteOnKindle.isNotEmpty())
+            kindleActions += KindleAction.DeleteAnnotations(to, r.deleteOnKindle)
+        if (r.addToPhone.isNotEmpty())
+            phoneActions += PhoneAction.AddAnnotations(book.id, r.addToPhone)
+        if (r.editOnPhone.isNotEmpty())
+            phoneActions += PhoneAction.EditAnnotations(book.id, r.editOnPhone)
+        if (r.deleteOnPhone.isNotEmpty())
+            phoneActions += PhoneAction.DeleteAnnotations(book.id, r.deleteOnPhone)
     }
 
     fun status(book: PhoneBook, file: KindleFile, to: String, b: Baseline?) {
@@ -567,10 +634,16 @@ private class Planner(
     fun title(file: KindleFile): String =
         file.title?.takeIf { it.isNotBlank() } ?: FileTitle.from(file.path)
 
-    /** The annotations in [from] that [have] lacks, by id, in a stable order. */
+    /**
+     * The annotations in [from] that [have] lacks, by id, in a stable order. A tombstone in [have]
+     * counts as having it; one in [from] is never sent.
+     */
     fun lacking(have: List<SyncAnnotation>, from: List<SyncAnnotation>): List<SyncAnnotation> {
         val ids = have.map { it.id }.toSet()
-        return from.distinctBy { it.id }.filter { it.id !in ids }.sortedWith(annotationOrder)
+        return from
+            .distinctBy { it.id }
+            .filter { it.id !in ids && !it.deleted }
+            .sortedWith(annotationOrder)
     }
 
     companion object {
@@ -597,12 +670,15 @@ private class Planner(
                 is KindleAction.Delete -> action.path
                 is KindleAction.SetStatus -> action.path
                 is KindleAction.AddAnnotations -> action.path
+                is KindleAction.EditAnnotations -> action.path
+                is KindleAction.DeleteAnnotations -> action.path
                 is KindleAction.SetCollections -> action.path
             }
 
         /**
          * E-reader actions run in phases: uploads, moves, downloads, deletes, then status,
-         * annotations and collections. Each phase is in path order, ignoring case (rule 12).
+         * annotations (added, edited, deleted) and collections. Each phase is in path order,
+         * ignoring case (rule 12).
          */
         val kindleOrder =
             compareBy<KindleAction>(
@@ -614,7 +690,9 @@ private class Planner(
                         is KindleAction.Delete -> 3
                         is KindleAction.SetStatus -> 4
                         is KindleAction.AddAnnotations -> 5
-                        is KindleAction.SetCollections -> 6
+                        is KindleAction.EditAnnotations -> 6
+                        is KindleAction.DeleteAnnotations -> 7
+                        is KindleAction.SetCollections -> 8
                     }
                 },
                 { BookPaths.key(subject(it)) },
@@ -632,7 +710,9 @@ private class Planner(
                         is PhoneAction.Remove -> 3
                         is PhoneAction.SetStatus -> 4
                         is PhoneAction.AddAnnotations -> 5
-                        is PhoneAction.SetLists -> 6
+                        is PhoneAction.EditAnnotations -> 6
+                        is PhoneAction.DeleteAnnotations -> 7
+                        is PhoneAction.SetLists -> 8
                     }
                 },
                 {
@@ -643,6 +723,8 @@ private class Planner(
                         is PhoneAction.Remove -> it.bookId
                         is PhoneAction.SetStatus -> it.bookId
                         is PhoneAction.AddAnnotations -> it.bookId
+                        is PhoneAction.EditAnnotations -> it.bookId
+                        is PhoneAction.DeleteAnnotations -> it.bookId
                         is PhoneAction.SetLists -> it.bookId
                     }
                 },

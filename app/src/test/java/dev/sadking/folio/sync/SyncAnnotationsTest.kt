@@ -63,6 +63,37 @@ class SyncAnnotationsTest {
     }
 
     @Test
+    fun aDeletedRowGoesToSyncAsATombstoneWithItsLook() {
+        val deleted =
+            row("k1", device = "link:kindle")
+                .copy(color = "green", drawer = "underscore", editedAt = "2026-02-01 08:00:00")
+                .copy(deletedAt = 99)
+        val sent = SyncAnnotations.forSync(listOf(deleted)).single()
+        assertEquals(true, sent.deleted)
+        assertEquals("green", sent.color)
+        assertEquals("underscore", sent.drawer)
+        assertEquals("2026-02-01 08:00:00", sent.updated)
+        val back = SyncAnnotations.toRow(sent.copy(deleted = false), "b1", "kindle")
+        assertEquals(deleted.copy(deletedAt = 0), back)
+    }
+
+    @Test
+    fun aDeletedSyncedRowStillHidesItsOlderCopy() {
+        // Deleted on the e-reader: the old SSH copy of the same highlight must not come back.
+        val older = row("old")
+        val synced = row("new", device = "link:kindle").copy(deletedAt = 5)
+        assertEquals(listOf("new"), SyncAnnotations.forSync(listOf(older, synced)).map { it.id })
+        assertEquals(emptyList<BookAnnotation>(), SyncAnnotations.live(listOf(older, synced)))
+        assertEquals(
+            listOf("other"),
+            SyncAnnotations.liveByBook(
+                    listOf(older, synced, row("other", pos = "/body/p[9]").copy(bookId = "b2"))
+                )
+                .map { it.id },
+        )
+    }
+
+    @Test
     fun syncedRowsFromTwoEreadersAreBothKept() {
         val rows = listOf(row("k1", device = "link:kindle"), row("k2", device = "link:kobo"))
         assertEquals(listOf("k1", "k2"), SyncAnnotations.forSync(rows).map { it.id })

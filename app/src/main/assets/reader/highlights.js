@@ -52,9 +52,16 @@
     else result.setEnd(end.node, end.offset);
     return result.collapsed ? null : result;
   }
+  // True when [outer] starts at or before [inner] and ends at or after it.
+  function contains(outer, inner) {
+    return outer.compareBoundaryPoints(Range.START_TO_START, inner) <= 0 &&
+      outer.compareBoundaryPoints(Range.END_TO_END, inner) >= 0;
+  }
   window.FolioHighlights = {
-    // The selected passage in this page, [index] being its KOReader DocFragment, or null.
-    selection(index) {
+    // The selected passage in this page, [index] being its KOReader DocFragment, or null. [items]
+    // are this chapter's highlights ({id, pos0, pos1}); `inside` lists the ones that hold the
+    // whole selection, so selecting a highlighted passage opens it instead of adding another.
+    selection(index, items) {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
       const selected = selection.getRangeAt(0);
@@ -63,7 +70,16 @@
       // The text as the page shows it, with line breaks between paragraphs.
       const text = selection.toString().trim();
       if (!pos0 || !pos1 || !text) return null;
-      return {pos0, pos1, text};
+      const inside = [];
+      for (const item of items || []) {
+        try {
+          const found = range(item.pos0, item.pos1);
+          if (found && contains(found, selected)) inside.push(item.id);
+        } catch (e) {
+          // One bad pointer must not stop the others.
+        }
+      }
+      return {pos0, pos1, text, inside};
     },
     // Where each highlight sits in this page: {path, placed: {id: {selector, text}}}. Highlights
     // that do not resolve here are left out, never guessed.

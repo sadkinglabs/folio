@@ -513,6 +513,82 @@ class RoomSyncLibraryTest {
     }
 
     @Test
+    fun aDeletionFromTheEreaderIsSoftAndAnEditBringsItBack() = runBlocking {
+        val dao = db.library()
+        val home = addToFolder("Home", "Ann Lee")
+        dao.annotation(note("k1", home.id))
+        dao.annotation(note("k2", home.id, pos = "/body/p[5]"))
+        library.apply(
+            "kindle",
+            listOf(PhoneAction.DeleteAnnotations(home.id, listOf("k1", "elsewhere"))),
+            emptyMap(),
+        )
+        val deleted = dao.annotationById("k1")!!
+        assertEquals("kept, with its text, for 30 days", "text k1", deleted.text)
+        assertEquals(clock, deleted.deletedAt)
+        assertTrue(
+            library
+                .phoneBooks()
+                .single { it.id == home.id }
+                .annotations
+                .single { it.id == "k1" }
+                .deleted
+        )
+        // Edited on the e-reader since: the edit wins and the row is live again, with its look.
+        library.apply(
+            "kindle",
+            listOf(
+                PhoneAction.EditAnnotations(
+                    home.id,
+                    listOf(
+                        syncNote("k1")
+                            .copy(
+                                color = "blue",
+                                drawer = "underscore",
+                                updated = "2026-03-01 08:00:00",
+                            ),
+                        syncNote("k3"),
+                    ),
+                )
+            ),
+            emptyMap(),
+        )
+        val back = dao.annotationById("k1")!!
+        assertEquals(0L, back.deletedAt)
+        assertEquals("a note", back.note)
+        assertEquals("note", back.kind)
+        assertEquals("blue" to "underscore", back.color to back.drawer)
+        assertEquals("2026-03-01 08:00:00", back.editedAt)
+        assertEquals("text k1", back.text)
+        assertEquals(
+            "one missing here is added",
+            "link:kindle",
+            dao.annotationById("k3")!!.deviceId,
+        )
+        assertEquals(0L, dao.annotationById("k2")!!.deletedAt)
+    }
+
+    @Test
+    fun annotationStatesRoundTripAndUnreadableOnesAreUnknown() {
+        val one =
+            Baseline(
+                "b1",
+                "Librillo/A/One.epub",
+                "a".repeat(64),
+                "reading",
+                5,
+                setOf("n1"),
+                emptySet(),
+                mapOf("n1" to "0123456789abcdef"),
+            )
+        library.commit("kindle", listOf(one))
+        assertEquals(listOf(one), library.baselines("kindle"))
+        db.syncBaselines()
+            .upsert(db.syncBaselines().get("b1", "kindle")!!.copy(annotationStates = "not json"))
+        assertNull(library.baselines("kindle").single().annotationStates)
+    }
+
+    @Test
     fun setListsMakesManualListsExactAndLeavesSmartListsAlone() = runBlocking {
         val dao = db.library()
         val home = addToFolder("Home", "Ann Lee")

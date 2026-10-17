@@ -144,6 +144,35 @@ internal fun DetailsFileMissingPreview() {
     }
 }
 
+@Preview(name = "Details · deleted highlights", widthDp = 412, heightDp = 2000)
+@Composable
+internal fun DetailsDeletedHighlightsPreview() {
+    val note =
+        BookAnnotation(
+            "h1",
+            sampleBooks[0].id,
+            "phone",
+            "In March the pruning began.",
+            "",
+            "Chapter two",
+            "2026-10-16 08:41:12",
+            "/body/DocFragment[3]/body/p[2]/text().0",
+            "/body/DocFragment[3]/body/p[2]/text().27",
+            "highlight",
+        )
+    FolioTheme(dynamic = false) {
+        Surface {
+            BookDetails(
+                sampleBooks[0],
+                fileMissing = false,
+                changedOutside = false,
+                annotations = listOf(note.copy(id = "h2", text = "Ada worked from the east end.")),
+                deletedAnnotations = listOf(note.copy(deletedAt = 1)),
+            )
+        }
+    }
+}
+
 @Preview(name = "Details · changed outside", widthDp = 412, heightDp = 892)
 @Composable
 internal fun DetailsChangedPreview() {

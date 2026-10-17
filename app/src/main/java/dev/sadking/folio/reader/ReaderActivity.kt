@@ -114,12 +114,16 @@ class ReaderActivity : FragmentActivity() {
     internal var appliedSearch: List<Decoration> = emptyList()
         private set
 
-    /** The highlight or note the owner tapped, shown read-only in a sheet. */
-    private var shownHighlight by mutableStateOf<BookAnnotation?>(null)
+    /** The highlight or note the owner tapped, shown in its sheet; it closes once deleted. */
+    private var shownHighlightId by mutableStateOf<String?>(null)
     /** A passage waiting for its note in the Add note dialog. */
     private var pendingNote by mutableStateOf<PendingNote?>(null)
     /** Counts touches and keys, so the screen may sleep after a while without any. */
     private var interactions by mutableIntStateOf(0)
+    /** The highlight whose note is being written in the Edit note dialog. */
+    private var editingNoteId by mutableStateOf<String?>(null)
+    /** A passage waiting for its colour (Colour… in the selection menu). */
+    private var pendingColour by mutableStateOf<PendingHighlight?>(null)
     private val scripts by lazy {
         listOf("positions.js", "bridge.js", "highlights.js").joinToString("\n") { name ->
             assets.open("reader/$name").bufferedReader().use { it.readText() }
@@ -158,7 +162,7 @@ class ReaderActivity : FragmentActivity() {
             ): Boolean {
                 val tapped =
                     model.highlights.firstOrNull { it.id == event.decoration.id } ?: return false
-                shownHighlight = tapped
+                shownHighlightId = tapped.id
                 return true
             }
         }
@@ -648,8 +652,10 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * Runs one item of the selection menu on the selected text. Highlight saves at once; Add note
-     * opens the note dialog first. The selection is cleared when it is done. Internal for tests.
+     * Runs one item of the selection menu on the selected text. Highlight saves at once in the last
+     * colour; Colour… asks for one first; Add note opens the note dialog first. A passage that is
+     * already highlighted (the same, or inside one) opens that highlight instead: its sheet, or its
+     * note for Add note. The selection is cleared when it is done. Internal for tests.
      */
     internal fun selectionAction(itemId: Int): Job = lifecycleScope.launch {
         val nav = epubNavigator ?: return@launch
@@ -667,19 +673,29 @@ class ReaderActivity : FragmentActivity() {
             val href = selection.locator.href.toString()
             val index = docFragmentIndex(href, model.spine)
             val passage = index?.let {
-                val raw =
-                    withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                        nav.bridge("JSON.stringify(FolioHighlights.selection($it));")
-                    }
+                val here =
+                    placeableHighlights(model.highlights, model.spine.size)
+                        .filter { placed -> placed.chapter == it }
+                        .map { placed -> placed.annotation }
+                val raw = withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(selectionCall(it, here)) }
                 parseSelection(raw, it, model.spine.size)
             }
             if (passage == null) {
                 navigationError = getString(R.string.reader_highlight_failed)
                 return@launch
             }
+            val existing = model.highlightFor(passage)
+            if (existing != null) {
+                if (itemId == SELECTION_NOTE) editingNoteId = existing.id
+                else shownHighlightId = existing.id
+                return@launch
+            }
             val chapter = model.publication?.let { chapterTitle(it, href) }.orEmpty()
-            if (itemId == SELECTION_NOTE) pendingNote = PendingNote(passage, chapter)
-            else model.addHighlight(passage, "", chapter)
+            when (itemId) {
+                SELECTION_NOTE -> pendingNote = PendingNote(passage, chapter)
+                SELECTION_COLOUR -> pendingColour = PendingHighlight(passage, chapter)
+                else -> model.addHighlight(passage, "", chapter)
+            }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (_: Exception) {
@@ -744,14 +760,9 @@ class ReaderActivity : FragmentActivity() {
                     }
                 }
                 val byId = all.associateBy { it.annotation.id }
+                // A deleted highlight is no longer in the list, so it stops drawing at once.
                 val decorations = placed.mapNotNull { (id, locator) ->
-                    byId[id]?.let {
-                        Decoration(
-                            id,
-                            locator,
-                            Decoration.Style.Highlight(tint = highlightTint(it.annotation)),
-                        )
-                    }
+                    byId[id]?.let { Decoration(id, locator, highlightStyle(it.annotation)) }
                 }
                 if (decorations != applied) {
                     withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
@@ -881,8 +892,10 @@ class ReaderActivity : FragmentActivity() {
         SideEffect {
             panelOpen =
                 panel != null ||
-                    shownHighlight != null ||
+                    shownHighlightId != null ||
                     pendingNote != null ||
+                    editingNoteId != null ||
+                    pendingColour != null ||
                     slow != null ||
                     model.defineText != null
         }
@@ -932,6 +945,19 @@ class ReaderActivity : FragmentActivity() {
                 navigationError = null
                 model.dismissMessage()
             }
+        }
+        // Undo after a highlight is deleted.
+        val deleted = model.deletedHighlight
+        LaunchedEffect(deleted) {
+            if (deleted == null) return@LaunchedEffect
+            val result =
+                snackbar.showSnackbar(
+                    getString(R.string.reader_highlight_deleted),
+                    actionLabel = getString(R.string.reader_highlight_undo),
+                    duration = SnackbarDuration.Long,
+                )
+            if (result == SnackbarResult.ActionPerformed) model.restoreHighlight(deleted.id)
+            else model.forgetDeletedHighlight()
         }
         val naturalProblem = listen.naturalProblem
         LaunchedEffect(naturalProblem) {
@@ -1266,15 +1292,7 @@ class ReaderActivity : FragmentActivity() {
                 TooSlowSheet(it, onChoice = listen::chooseSlow, onDismiss = listen::dismissSlow)
             }
         }
-        shownHighlight?.let { shown ->
-            ModalBottomSheet(
-                onDismissRequest = { shownHighlight = null },
-                shape = FolioSpace.sheetShape,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                HighlightSheet(shown, onCopy = { copy(highlightCopyText(shown)) })
-            }
-        }
+        ReaderHighlightSheets()
         model.defineText?.let { text ->
             ModalBottomSheet(
                 onDismissRequest = { model.define(null) },
@@ -1307,6 +1325,67 @@ class ReaderActivity : FragmentActivity() {
                 },
                 onDismiss = { pendingNote = null },
             )
+        }
+    }
+
+    /**
+     * The tapped highlight's sheet, its Edit note dialog, and the colour sheet for Colour…. The
+     * sheet follows the live row, so a new colour shows at once and a deleted one closes it.
+     */
+    @Composable
+    private fun ReaderHighlightSheets() {
+        val shown = shownHighlightId?.let { id -> model.highlights.firstOrNull { it.id == id } }
+        LaunchedEffect(shownHighlightId, shown == null) {
+            // Deleted (here or by a sync): nothing left to show.
+            if (shownHighlightId != null && shown == null) shownHighlightId = null
+        }
+        shown?.let { row ->
+            ModalBottomSheet(
+                onDismissRequest = { shownHighlightId = null },
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                HighlightSheet(
+                    row,
+                    HighlightSheetActions(
+                        onCopy = { copy(highlightCopyText(row)) },
+                        onColour = { model.recolourHighlight(row.id, it) },
+                        onNote = { editingNoteId = row.id },
+                        onDelete = {
+                            shownHighlightId = null
+                            model.deleteHighlight(row.id)
+                        },
+                    ),
+                )
+            }
+        }
+        editingNoteId?.let { id ->
+            val row = model.highlights.firstOrNull { it.id == id }
+            if (row == null) {
+                LaunchedEffect(id) { editingNoteId = null }
+                return@let
+            }
+            HighlightNoteDialog(
+                row.text,
+                initial = row.note,
+                onSave = { note ->
+                    editingNoteId = null
+                    model.editHighlightNote(id, note)
+                },
+                onDismiss = { editingNoteId = null },
+            )
+        }
+        pendingColour?.let { pending ->
+            ModalBottomSheet(
+                onDismissRequest = { pendingColour = null },
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                HighlightColourSheet(pending.passage.text) { colour ->
+                    pendingColour = null
+                    model.addHighlight(pending.passage, "", pending.chapter, colour)
+                }
+            }
         }
     }
 

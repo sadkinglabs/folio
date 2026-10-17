@@ -36,7 +36,8 @@ import kotlinx.coroutines.sync.withLock
  * The server calls it from its own threads, one sync step at a time, so every call blocks.
  *
  * Nothing here deletes a book file or an annotation. A book removed by sync goes to Recently
- * removed; a new file from the e-reader is a new book or a new revision, beside the old file.
+ * removed; an annotation deleted on the e-reader is deleted softly (restorable for 30 days); a new
+ * file from the e-reader is a new book or a new revision, beside the old file.
  */
 class RoomSyncLibrary
 internal constructor(
@@ -206,6 +207,9 @@ internal constructor(
             is PhoneAction.SetStatus -> setStatus(action.bookId, action.status, action.at)
             is PhoneAction.AddAnnotations ->
                 addAnnotations(ereaderId, action.bookId, action.annotations)
+            is PhoneAction.EditAnnotations ->
+                editAnnotations(ereaderId, action.bookId, action.annotations)
+            is PhoneAction.DeleteAnnotations -> deleteAnnotations(action.bookId, action.ids)
             is PhoneAction.SetLists -> setLists(action.bookId, action.lists, keepOthers = false)
         }
     }
@@ -226,6 +230,47 @@ internal constructor(
             annotations
                 .distinctBy { it.id }
                 .forEach { dao.annotation(SyncAnnotations.toRow(it, bookId, ereaderId)) }
+        }
+    }
+
+    /**
+     * The e-reader's note, colour and style for annotations both sides have. One the owner deleted
+     * here comes back (it was edited on the e-reader, and an edit beats a delete); one missing here
+     * is added.
+     */
+    private suspend fun editAnnotations(
+        ereaderId: String,
+        bookId: String,
+        annotations: List<SyncAnnotation>,
+    ) {
+        if (annotations.isEmpty()) return
+        repo.database.withTransaction {
+            if (dao.book(bookId) == null) return@withTransaction
+            annotations
+                .distinctBy { it.id }
+                .forEach { a ->
+                    val changed =
+                        dao.syncEditAnnotation(
+                            a.id,
+                            bookId,
+                            a.text,
+                            a.note,
+                            a.kind,
+                            a.color,
+                            a.drawer,
+                            a.updated,
+                        )
+                    if (changed == 0) dao.annotation(SyncAnnotations.toRow(a, bookId, ereaderId))
+                }
+        }
+    }
+
+    /** Deleted on the e-reader: deleted here too, softly, so the owner can restore it. */
+    private suspend fun deleteAnnotations(bookId: String, ids: List<String>) {
+        repo.database.withTransaction {
+            ids.distinct().forEach { id ->
+                if (dao.annotationById(id)?.bookId == bookId) dao.softDeleteAnnotation(id, now())
+            }
         }
     }
 
@@ -355,6 +400,15 @@ internal constructor(
                 annotationIds =
                     runCatching { decode(annotationIds) }.getOrDefault(emptyList()).toSet(),
                 collections = runCatching { decode(collections) }.getOrDefault(emptyList()).toSet(),
+                // Unreadable means unknown: only ever a reason not to delete.
+                annotationStates =
+                    annotationStates?.let { text ->
+                        runCatching {
+                                val json = org.json.JSONObject(text)
+                                json.keys().asSequence().associateWith { json.getString(it) }
+                            }
+                            .getOrNull()
+                    },
             )
 
         fun Baseline.toRow(ereaderId: String, at: Long) =
@@ -368,6 +422,10 @@ internal constructor(
                 annotationIds = encode(annotationIds.sorted()),
                 collections = encode(collections.sorted()),
                 syncedAt = at,
+                annotationStates =
+                    annotationStates?.let { states ->
+                        org.json.JSONObject(states.toSortedMap() as Map<*, *>).toString()
+                    },
             )
     }
 }

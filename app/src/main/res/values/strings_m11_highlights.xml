@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M11 part A: managing highlights in the reader and on the book page. -->
+    <string name="reader_highlight_colour_action">Colour…</string>
+    <string name="reader_highlight_colour_title">Highlight colour</string>
+    <string name="reader_highlight_colour">Colour</string>
+    <string name="reader_highlight_yellow">Yellow</string>
+    <string name="reader_highlight_green">Green</string>
+    <string name="reader_highlight_blue">Blue</string>
+    <string name="reader_highlight_pink">Pink</string>
+    <string name="reader_highlight_underline">Underline</string>
+    <string name="reader_highlight_add_note">Add note</string>
+    <string name="reader_highlight_edit_note">Edit note</string>
+    <string name="reader_highlight_delete">Delete</string>
+    <string name="reader_highlight_deleted">Highlight deleted</string>
+    <string name="reader_highlight_undo">Undo</string>
+    <string name="reader_highlight_restored">Highlight restored</string>
+    <string name="reader_highlight_change_failed">Couldn\'t change the highlight. Try again.</string>
+    <string name="reader_note_edit_title">Edit note</string>
+    <string name="reader_highlight_sync_note">Changes and deletions reach your e-reader at the next sync.</string>
+    <string name="library_book_deleted_highlights">Recently deleted highlights</string>
+    <string name="library_book_deleted_highlights_hint">Kept for 30 days, then gone for good.</string>
+    <string name="library_book_restore_highlight">Restore</string>
+</resources>

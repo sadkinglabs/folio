@@ -240,6 +240,15 @@ data class DeviceStatistics(
     val days: String,
 )
 
+/**
+ * A highlight, note or bookmark from any device. [color] and [drawer] are KOReader's highlight
+ * colour and drawing style ("yellow", "lighten", "underscore", ...), blank for the reader's default
+ * (every row from before schema 13). [editedAt] is when the note, colour or style last changed, in
+ * KOReader's form (`YYYY-MM-DD HH:MM:SS`, local time), blank when never: the newest edit wins at
+ * sync. [deletedAt] is 0 for a live annotation; the owner's delete sets it (epoch ms) and keeps the
+ * row, so it can be restored for 30 days and sync can tell the e-reader. After 30 days its text and
+ * note are cleared, and the row stays as a tombstone.
+ */
 @Entity(tableName = "annotations", indices = [Index("bookId")])
 data class BookAnnotation(
     @PrimaryKey val id: String,
@@ -252,7 +261,14 @@ data class BookAnnotation(
     val position: String,
     val endPosition: String,
     val kind: String,
-)
+    @ColumnInfo(defaultValue = "''") val color: String = "",
+    @ColumnInfo(defaultValue = "''") val drawer: String = "",
+    @ColumnInfo(defaultValue = "''") val editedAt: String = "",
+    @ColumnInfo(defaultValue = "0") val deletedAt: Long = 0,
+) {
+    val deleted: Boolean
+        get() = deletedAt > 0
+}
 
 @Entity(
     tableName = "memberships",
@@ -361,6 +377,11 @@ data class SyncBaseline(
     val collections: String = "[]",
     /** When this baseline was recorded, in epoch milliseconds. */
     val syncedAt: Long,
+    /**
+     * A JSON object from annotation id to the state both sides agreed on (schema 13), or null when
+     * the e-reader did not take annotation edits and deletions at that sync.
+     */
+    val annotationStates: String? = null,
 )
 
 /**
@@ -616,6 +637,7 @@ interface LibraryDao {
     @Query("SELECT * FROM reading WHERE bookId NOT IN (SELECT id FROM removed_entries)")
     fun reading(): Flow<List<ReadingSnapshot>>
 
+    /** Every annotation of the books not in Recently removed, deleted ones included. */
     @Query(
         "SELECT * FROM annotations WHERE bookId NOT IN (SELECT id FROM removed_entries) ORDER BY date DESC"
     )
@@ -647,6 +669,60 @@ interface LibraryDao {
 
     @Query("SELECT * FROM annotations WHERE id = :id")
     suspend fun annotationById(id: String): BookAnnotation?
+
+    /** Deletes an annotation softly: the row stays, recoverable, and sync tells the e-reader. */
+    @Query("UPDATE annotations SET deletedAt = :at WHERE id = :id AND deletedAt = 0")
+    suspend fun softDeleteAnnotation(id: String, at: Long): Int
+
+    /** Brings back an annotation deleted since [since], while its text is still kept. */
+    @Query("UPDATE annotations SET deletedAt = 0 WHERE id = :id AND deletedAt >= :since")
+    suspend fun restoreAnnotation(id: String, since: Long): Int
+
+    /** A new note, colour or style; [kind] follows the note (a highlight with a note is a note). */
+    @Query(
+        "UPDATE annotations SET note = :note, kind = :kind, color = :color, drawer = :drawer, editedAt = :editedAt WHERE id = :id"
+    )
+    suspend fun editAnnotation(
+        id: String,
+        note: String,
+        kind: String,
+        color: String,
+        drawer: String,
+        editedAt: String,
+    ): Int
+
+    /**
+     * Sync's edit: the e-reader's note, colour and style, and back from deleted when it was edited
+     * there (an edit beats a delete).
+     */
+    @Query(
+        "UPDATE annotations SET note = :note, kind = :kind, color = :color, drawer = :drawer, editedAt = :editedAt, deletedAt = 0, text = CASE WHEN text = '' THEN :text ELSE text END WHERE id = :id AND bookId = :bookId"
+    )
+    suspend fun syncEditAnnotation(
+        id: String,
+        bookId: String,
+        text: String,
+        note: String,
+        kind: String,
+        color: String,
+        drawer: String,
+        editedAt: String,
+    ): Int
+
+    /** Annotations deleted since [since] that can still be restored, newest first. */
+    @Query(
+        "SELECT * FROM annotations WHERE deletedAt >= :since AND bookId NOT IN (SELECT id FROM removed_entries) ORDER BY deletedAt DESC"
+    )
+    fun deletedAnnotations(since: Long): Flow<List<BookAnnotation>>
+
+    /**
+     * Clears the text and note of annotations deleted before [before]. The row stays as a
+     * tombstone, so sync still knows it was deleted.
+     */
+    @Query(
+        "UPDATE annotations SET text = '', note = '' WHERE deletedAt > 0 AND deletedAt < :before AND (text != '' OR note != '')"
+    )
+    suspend fun clearDeletedAnnotations(before: Long): Int
 
     @Update suspend fun updateShelf(shelf: Shelf)
 
@@ -788,7 +864,7 @@ interface HardcoverDao {
             HardcoverQuestionRow::class,
             DeviceProfile::class,
         ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -950,6 +1026,22 @@ val MIGRATION_11_12 =
         }
     }
 
+/**
+ * Schema 13 (M11): highlights get a colour, a drawing style, an edit time and a soft delete. Every
+ * existing row keeps its look (blank colour and style), is unedited and live. Sync baselines can
+ * remember the annotation states both sides agreed on (null for every existing row: unknown).
+ */
+val MIGRATION_12_13 =
+    object : androidx.room.migration.Migration(12, 13) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE annotations ADD COLUMN color TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE annotations ADD COLUMN drawer TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE annotations ADD COLUMN editedAt TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE annotations ADD COLUMN deletedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE sync_baseline ADD COLUMN annotationStates TEXT")
+        }
+    }
+
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
@@ -964,4 +1056,5 @@ val ALL_MIGRATIONS =
         MIGRATION_9_10,
         MIGRATION_10_11,
         MIGRATION_11_12,
+        MIGRATION_12_13,
     )

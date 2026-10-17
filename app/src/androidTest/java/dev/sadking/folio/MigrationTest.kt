@@ -13,6 +13,7 @@ import dev.sadking.folio.data.HardcoverQuestionRow
 import dev.sadking.folio.data.LibraryDatabase
 import dev.sadking.folio.data.MIGRATION_10_11
 import dev.sadking.folio.data.MIGRATION_11_12
+import dev.sadking.folio.data.MIGRATION_12_13
 import dev.sadking.folio.data.MIGRATION_7_8
 import dev.sadking.folio.data.MIGRATION_8_9
 import dev.sadking.folio.data.MIGRATION_9_10
@@ -276,6 +277,66 @@ class MigrationTest {
                     "INSERT INTO device_profiles VALUES ('ssh:saved-ssh', 'Again', NULL, 0, 11)"
                 )
             }
+        }
+    }
+
+    @Test
+    fun schema13KeepsEveryHighlightLiveAndAsItLooked() {
+        val name = "highlight-lifecycle.db"
+        helper.createDatabase(name, 12).use {
+            it.execSQL(
+                "INSERT INTO books (id, title, authors, description, publisher, language, identifiers, series, seriesIndex, tags, originalPath, currentPath, coverPath, originalHash, currentHash, addedAt, status, format, statusAt) VALUES ('book', 'Hyperion', '[]', '', '', '', '[]', '', '', '[]', 'A/H.epub', 'A/H.epub', NULL, 'h', 'h', 1, 'Reading', 'epub', 7)"
+            )
+            it.execSQL(
+                "INSERT INTO annotations VALUES ('note', 'book', 'link:kindle-1', 'text', 'my note', 'Ch 1', '2026-10-01 10:00:00', 'p0', 'p1', 'note')"
+            )
+            it.execSQL(
+                "INSERT INTO sync_baseline VALUES ('book', 'kindle-1', 'A/H.epub', 'h', 'reading', 7, '[\"note\"]', '[]', 8)"
+            )
+        }
+        helper.runMigrationsAndValidate(name, 13, true, MIGRATION_12_13).use { db ->
+            db.query("SELECT text, note, kind, color, drawer, editedAt, deletedAt FROM annotations")
+                .use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals("text", it.getString(0))
+                    assertEquals("my note", it.getString(1))
+                    assertEquals("note", it.getString(2))
+                    assertEquals("", it.getString(3))
+                    assertEquals("", it.getString(4))
+                    assertEquals("", it.getString(5))
+                    assertEquals(0L, it.getLong(6))
+                }
+            db.query("SELECT annotationIds, annotationStates FROM sync_baseline").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("[\"note\"]", it.getString(0))
+                assertTrue("states unknown, so nothing is taken as edited", it.isNull(1))
+            }
+        }
+    }
+
+    @Test
+    fun roomOpensSchema13AndDeletesHighlightsSoftly() = runBlocking {
+        val name = "highlight-lifecycle-dao.db"
+        helper.createDatabase(name, 12).use {
+            it.execSQL(
+                "INSERT INTO annotations VALUES ('note', 'book', 'phone', 'text', '', 'Ch 1', '2026-10-01 10:00:00', 'p0', 'p1', 'highlight')"
+            )
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database =
+            Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+                .addMigrations(*ALL_MIGRATIONS)
+                .build()
+        try {
+            val dao = database.library()
+            assertEquals(1, dao.softDeleteAnnotation("note", 100))
+            assertEquals(100L, dao.annotationById("note")!!.deletedAt)
+            assertEquals(1, dao.restoreAnnotation("note", 50))
+            assertEquals(0L, dao.annotationById("note")!!.deletedAt)
+            assertEquals("text", dao.annotationById("note")!!.text)
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
         }
     }
 

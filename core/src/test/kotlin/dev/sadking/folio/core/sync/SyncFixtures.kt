@@ -36,6 +36,7 @@ internal object Fx {
         authors: List<String> = emptyList(),
         format: String = path.substringAfterLast('.').lowercase(),
         size: Long = 100,
+        complete: Boolean = false,
     ) =
         KindleFile(
             path,
@@ -48,6 +49,7 @@ internal object Fx {
             collections,
             title,
             authors,
+            complete,
         )
 
     fun book(
@@ -87,7 +89,8 @@ internal object Fx {
         statusAt: Long = 0,
         annotationIds: Set<String> = emptySet(),
         collections: Set<String> = emptySet(),
-    ) = Baseline(bookId, path, sha, status, statusAt, annotationIds, collections)
+        annotationStates: Map<String, String>? = null,
+    ) = Baseline(bookId, path, sha, status, statusAt, annotationIds, collections, annotationStates)
 
     fun plan(
         kindle: List<KindleFile>,
@@ -149,6 +152,35 @@ internal object Fx {
                         b.copy(
                             annotations =
                                 b.annotations + action.annotations.filter { it.id !in have }
+                        )
+                    }
+                is PhoneAction.EditAnnotations ->
+                    edit(action.bookId) { b ->
+                        val edits = action.annotations.associateBy { it.id }
+                        val have = b.annotations.map { it.id }.toSet()
+                        b.copy(
+                            annotations =
+                                b.annotations.map { a ->
+                                    edits[a.id]?.let {
+                                        a.copy(
+                                            note = it.note,
+                                            color = it.color,
+                                            drawer = it.drawer,
+                                            updated = it.updated,
+                                            kind = it.kind,
+                                            deleted = false,
+                                        )
+                                    } ?: a
+                                } + action.annotations.filter { it.id !in have }
+                        )
+                    }
+                is PhoneAction.DeleteAnnotations ->
+                    edit(action.bookId) { b ->
+                        b.copy(
+                            annotations =
+                                b.annotations.map {
+                                    if (it.id in action.ids) it.copy(deleted = true) else it
+                                }
                         )
                     }
                 is PhoneAction.SetLists -> edit(action.bookId) { it.copy(lists = action.lists) }

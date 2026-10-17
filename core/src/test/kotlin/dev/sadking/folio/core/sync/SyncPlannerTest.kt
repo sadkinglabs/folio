@@ -577,7 +577,7 @@ class SyncPlannerTest {
 
     @Test
     fun anAnnotationMissingOnOneSideIsAddedBackNeverDeleted() {
-        // Deleted on the Kindle since the last sync: the phone's copy goes back.
+        // An older plugin (no annotationsComplete): the phone's copy goes back.
         val p =
             plan(
                 listOf(file(home, A)),

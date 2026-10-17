@@ -313,6 +313,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
             }
             val statistics by model.statistics.collectAsStateWithLifecycle()
             val annotations by model.annotations.collectAsStateWithLifecycle()
+            val deletedAnnotations by model.deletedAnnotations.collectAsStateWithLifecycle()
             val lookupResults by model.lookupResults.collectAsStateWithLifecycle()
             val lookupProposal by model.lookupProposal.collectAsStateWithLifecycle()
             val lookupCover by model.lookupCover.collectAsStateWithLifecycle()
@@ -709,6 +710,11 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                             ?.pages
                                     },
                             annotations = annotations.filter { it.bookId == book.id },
+                            deletedAnnotations =
+                                deletedAnnotations.filter {
+                                    it.bookId == book.id && it.text.isNotBlank()
+                                },
+                            onRestoreAnnotation = model::restoreAnnotation,
                             nextInSeries = nextBook,
                             busy = op.busy,
                             contentPadding = pagePadding,
