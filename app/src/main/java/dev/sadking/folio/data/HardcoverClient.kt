@@ -729,7 +729,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
      * finish or start date does not parse is dropped; a blank start date is simply unknown.
      */
     private fun finishedReads(row: JSONObject): List<HardcoverRead> =
-        (row.optJSONArray("finished") ?: JSONArray()).objects().take(10).mapNotNull { r ->
+        (row.optJSONArray("finished") ?: JSONArray()).objects().mapNotNull { r ->
             val finishedOn = isoDate(text(r, "finished_at")) ?: return@mapNotNull null
             val started = text(r, "started_at")
             val startedOn =
@@ -811,8 +811,11 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
                 }
             }
 
+        /**
+         * The day of a Hardcover date or timestamp ("2024-03-01" or "2024-03-01T20:15:00+00:00").
+         */
         private fun isoDate(value: String): LocalDate? =
-            runCatching { LocalDate.parse(value) }.getOrNull()
+            runCatching { LocalDate.parse(value.take(10)) }.getOrNull()
 
         private fun epochMillis(value: String): Long? =
             value

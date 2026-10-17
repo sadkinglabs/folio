@@ -377,6 +377,20 @@ class HardcoverClientTest {
     }
 
     @Test
+    fun timestampsAreReadAsTheirDayAndEveryReadIsKept() {
+        // Hardcover may answer timestamps; a book read many times keeps every read.
+        val rows =
+            (1..12).joinToString(",") {
+                """{"id":$it,"started_at":"2026-01-0${it % 9 + 1}T08:00:00+00:00",""" +
+                    """"finished_at":"2026-02-0${it % 9 + 1}T21:05:00+00:00"}"""
+            }
+        val reads = libraryPage(rows)
+        assertEquals(12, reads.size)
+        assertEquals(java.time.LocalDate.of(2026, 2, 2), reads.first().finishedOn)
+        assertEquals(java.time.LocalDate.of(2026, 1, 2), reads.first().startedOn)
+    }
+
+    @Test
     fun aReadWithABadDateIsDropped() {
         val reads =
             libraryPage(
