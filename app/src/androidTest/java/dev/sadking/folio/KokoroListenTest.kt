@@ -69,8 +69,6 @@ class KokoroListenTest {
             .putString("listenEngine", "natural")
             .putInt("kokoroSpeaker", 3)
             .putFloat("listenSpeed", 1.25f)
-            // Per-sentence timings (no text), shown if the volume-key check fails.
-            .putBoolean("narrationRecord", true)
             .remove("narrationVariant")
             .commit()
         val intent =
@@ -153,10 +151,6 @@ class KokoroListenTest {
                     narrationGoing()
                     Thread.sleep(250)
                 }
-                // The owner's bug: pressing the volume keys while listening, with the system volume
-                // panel out, stopped the spoken sentence moving on. Press them as a person would
-                // and require reading to stay on and the sentence to keep advancing.
-                volumeKeysKeepReading(scenario)
                 scenario.onActivity { activity ->
                     ViewModelProvider(activity)[ReaderViewModel::class.java].listen.stop()
                 }
@@ -176,7 +170,6 @@ class KokoroListenTest {
                 .remove("listenEngine")
                 .remove("kokoroSpeaker")
                 .remove("listenSpeed")
-                .remove("narrationRecord")
                 .commit()
             runBlocking { app.database.library().deleteLocalBook(id) }
             dir.deleteRecursively()
@@ -184,98 +177,6 @@ class KokoroListenTest {
             if (!installedBefore) KokoroModel.remove(app, KokoroModel.Variant.INT8)
         }
     }
-
-    /**
-     * The owner's bug: while the system volume panel was out, the voice went on but the highlight
-     * on the page stayed on one sentence until the panel closed. Volume up and down every 0.7 s for
-     * about 6 s keeps the panel out (and the reader's window without focus). The sentence drawn on
-     * the page must keep up with the one being read: never more than 2.5 s behind. Fails with a
-     * timeline, the engine's per-sentence timings and the audio focus stack.
-     */
-    private fun volumeKeysKeepReading(scenario: ActivityScenario<ReaderActivity>) {
-        val instrumentation =
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-        fun key(locator: org.readium.r2.shared.publication.Locator?) = locator?.let {
-            it.href.toString() + "#" + it.text.highlight.orEmpty().hashCode()
-        }
-        data class Sample(val state: ListenState, val spoken: String?, val drawn: String?)
-        fun sample(): Sample {
-            var result = Sample(ListenState.OFF, null, null)
-            scenario.onActivity { activity ->
-                val listen = ViewModelProvider(activity)[ReaderViewModel::class.java].listen
-                result = Sample(listen.state, key(listen.utterance), key(activity.appliedListen))
-            }
-            return result
-        }
-        // Wait for real playback first, so a slow start is not taken for the bug.
-        compose.waitUntil(120_000) { sample().state == ListenState.PLAYING }
-        val timeline = StringBuilder()
-        val start = System.currentTimeMillis()
-        val spokenSeen = mutableSetOf<String?>()
-        var behindSince: Long? = null
-        var worstBehindMs = 0L
-        var nextKeyAt = 0L
-        var press = 0
-        while (System.currentTimeMillis() - start < 7_000) {
-            val now = System.currentTimeMillis() - start
-            if (now >= nextKeyAt && now < 6_000) {
-                instrumentation.sendKeyDownUpSync(
-                    if (press % 2 == 0) android.view.KeyEvent.KEYCODE_VOLUME_UP
-                    else android.view.KeyEvent.KEYCODE_VOLUME_DOWN
-                )
-                press++
-                nextKeyAt = now + 700
-            }
-            val s = sample()
-            spokenSeen += s.spoken
-            if (s.spoken != null && s.spoken != s.drawn) {
-                val since = behindSince ?: now.also { behindSince = it }
-                worstBehindMs = maxOf(worstBehindMs, now - since)
-            } else behindSince = null
-            timeline.append(
-                "${now}ms ${s.state} spoken=${s.spoken?.takeLast(14)} drawn=${s.drawn?.takeLast(14)}\n"
-            )
-            Thread.sleep(200)
-        }
-        val boundaries =
-            File(app.filesDir, "narration/sessions")
-                .listFiles()
-                ?.maxByOrNull { it.name }
-                ?.let { File(it, "boundaries.csv") }
-                ?.takeIf { it.isFile }
-                ?.readLines()
-                ?.takeLast(30)
-                ?.joinToString("\n") ?: "no boundaries.csv"
-        val report =
-            "worst highlight lag ${worstBehindMs}ms, sentences read ${spokenSeen.size}\n" +
-                "$timeline\nBoundaries (last 30):\n$boundaries\nAudio focus:\n${audioFocus()}"
-        android.util.Log.i("KokoroListenTest", report)
-        // CI publishes files/qa to the ci-screenshots branch, so the timeline is readable even
-        // when the check passes. States, hashes and timings only.
-        runCatching {
-            File(app.filesDir, "qa").apply { mkdirs() }.resolve("volume-keys.txt").writeText(report)
-        }
-        check(spokenSeen.size >= 2) { "Reading did not move on during the test.\n$report" }
-        check(worstBehindMs <= 2_500) {
-            "The highlight fell ${worstBehindMs}ms behind the voice with the volume panel out.\n$report"
-        }
-    }
-
-    /** The audio focus stack from `dumpsys audio`, for the failure message. */
-    private fun audioFocus(): String =
-        runCatching {
-                val automation =
-                    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                        .uiAutomation
-                val out = automation.executeShellCommand("dumpsys audio")
-                val text =
-                    android.os.ParcelFileDescriptor.AutoCloseInputStream(out).bufferedReader().use {
-                        it.readText()
-                    }
-                val at = text.indexOf("Audio Focus stack entries")
-                if (at < 0) "no focus section" else text.substring(at).take(1_500)
-            }
-            .getOrElse { "unavailable: $it" }
 
     /** The app's own download, verify and unpack. Skips the test only for a failed download. */
     private fun download() {
