@@ -185,10 +185,12 @@ class ReaderSearchTest {
                         .isNotEmpty()
                 }
                 assertEquals(1, model().searchResults.hits.size)
-                // Back to the focused window, the sheet, delivered and handled before going on: a
-                // system Back through accessibility can be swallowed on a busy emulator.
-                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                    .sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                // Back through the reader's own Back handling, which closes the open sheet. A key
+                // or
+                // accessibility Back right after a rotation can reach a window that has no focus
+                // yet
+                // and be lost on a busy emulator.
+                scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
                 compose.waitUntil(30_000) { model().shownHit == null }
                 compose.waitUntil(30_000) {
                     runCatching { searchDecorations() == 0 }.getOrDefault(false)
