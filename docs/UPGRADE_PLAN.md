@@ -326,11 +326,13 @@ Each milestone ends with: CI green, an APK signed with **your** preserved debug 
 ### M5: Acquisition loop
 - Search sources in Settings; the in-app WebView with download interception; the pending-acquisition → attach → send chain; a broader VIEW intent filter for `.epub` from other apps.
 - **Device check:** Want to Read → EPUB on the e-reader in 5 taps or fewer, excluding the steps inside the web page.
+- **Decided with the owner (2026-10-17):** built-in sources are Standard Ebooks, Project Gutenberg and Internet Archive (public-domain downloads; borrowed, DRM-protected books won't open and the browser says so). The owner can add their own sites. A caught EPUB goes into the Books folder like any import and, since M9, reaches the e-reader at the next sync: there is no Send step any more.
 
 ### M6: Reader depth and polish
 - Search, highlights and notes (round-tripping KOReader), dictionary, time left. Read-aloud is its own milestone, M7.
 - Adaptive tablet layout and an accessibility audit (TalkBack, 200% font).
 - Data hardening: foreign keys and cascades, relative paths, revision pruning, typed errors, DAO split.
+- **Decided with the owner (2026-10-17):** the dictionary is offline and built in: a one-time download, definitions in a sheet when a word is selected, works with no connection. The owner uses a tablet or foldable, so the adaptive layout is in scope. Highlights and notes already sync with the e-reader (M9 step 4). Data hardening keeps CLAUDE.md's invariants: Room migrations stay additive, and nothing that holds reading data is deleted.
 
 ### M7: Read aloud
 Librillo reads the open book aloud with the voice engine already on the phone, highlights the sentence being read and turns the page with it. Listening moves your place like reading does.
