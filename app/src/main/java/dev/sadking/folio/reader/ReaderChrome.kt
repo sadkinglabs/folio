@@ -105,7 +105,10 @@ internal enum class ReaderPanel {
     SEARCH,
 }
 
-/** The top glass bar: Back, the title on one line, Search, Listen and the three sheets. */
+/**
+ * The top glass bar: Back, the title on one line, Search, Listen, Devices and the bookmark ribbon.
+ * Contents and Text sit in the bottom bar, so the title keeps room on a phone.
+ */
 @Composable
 internal fun ReaderTopBar(
     hazeState: HazeState?,
@@ -148,16 +151,6 @@ internal fun ReaderTopBar(
             }
             if (onListen != null)
                 BarAction(Icons.Outlined.Headphones, R.string.reader_listen, enabled, onListen)
-            BarAction(
-                Icons.AutoMirrored.Outlined.FormatListBulleted,
-                R.string.reader_contents,
-                enabled,
-            ) {
-                onPanel(ReaderPanel.CONTENTS)
-            }
-            BarAction(Icons.Outlined.TextFields, R.string.reader_appearance, enabled) {
-                onPanel(ReaderPanel.TEXT)
-            }
             BarAction(Icons.Outlined.Devices, R.string.reader_devices, enabled) {
                 onPanel(ReaderPanel.DEVICES)
             }
@@ -225,6 +218,9 @@ internal fun ReaderBottomBar(
     modifier: Modifier = Modifier,
     /** "12 min left in chapter · 4 h 10 min in book", under the page label; null hides it. */
     timeLeft: String? = null,
+    /** Opens Contents or Text from either end of the page row; null leaves them out. */
+    onPanel: ((ReaderPanel) -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     val state = remember { SliderState(fraction) }
     LaunchedEffect(fraction) { if (!state.isDragging) state.value = fraction }
@@ -273,6 +269,14 @@ internal fun ReaderBottomBar(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onPanel != null)
+                BarAction(
+                    Icons.AutoMirrored.Outlined.FormatListBulleted,
+                    R.string.reader_contents,
+                    enabled,
+                ) {
+                    onPanel(ReaderPanel.CONTENTS)
+                }
             IconButton(onClick = onPrevious) {
                 Icon(
                     Icons.AutoMirrored.Outlined.NavigateBefore,
@@ -305,6 +309,10 @@ internal fun ReaderBottomBar(
                     stringResource(R.string.reader_next_page),
                 )
             }
+            if (onPanel != null)
+                BarAction(Icons.Outlined.TextFields, R.string.reader_appearance, enabled) {
+                    onPanel(ReaderPanel.TEXT)
+                }
         }
     }
 }

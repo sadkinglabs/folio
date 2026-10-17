@@ -1088,6 +1088,8 @@ class ReaderActivity : FragmentActivity() {
                     modifier =
                         Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
                     timeLeft = model.timeLeftNow()?.let { timeLeftText(it, resources) },
+                    onPanel = { panel = it },
+                    enabled = book != null,
                 )
             }
             // Above the bottom bar while it shows; otherwise just above the navigation bar.

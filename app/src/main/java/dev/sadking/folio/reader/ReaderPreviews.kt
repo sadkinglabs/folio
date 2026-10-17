@@ -105,6 +105,7 @@ internal fun ReaderControlsPreview() {
                 onPrevious = {},
                 onNext = {},
                 modifier = Modifier.align(Alignment.BottomCenter),
+                onPanel = {},
             )
         }
     }
