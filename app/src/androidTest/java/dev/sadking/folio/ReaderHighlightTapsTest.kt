@@ -38,6 +38,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -259,12 +260,30 @@ class ReaderHighlightTapsTest {
      * the menu itself: the same onActionItemClicked a finger reaches. Fails if no menu opened.
      */
     private fun ActivityScenario<ReaderActivity>.chooseFromSelectionMenu(itemId: Int) {
-        compose.waitUntil(15_000) {
-            var open = false
-            onActivity { open = it.openSelectionMenu?.findItem(itemId) != null }
-            open
-        }
+        compose.waitUntil(15_000) { menuOffers(itemId) }
         onActivity { it.openSelectionMenu!!.performIdentifierAction(itemId, 0) }
+    }
+
+    private fun ActivityScenario<ReaderActivity>.menuOffers(itemId: Int): Boolean {
+        var open = false
+        onActivity { open = it.openSelectionMenu?.findItem(itemId) != null }
+        return open
+    }
+
+    /**
+     * Long-presses ([x], [y]) until the selection menu opens, up to 3 times: a press that lands
+     * before the page takes touches is lost, as in ReaderUiTest.
+     */
+    private fun ActivityScenario<ReaderActivity>.select(x: Int, y: Int) {
+        repeat(3) {
+            longPress(x, y)
+            if (
+                runCatching { compose.waitUntil(5_000) { menuOffers(SELECTION_HIGHLIGHT) } }
+                    .isSuccess
+            )
+                return
+        }
+        fail("No selection menu after 3 long-presses.\n" + Diagnostics.state())
     }
 
     private fun sheetShown() =
@@ -334,7 +353,13 @@ class ReaderHighlightTapsTest {
                     "readium.getDecorations('highlights').items.find(" +
                         "i => i.decoration.id === '${kindle.id}').range.getClientRects()[0]"
                 ) ?: error("The highlight has no place on the page.")
-            tap(at.first, at.second)
+            // A tap that lands before the page takes touches is lost: tap again, up to 3 times.
+            var taps = 0
+            while (!sheetShown() && taps < 3) {
+                tap(at.first, at.second)
+                taps++
+                runCatching { compose.waitUntil(5_000) { sheetShown() } }
+            }
             awaitSheet()
             scenario.recolourAndDelete(kindle.id)
         }
@@ -352,7 +377,7 @@ class ReaderHighlightTapsTest {
             }
             val (x, y) = at!!
             // Long-press selects the word; Highlight in the selection menu saves it.
-            longPress(x, y)
+            scenario.select(x, y)
             scenario.chooseFromSelectionMenu(SELECTION_HIGHLIGHT)
             compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() }
             val made = phoneRows(id).single()
@@ -361,7 +386,7 @@ class ReaderHighlightTapsTest {
                 runCatching { made.id in scenario.drawn() }.getOrDefault(false)
             }
             // The same word again: the menu's Highlight opens the one already there.
-            longPress(x, y)
+            scenario.select(x, y)
             scenario.chooseFromSelectionMenu(SELECTION_HIGHLIGHT)
             awaitSheet()
             assertEquals(1, phoneRows(id).size)
