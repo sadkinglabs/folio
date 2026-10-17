@@ -66,7 +66,11 @@ class FolioLinkServerTest {
             )
         assertEquals(0.25, JSONObject(get.body()).getDouble("percentage"), 0.0)
 
-        // The log says what happened without the book's key or any credential.
+        // The log says what happened without the book's key or any credential. The server logs a
+        // request after answering it, so the last entry can land a moment after the response.
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (synchronized(events) { events.size } < 3 && System.nanoTime() < deadline) Thread
+            .sleep(10)
         val logged = synchronized(events) { events.toList() }
         assertEquals(
             listOf("/users/auth", "/syncs/progress", "/syncs/progress/…"),
