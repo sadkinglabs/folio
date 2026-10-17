@@ -69,6 +69,8 @@ class KokoroListenTest {
             .putString("listenEngine", "natural")
             .putInt("kokoroSpeaker", 3)
             .putFloat("listenSpeed", 1.25f)
+            // Per-sentence timings (no text), shown if the volume-key check fails.
+            .putBoolean("narrationRecord", true)
             .remove("narrationVariant")
             .commit()
         val intent =
@@ -151,6 +153,10 @@ class KokoroListenTest {
                     narrationGoing()
                     Thread.sleep(250)
                 }
+                // The owner's bug: pressing the volume keys while listening, with the system volume
+                // panel out, stopped the spoken sentence moving on. Press them as a person would
+                // and require reading to stay on and the sentence to keep advancing.
+                volumeKeysKeepReading(scenario)
                 scenario.onActivity { activity ->
                     ViewModelProvider(activity)[ReaderViewModel::class.java].listen.stop()
                 }
@@ -170,6 +176,7 @@ class KokoroListenTest {
                 .remove("listenEngine")
                 .remove("kokoroSpeaker")
                 .remove("listenSpeed")
+                .remove("narrationRecord")
                 .commit()
             runBlocking { app.database.library().deleteLocalBook(id) }
             dir.deleteRecursively()
@@ -177,6 +184,87 @@ class KokoroListenTest {
             if (!installedBefore) KokoroModel.remove(app, KokoroModel.Variant.INT8)
         }
     }
+
+    /**
+     * Volume up and down every 0.7 s for about 6 s, through the reader's window like the hardware
+     * keys, so the system volume panel stays out. Fails, with a timeline and the audio focus stack,
+     * if reading pauses or the sentence being read stops moving on.
+     */
+    private fun volumeKeysKeepReading(scenario: ActivityScenario<ReaderActivity>) {
+        val instrumentation =
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        fun sample(): Pair<ListenState, String?> {
+            var state = ListenState.OFF
+            var spoken: String? = null
+            scenario.onActivity { activity ->
+                val listen = ViewModelProvider(activity)[ReaderViewModel::class.java].listen
+                state = listen.state
+                spoken = listen.utterance?.let { it.href.toString() + it.text.highlight.orEmpty() }
+            }
+            return state to spoken
+        }
+        // Wait for real playback first, so a slow start is not taken for the bug.
+        compose.waitUntil(120_000) { sample().first == ListenState.PLAYING }
+        val timeline = StringBuilder()
+        val start = System.currentTimeMillis()
+        val sentences = mutableSetOf<String?>()
+        var paused = false
+        var press = 0
+        while (System.currentTimeMillis() - start < 6_000) {
+            val key =
+                if (press % 2 == 0) android.view.KeyEvent.KEYCODE_VOLUME_UP
+                else android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+            instrumentation.sendKeyDownUpSync(key)
+            press++
+            Thread.sleep(700)
+            val (state, spoken) = sample()
+            sentences += spoken
+            if (state == ListenState.PAUSED) paused = true
+            timeline.append(
+                "${System.currentTimeMillis() - start}ms $state ${spoken?.takeLast(40)}\n"
+            )
+        }
+        // Then a little longer without keys, to see whether it recovers on its own.
+        Thread.sleep(3_000)
+        val after = sample()
+        timeline.append("after keys: ${after.first} ${after.second?.takeLast(40)}\n")
+        val boundaries =
+            File(app.filesDir, "narration/sessions")
+                .listFiles()
+                ?.maxByOrNull { it.name }
+                ?.let { File(it, "boundaries.csv") }
+                ?.takeIf { it.isFile }
+                ?.readLines()
+                ?.takeLast(30)
+                ?.joinToString("\n") ?: "no boundaries.csv"
+        val report = "$timeline\nBoundaries (last 30):\n$boundaries\nAudio focus:\n${audioFocus()}"
+        android.util.Log.i("KokoroListenTest", report)
+        // CI publishes files/qa to the ci-screenshots branch, so the timeline is readable even
+        // when the check passes. Timings and states only, no book text beyond the fixture's.
+        runCatching {
+            File(app.filesDir, "qa").apply { mkdirs() }.resolve("volume-keys.txt").writeText(report)
+        }
+        check(!paused) { "Reading paused while the volume keys were pressed.\n$report" }
+        check(sentences.size >= 2) {
+            "The sentence being read did not move on while the volume keys were pressed.\n$report"
+        }
+    }
+
+    /** The audio focus stack from `dumpsys audio`, for the failure message. */
+    private fun audioFocus(): String =
+        runCatching {
+                val automation =
+                    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                        .uiAutomation
+                val out = automation.executeShellCommand("dumpsys audio")
+                val text =
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(out).bufferedReader().use {
+                        it.readText()
+                    }
+                val at = text.indexOf("Audio Focus stack entries")
+                if (at < 0) "no focus section" else text.substring(at).take(1_500)
+            }
+            .getOrElse { "unavailable: $it" }
 
     /** The app's own download, verify and unpack. Skips the test only for a failed download. */
     private fun download() {
