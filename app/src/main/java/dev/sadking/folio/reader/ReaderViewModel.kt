@@ -164,6 +164,49 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private var defineJob: kotlinx.coroutines.Job? = null
 
+    /** Brightness, warmth, keeping the screen on and page turns; see [ReaderComfort]. */
+    var comfort by mutableStateOf(ReaderComfort.load(settings))
+        private set
+
+    /** Applies and keeps a comfort choice at once, for every book. */
+    fun comfort(value: ReaderComfort) {
+        comfort = value.bounded()
+        ReaderComfort.save(settings, comfort)
+    }
+
+    private val bookmarkStore = BookmarkStore(dao)
+
+    /** This book's bookmarks for the open revision, newest first, each with its place parsed. */
+    internal var marks by mutableStateOf<List<PlacedBookmark>>(emptyList())
+        private set
+
+    /** The screen's share of the chapter, measured in the page; null until then. */
+    internal var pageSpan by mutableStateOf<PageSpan?>(null)
+
+    /** Bookmarks the owner just removed from the page, while Undo is offered. */
+    internal var removedMarks by mutableStateOf<List<PhoneBookmark>?>(null)
+        private set
+
+    /** The bookmarks on the page shown; empty when it has none. */
+    internal val pageMarks: List<PhoneBookmark>
+        get() {
+            val page = lastLocation ?: return emptyList()
+            val path = resourcePath(page.href.toString())
+            val span = pageSpan?.takeIf { it.path == path }?.span
+            return marks
+                .filter { placed ->
+                    placed.locator?.let {
+                        bookmarkOnPage(it, page, span, byPosition = kind != ReaderKind.EPUB)
+                    } == true
+                }
+                .map { it.mark }
+        }
+
+    /** True when a bookmark lies in the chapter at [path], so the page is worth measuring. */
+    internal fun hasBookmarkIn(path: String) = marks.any { placed ->
+        placed.locator?.let { resourcePath(it.href.toString()) } == path
+    }
+
     /** Set on the Settings tab; the reader only reads it. */
     val volumeKeys: Boolean
         get() = settings.getBoolean("volumeKeys", true)
@@ -374,6 +417,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 kind = openedKind
                 publication = opened
                 if (openedKind == ReaderKind.EPUB) watchHighlights(id)
+                watchBookmarks(loaded.first)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (failure: Exception) {
@@ -741,29 +785,68 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun bookmark() {
+    /**
+     * The top bar's bookmark: adds one for the page shown, or removes the page's bookmarks and
+     * offers Undo through [removedMarks]. The icon follows from [pageMarks].
+     */
+    fun toggleBookmark() {
         val current = book ?: return
-        val locator = lastLocation ?: return
+        val page = lastLocation ?: return
+        val path = resourcePath(page.href.toString())
+        val span = pageSpan?.takeIf { it.path == path }?.span
         viewModelScope.launch {
-            dao.addPhoneBookmark(
-                PhoneBookmark(
-                    UUID.randomUUID().toString(),
-                    current.id,
-                    current.currentHash,
-                    locator.toJSON().toString(),
-                    listOfNotNull(
-                            locator.title,
-                            "${((locator.locations.totalProgression ?: 0.0) * 100).toInt()}%",
-                        )
-                        .joinToString(" · "),
-                    System.currentTimeMillis(),
-                )
-            )
-            message = app.getString(R.string.msg_reader_bookmark_saved)
+            try {
+                val change =
+                    bookmarkStore.toggle(current, page, span, byPosition = kind != ReaderKind.EPUB)
+                if (change is BookmarkChange.Removed) removedMarks = change.marks
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_bookmark_failed)
+            }
         }
     }
 
-    fun bookmarks() = book?.let { dao.phoneBookmarks(it.id, it.currentHash) }
+    /** Puts back the bookmarks removed last, after Undo. */
+    fun undoBookmarkRemoval() {
+        val removed = removedMarks ?: return
+        removedMarks = null
+        viewModelScope.launch {
+            try {
+                bookmarkStore.restore(removed)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_bookmark_failed)
+            }
+        }
+    }
+
+    /** The Undo offer ended without Undo. */
+    fun settleBookmarkRemoval() {
+        removedMarks = null
+    }
+
+    fun renameBookmark(id: String, title: String) {
+        viewModelScope.launch {
+            try {
+                bookmarkStore.rename(id, title)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_bookmark_failed)
+            }
+        }
+    }
+
+    private fun watchBookmarks(opened: Book) {
+        viewModelScope.launch {
+            dao.phoneBookmarks(opened.id, opened.currentHash)
+                .map { rows -> rows.map(::placed) }
+                .flowOn(Dispatchers.Default)
+                .collect { marks = it }
+        }
+    }
 
     private fun watchHighlights(bookId: String) {
         viewModelScope.launch {
@@ -810,7 +893,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteBookmark(id: String) {
-        viewModelScope.launch { dao.deletePhoneBookmark(id) }
+        viewModelScope.launch { bookmarkStore.delete(id) }
     }
 
     fun completedIncoming() {

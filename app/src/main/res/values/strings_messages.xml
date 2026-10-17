@@ -208,7 +208,6 @@
     <string name="msg_reader_epub_protected">This EPUB is protected or not supported. Librillo reads DRM-free EPUBs.</string>
     <string name="msg_reader_no_chapters">This EPUB has no readable chapters. Attach a valid EPUB or try another reader.</string>
     <string name="msg_reader_open_failed">Could not open this book</string>
-    <string name="msg_reader_bookmark_saved">Bookmark saved</string>
     <string name="msg_books_folder_moving">Moving your books to the Books folder…</string>
     <string name="msg_books_folder_no_access">Allow All files access in Settings → Books folder first.</string>
     <plurals name="msg_books_folder_moved">

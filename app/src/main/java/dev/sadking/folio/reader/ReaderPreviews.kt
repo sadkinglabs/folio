@@ -47,10 +47,10 @@ private val sampleParagraphs =
 
 /** Four paragraphs of serif text on the page colour, where the book would be. */
 @Composable
-internal fun ReaderPagePlaceholder(dark: Boolean) {
+internal fun ReaderPagePlaceholder(dark: Boolean, paper: Boolean = false) {
     Column(
         Modifier.fillMaxSize()
-            .background(if (dark) Color.Black else Color.White)
+            .background(if (paper) Color(0xFFFAF4E8) else if (dark) Color.Black else Color.White)
             .padding(horizontal = 28.dp, vertical = 72.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -91,6 +91,7 @@ internal fun ReaderControlsPreview() {
                 onPanel = {},
                 modifier = Modifier.align(Alignment.TopCenter),
                 onListen = {},
+                onBookmark = {},
             )
             ReaderBottomBar(
                 null,
@@ -103,7 +104,6 @@ internal fun ReaderControlsPreview() {
                 onJump = {},
                 onPrevious = {},
                 onNext = {},
-                onBookmark = {},
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -549,7 +549,6 @@ internal fun ReaderTimeLeftPreview() {
                 onJump = {},
                 onPrevious = {},
                 onNext = {},
-                onBookmark = {},
                 modifier = Modifier.align(Alignment.BottomCenter),
                 timeLeft = timeLeftText(TimeLeft(12, 250), LocalResources.current),
             )

@@ -217,6 +217,23 @@ class ScreenshotTest {
 
     @Test fun readerContents() = shoot("reader-contents") { ReaderContentsPreview() }
 
+    @Test
+    fun readerTextComfort() =
+        shoot("reader-text-comfort", tall = true) { ReaderTextComfortPreview() }
+
+    @Test
+    fun readerComfortScrolling() =
+        shoot("reader-comfort-scrolling") { ReaderComfortScrollingPreview() }
+
+    @Test
+    fun readerBookmarkedWarm() = shoot("reader-bookmarked-warm") { ReaderBookmarkedWarmPreview() }
+
+    @Test
+    fun readerBookmarkedPaper() =
+        shoot("reader-bookmarked-paper") { ReaderBookmarkedPaperPreview() }
+
+    @Test fun readerBookmarks() = shoot("reader-bookmarks") { ReaderBookmarksPreview() }
+
     @Test fun readerHighlight() = shoot("reader-highlight") { ReaderHighlightPreview() }
 
     @Test fun readerDevices() = shoot("reader-devices") { ReaderDevicesPreview() }

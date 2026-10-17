@@ -493,6 +493,9 @@ interface LibraryDao {
 
     @Query("DELETE FROM phone_bookmarks WHERE id=:id") suspend fun deletePhoneBookmark(id: String)
 
+    @Query("UPDATE phone_bookmarks SET title=:title WHERE id=:id")
+    suspend fun renamePhoneBookmark(id: String, title: String)
+
     @Query("SELECT * FROM hardcover_observations")
     fun hardcoverObservations(): Flow<List<HardcoverObservation>>
 

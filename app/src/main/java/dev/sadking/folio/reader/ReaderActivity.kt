@@ -31,6 +31,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,7 +59,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BookAnnotation
-import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.data.ReaderPlaces
 import dev.sadking.folio.reader.dictionary.DefineSheet
 import dev.sadking.folio.reader.dictionary.DictionaryModel
@@ -83,8 +84,6 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.css.Length
 import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.image.ImageNavigatorFragment
-import org.readium.r2.navigator.input.InputListener
-import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
@@ -119,6 +118,8 @@ class ReaderActivity : FragmentActivity() {
     private var shownHighlight by mutableStateOf<BookAnnotation?>(null)
     /** A passage waiting for its note in the Add note dialog. */
     private var pendingNote by mutableStateOf<PendingNote?>(null)
+    /** Counts touches and keys, so the screen may sleep after a while without any. */
+    private var interactions by mutableIntStateOf(0)
     private val scripts by lazy {
         listOf("positions.js", "bridge.js", "highlights.js").joinToString("\n") { name ->
             assets.open("reader/$name").bufferedReader().use { it.readText() }
@@ -187,6 +188,11 @@ class ReaderActivity : FragmentActivity() {
                 }
             FolioTheme(dark, appearance.getBoolean("dynamic", true)) { ReaderScreen(dark) }
         }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        interactions++
     }
 
     override fun onPause() {
@@ -275,11 +281,11 @@ class ReaderActivity : FragmentActivity() {
         if (nav != null && volumeTurnsPages()) {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    nav.goForward(animated = false)
+                    nav.goForward(animated = model.comfort.pageAnimation)
                     return true
                 }
                 KeyEvent.KEYCODE_VOLUME_UP -> {
-                    nav.goBackward(animated = false)
+                    nav.goBackward(animated = model.comfort.pageAnimation)
                     return true
                 }
             }
@@ -377,23 +383,19 @@ class ReaderActivity : FragmentActivity() {
         epubNavigator = epub
         // Only the EPUB page is a WebView; PDF and comic views load nothing from outside.
         if (epub != null) harden(fragment.requireView())
-        // Listeners run in order until one consumes the event. Readium's adapter claims edge taps
-        // (30% each side, in its own coordinate units) and arrow/page keys; any tap it leaves is
-        // a centre tap and toggles the controls. No coordinate maths of our own: comparing tap
-        // points with the fragment's pixel width failed to hide the controls on the emulator.
-        nav.addInputListener(DirectionalNavigationAdapter(nav))
+        // Listeners run in order until one consumes the event. Readium's adapter keeps the arrow
+        // and page keys; taps go to PageTaps, which follows the owner's tap zones. It compares the
+        // tap with the width of Readium's own page view, as the adapter does: comparing tap points
+        // with the fragment's pixel width once failed to hide the controls on the emulator.
+        nav.addInputListener(DirectionalNavigationAdapter(nav, tapEdges = emptySet()))
         nav.addInputListener(
-            object : InputListener {
-                override fun onTap(event: TapEvent): Boolean {
-                    controls = !controls
-                    return true
-                }
-            }
+            PageTaps(nav, { model.comfort }, onControls = { controls = !controls })
         )
         if (epub != null) {
             epub.addDecorationListener(HIGHLIGHT_GROUP, highlightTaps)
             lifecycleScope.launch { showHighlights(epub) }
             lifecycleScope.launch { showSearchHit(epub) }
+            lifecycleScope.launch { measurePageSpan(epub) }
         }
         // The sentence being read: highlight it and keep its page in view. The page turn saves the
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
@@ -761,6 +763,36 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
+     * Measures how much of the chapter a screen shows, so a bookmark made at another text size
+     * still marks the page it falls on. Only chapters with a bookmark are measured, after the page
+     * settles; until then a bookmark marks only the exact page it was made on.
+     */
+    private suspend fun measurePageSpan(epub: EpubNavigatorFragment) {
+        snapshotFlow {
+                val path = model.lastLocation?.href?.toString()?.let(::resourcePath)
+                Triple(model.lastLocation, path, path != null && model.hasBookmarkIn(path))
+            }
+            .collectLatest { (page, path, wanted) ->
+                if (page == null || path == null || !wanted) return@collectLatest
+                delay(PAGE_SPAN_DELAY_MS)
+                val span =
+                    try {
+                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                                epub.evaluateJavascript(pageSpanScript(model.scrolling))
+                            }
+                            ?.toDoubleOrNull()
+                            ?.takeIf { it > 0.0 && it <= 1.0 }
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        null
+                    }
+                if (span != null && resourcePath(epub.currentLocator.value.href.toString()) == path)
+                    model.pageSpan = PageSpan(path, span)
+            }
+    }
+
+    /**
      * Draws the search match the owner tapped, and removes it when the search closes. Redrawn after
      * a rotation, since the match is kept in the model.
      */
@@ -860,11 +892,37 @@ class ReaderActivity : FragmentActivity() {
             (bench as? NarrationBenchmark.State.Running)?.step.let {
                 it != null && it != NarrationBenchmark.Step.SUSTAINED
             }
-        DisposableEffect(keepScreenOn) {
-            if (keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Reading keeps the screen on, when chosen, until ten minutes pass without a touch or key.
+        // The flag belongs to this window, so it ends when the reader is not in front.
+        var awake by remember { mutableStateOf(true) }
+        LaunchedEffect(interactions) {
+            awake = true
+            delay(ReaderComfort.IDLE_SLEEP_MS)
+            awake = false
+        }
+        val screenOn = keepScreenOn || (model.comfort.keepScreenOn && awake)
+        DisposableEffect(screenOn) {
+            if (screenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             onDispose {
-                if (keepScreenOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (screenOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+        }
+        // The reader's own brightness, for this window only; Auto leaves it to the phone.
+        val brightness = model.comfort.windowBrightness()
+        LaunchedEffect(brightness) {
+            window.attributes = window.attributes.also { it.screenBrightness = brightness }
+        }
+        val removedMarks = model.removedMarks
+        LaunchedEffect(removedMarks) {
+            if (removedMarks == null) return@LaunchedEffect
+            val result =
+                snackbar.showSnackbar(
+                    getString(R.string.reader_bookmark_removed),
+                    actionLabel = getString(R.string.action_undo),
+                    duration = SnackbarDuration.Short,
+                )
+            if (result == SnackbarResult.ActionPerformed) model.undoBookmarkRemoval()
+            else model.settleBookmarkRemoval()
         }
         BackHandler { if (panel != null) closePanel() else closeReader() }
         LaunchedEffect(model.message, navigationError) {
@@ -938,6 +996,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val fade = FolioMotion.standardSpec<Float>()
         val showBars = controls && book != null && model.error == null
+        val pageBookmarked = model.pageMarks.isNotEmpty()
         LaunchedEffect(showBars) { if (showBars) model.loadPositions() }
         // Controls are drawn over the page. The page area itself never changes size when they
         // appear or disappear, so Readium does not re-paginate and the reading position holds.
@@ -973,7 +1032,11 @@ class ReaderActivity : FragmentActivity() {
                         // blinking. The bars use a flat tint instead.
                         modifier = Modifier.fillMaxSize(),
                     )
+                if (model.publication != null && model.error == null && pageBookmarked)
+                    BookmarkRibbon(pageDark, Modifier.align(Alignment.TopEnd).padding(end = 20.dp))
             }
+            // Over the page and its margins, under the bars; sheets are windows of their own.
+            WarmthOverlay(model.comfort.warmth, Modifier.matchParentSize())
             AnimatedVisibility(
                 visible = showBars,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -992,6 +1055,8 @@ class ReaderActivity : FragmentActivity() {
                     onBack = ::closeReader,
                     onPanel = { panel = it },
                     onListen = if (model.kind == ReaderKind.EPUB) ::startListening else null,
+                    bookmarked = pageBookmarked,
+                    onBookmark = model::toggleBookmark,
                 )
             }
             AnimatedVisibility(
@@ -1018,9 +1083,8 @@ class ReaderActivity : FragmentActivity() {
                     },
                     insets = WindowInsets.navigationBarsIgnoringVisibility,
                     onJump = ::jumpTo,
-                    onPrevious = { navigator?.goBackward(animated = false) },
-                    onNext = { navigator?.goForward(animated = false) },
-                    onBookmark = model::bookmark,
+                    onPrevious = { navigator?.goBackward(animated = model.comfort.pageAnimation) },
+                    onNext = { navigator?.goForward(animated = model.comfort.pageAnimation) },
                     modifier =
                         Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
                     timeLeft = model.timeLeftNow()?.let { timeLeftText(it, resources) },
@@ -1160,8 +1224,20 @@ class ReaderActivity : FragmentActivity() {
                         )
                     ReaderPanel.TEXT ->
                         if (model.kind == ReaderKind.EPUB) TextPanel()
-                        else PanelNote(R.string.reader_m9_text_epub_only)
-                    ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
+                        else
+                            Column(
+                                Modifier.verticalScroll(rememberScrollState())
+                                    .padding(bottom = 32.dp)
+                            ) {
+                                PanelNote(R.string.reader_m9_text_epub_only)
+                                // PDFs scroll, so their taps only show the controls.
+                                ReaderComfortSection(
+                                    model.comfort,
+                                    scrolling = model.kind == ReaderKind.PDF,
+                                    onChange = model::comfort,
+                                )
+                            }
+                    ReaderPanel.CONTENTS -> ContentsPanel { panel = null }
                     ReaderPanel.SEARCH ->
                         if (model.kind == ReaderKind.EPUB)
                             ReaderSearchSheet(
@@ -1264,6 +1340,7 @@ class ReaderActivity : FragmentActivity() {
                 showTwoPages = wide && !model.scrolling,
             ),
             actions,
+            more = { ReaderComfortSection(model.comfort, model.scrolling, model::comfort) },
         )
     }
 
@@ -1278,7 +1355,7 @@ class ReaderActivity : FragmentActivity() {
     }
 
     @Composable
-    private fun ContentsPanel(bookId: String?, close: () -> Unit) {
+    private fun ContentsPanel(close: () -> Unit) {
         val links = model.publication?.tableOfContents.orEmpty()
         val flat = remember(links) { flattenContents(links) }
         val entries =
@@ -1288,10 +1365,8 @@ class ReaderActivity : FragmentActivity() {
             remember(flat, currentPath) {
                 flat.indexOfLast { (link, _) -> resourcePath(link.url().toString()) == currentPath }
             }
-        val flow = remember(bookId) { model.bookmarks() }
-        val bookmarks by
-            flow?.collectAsState(initial = emptyList())
-                ?: remember { mutableStateOf(emptyList<PhoneBookmark>()) }
+        val bookmarks = remember(model.marks) { model.marks.map { it.mark } }
+        var renaming by rememberSaveable { mutableStateOf<String?>(null) }
         ReaderContentsSheet(
             entries,
             current,
@@ -1308,7 +1383,20 @@ class ReaderActivity : FragmentActivity() {
                 close()
             },
             onDelete = { model.deleteBookmark(it.id) },
+            onRename = { renaming = it.id },
         )
+        bookmarks
+            .firstOrNull { it.id == renaming }
+            ?.let { mark ->
+                RenameBookmarkDialog(
+                    mark.title,
+                    onSave = {
+                        renaming = null
+                        model.renameBookmark(mark.id, it)
+                    },
+                    onDismiss = { renaming = null },
+                )
+            }
     }
 
     @Composable
@@ -1366,6 +1454,8 @@ class ReaderActivity : FragmentActivity() {
         private const val BRIDGE_WAIT_MS = 8_000L
         private const val PLACE_ATTEMPTS = 5
         private const val PLACE_RETRY_MS = 400L
+        /** How long a page stays before it is measured for bookmarks. */
+        private const val PAGE_SPAN_DELAY_MS = 300L
         private const val SEARCH_DECORATION_ID = "search-hit"
         /** The narrowest window that offers two pages side by side. */
         private const val TWO_PAGES_MIN_WIDTH_DP = 600

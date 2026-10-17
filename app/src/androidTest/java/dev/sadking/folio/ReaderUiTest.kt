@@ -222,6 +222,13 @@ class ReaderUiTest {
                         app.database.library().phoneBookmarks(id, hash).first().isNotEmpty()
                     }
                 }
+                // The ribbon fills: the page shown is the bookmarked one.
+                compose.waitUntil(10000) {
+                    compose
+                        .onAllNodesWithContentDescription("Remove bookmark")
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                }
                 compose.onNodeWithContentDescription("Contents").performClick()
                 // The chapter title also shows in the bottom bar; check the contents entry itself.
                 compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()

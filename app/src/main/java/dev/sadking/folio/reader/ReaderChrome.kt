@@ -28,12 +28,14 @@ import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.Bedtime
-import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
@@ -83,6 +85,7 @@ internal const val READER_LINK_OFFER_TAG = "reader-link-offer"
 internal const val READER_FAILED_TAG = "reader-failed"
 internal const val READER_LISTEN_BAR_TAG = "reader-listen-bar"
 internal const val READER_LISTEN_SHEET_TAG = "reader-listen-sheet"
+internal const val READER_BOOKMARK_BUTTON_TAG = "reader-bookmark-button"
 
 /** The test tag of one theme swatch in the Text sheet: `reader-theme-Paper`. */
 internal fun readerThemeTag(theme: String) = "reader-theme-$theme"
@@ -114,6 +117,10 @@ internal fun ReaderTopBar(
     onPanel: (ReaderPanel) -> Unit,
     modifier: Modifier = Modifier,
     onListen: (() -> Unit)? = null,
+    /** The page shown has a bookmark: the ribbon is filled. */
+    bookmarked: Boolean = false,
+    /** Bookmarks the page, or removes its bookmark; null leaves the button out. */
+    onBookmark: (() -> Unit)? = null,
 ) {
     GlassBar(
         hazeState,
@@ -154,6 +161,34 @@ internal fun ReaderTopBar(
             BarAction(Icons.Outlined.Devices, R.string.reader_devices, enabled) {
                 onPanel(ReaderPanel.DEVICES)
             }
+            if (onBookmark != null) BookmarkAction(bookmarked, enabled, onBookmark)
+        }
+    }
+}
+
+/**
+ * The top bar's ribbon: outlined to bookmark the page, filled when the page has one, and then it
+ * removes it.
+ */
+@Composable
+private fun BookmarkAction(bookmarked: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val name =
+        stringResource(
+            if (bookmarked) R.string.reader_bookmark_remove else R.string.reader_bookmark
+        )
+    val state = stringResource(R.string.reader_bookmarked)
+    Tooltipped(name) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier =
+                Modifier.testTag(READER_BOOKMARK_BUTTON_TAG).semantics {
+                    if (bookmarked) stateDescription = state
+                },
+        ) {
+            if (bookmarked)
+                Icon(Icons.Filled.Bookmark, name, tint = MaterialTheme.colorScheme.primary)
+            else Icon(Icons.Outlined.BookmarkBorder, name)
         }
     }
 }
@@ -172,8 +207,8 @@ private fun BarAction(
 
 /**
  * The bottom glass bar: the book as a slider with a tick where each chapter starts, the page label,
- * and the page and bookmark buttons. Dragging scrubs: the label follows the thumb and names the
- * chapter under it; letting go jumps there through [onJump], at a 0..1 fraction of the book.
+ * and the page buttons. Dragging scrubs: the label follows the thumb and names the chapter under
+ * it; letting go jumps there through [onJump], at a 0..1 fraction of the book.
  */
 @Composable
 internal fun ReaderBottomBar(
@@ -187,7 +222,6 @@ internal fun ReaderBottomBar(
     onJump: (Float) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onBookmark: () -> Unit,
     modifier: Modifier = Modifier,
     /** "12 min left in chapter · 4 h 10 min in book", under the page label; null hides it. */
     timeLeft: String? = null,
@@ -264,9 +298,6 @@ internal fun ReaderBottomBar(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-            }
-            IconButton(onClick = onBookmark) {
-                Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.reader_bookmark))
             }
             IconButton(onClick = onNext) {
                 Icon(
@@ -356,6 +387,8 @@ internal fun ReaderTextSheet(
     /** One line under the title, such as Settings' note that these are the defaults. */
     subtitle: String? = null,
     tag: String = READER_TEXT_SHEET_TAG,
+    /** More groups under the text settings, such as the reader's screen and page-turn choices. */
+    more: (@Composable () -> Unit)? = null,
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -438,6 +471,7 @@ internal fun ReaderTextSheet(
                 SheetSwitch(stringResource(R.string.appearance_book_only), state.bookOnly, it)
             }
         }
+        more?.invoke()
     }
 }
 
@@ -628,26 +662,44 @@ private fun ChoiceSlider(
     }
 }
 
-/** A switch row inside a sheet: no icon, the title does the work. */
+/**
+ * A switch row inside a sheet: no icon, the title does the work, with an optional line under it.
+ */
 @Composable
-private fun SheetSwitch(
+internal fun SheetSwitch(
     title: String,
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
     inset: androidx.compose.ui.unit.Dp = FolioSpace.section,
+    detail: String? = null,
+    enabled: Boolean = true,
 ) {
     val haptics = rememberHaptics()
+    val alpha = if (enabled) 1f else 0.38f
     Row(
         Modifier.fillMaxWidth()
-            .toggleable(checked, role = Role.Switch) {
+            .toggleable(checked, enabled = enabled, role = Role.Switch) {
                 haptics.toggle(it)
                 onChecked(it)
             }
             .padding(horizontal = inset, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
     ) {
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked, null)
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+            )
+            if (detail != null)
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                )
+        }
+        Switch(checked, null, enabled = enabled)
     }
 }
 
@@ -666,8 +718,12 @@ internal fun ReaderContentsSheet(
     onEntry: (Int) -> Unit,
     onBookmark: (PhoneBookmark) -> Unit,
     onDelete: (PhoneBookmark) -> Unit,
+    /** Rename was tapped on a bookmark; the reader asks for the new name. */
+    onRename: (PhoneBookmark) -> Unit = {},
+    /** 0 opens on Contents, 1 on Bookmarks. */
+    initialTab: Int = 0,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     val contentsState =
         rememberLazyListState(initialFirstVisibleItemIndex = current.coerceAtLeast(0))
     val bookmarksState = rememberLazyListState()
@@ -730,7 +786,12 @@ internal fun ReaderContentsSheet(
                 if (bookmarks.isEmpty())
                     item { SheetNote(stringResource(R.string.bookmarks_empty)) }
                 items(bookmarks, key = { it.id }) { mark ->
-                    BookmarkRow(mark, { onBookmark(mark) }, { onDelete(mark) })
+                    BookmarkRow(
+                        mark,
+                        { onBookmark(mark) },
+                        { onDelete(mark) },
+                        { onRename(mark) },
+                    )
                 }
             }
         }
@@ -747,9 +808,14 @@ private fun SheetNote(text: String) {
     )
 }
 
-/** A bookmark: tap to go there, swipe left (or the trash) to delete it. */
+/** A bookmark: tap to go there, the pencil to rename it, swipe left (or the trash) to delete it. */
 @Composable
-private fun BookmarkRow(mark: PhoneBookmark, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun BookmarkRow(
+    mark: PhoneBookmark,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+    onRename: () -> Unit,
+) {
     val dismiss = rememberSwipeToDismissBoxState()
     LaunchedEffect(dismiss.currentValue) {
         if (dismiss.currentValue == SwipeToDismissBoxValue.EndToStart) onDelete()
@@ -783,6 +849,10 @@ private fun BookmarkRow(mark: PhoneBookmark, onOpen: () -> Unit, onDelete: () ->
                 Modifier.weight(1f).padding(vertical = 12.dp),
                 style = MaterialTheme.typography.bodyLarge,
             )
+            val rename = stringResource(R.string.bookmark_rename)
+            Tooltipped(rename) {
+                IconButton(onClick = onRename) { Icon(Icons.Outlined.Edit, rename) }
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Outlined.DeleteOutline, stringResource(R.string.bookmark_delete))
             }

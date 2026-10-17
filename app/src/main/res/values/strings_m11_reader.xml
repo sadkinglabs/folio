@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M11 part B: reading comfort in the Text sheet. -->
+    <string name="reader_comfort_screen">Screen</string>
+    <string name="reader_brightness">Brightness</string>
+    <string name="reader_brightness_auto">Auto</string>
+    <string name="reader_warmth">Warmth</string>
+    <string name="reader_warmth_off">Off</string>
+    <string name="reader_warmth_value">%1$d%%</string>
+    <string name="reader_keep_screen_on">Keep screen on</string>
+    <string name="reader_keep_screen_on_detail">While you read. After 10 minutes without a tap, the screen can sleep.</string>
+    <string name="reader_comfort_pages">Turning pages</string>
+    <string name="reader_tap_edges">Edges and centre</string>
+    <string name="reader_tap_edges_detail">Tap near an edge to turn. The centre shows the controls.</string>
+    <string name="reader_tap_halves">Left and right halves</string>
+    <string name="reader_tap_halves_detail">Tap either half to turn. A strip in the middle shows the controls.</string>
+    <string name="reader_tap_scroll_note">Tap zones work when Scroll is off.</string>
+    <string name="reader_left_handed">Left-handed</string>
+    <string name="reader_left_handed_detail">The left side turns to the next page.</string>
+    <string name="reader_page_animation">Page-turn animation</string>
+    <!-- M11 part B: bookmarks. -->
+    <string name="reader_bookmark_remove">Remove bookmark</string>
+    <string name="reader_bookmarked">Bookmarked</string>
+    <string name="reader_bookmark_removed">Bookmark removed</string>
+    <string name="bookmark_rename">Rename bookmark</string>
+    <string name="bookmark_rename_label">Name</string>
+    <string name="bookmark_rename_save">Save</string>
+    <string name="bookmark_rename_cancel">Cancel</string>
+    <string name="reader_bookmark_failed">The bookmark could not be changed. Try again.</string>
+</resources>
