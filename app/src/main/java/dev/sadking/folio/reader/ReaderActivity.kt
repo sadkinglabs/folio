@@ -181,6 +181,10 @@ class ReaderActivity : FragmentActivity() {
     /** The text-selection menu while it is open: the page is busy with a selection then. */
     private var selectionMode: ActionMode? = null
 
+    /** The open text-selection menu, for the instrumented test that chooses from it. */
+    internal val openSelectionMenu: Menu?
+        get() = selectionMode?.menu
+
     /** Turns the page when a selection is dragged to its end; runs while text is selected. */
     private var selectionWatch: Job? = null
 

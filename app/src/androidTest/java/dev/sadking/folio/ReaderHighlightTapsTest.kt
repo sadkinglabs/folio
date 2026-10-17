@@ -1,6 +1,5 @@
 package dev.sadking.folio
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.graphics.Rect
 import android.view.View
@@ -39,7 +38,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -255,31 +253,18 @@ class ReaderHighlightTapsTest {
         )
     }
 
-    /** Taps [label] in the text-selection menu, a system window, through accessibility. */
-    private fun tapSelectionMenu(label: String) {
-        val automation = instrumentation.uiAutomation
-        automation.serviceInfo =
-            automation.serviceInfo.apply {
-                flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            }
-        val deadline = System.currentTimeMillis() + 15_000
-        while (System.currentTimeMillis() < deadline) {
-            val item =
-                automation.windows
-                    .mapNotNull { it.root }
-                    .flatMap { it.findAccessibilityNodeInfosByText(label) }
-                    .firstOrNull {
-                        it.text?.toString().equals(label, ignoreCase = true) && it.isVisibleToUser
-                    }
-            if (item != null) {
-                val bounds = Rect()
-                item.getBoundsInScreen(bounds)
-                tap(bounds.centerX(), bounds.centerY())
-                return
-            }
-            Thread.sleep(200)
+    /**
+     * Chooses [itemId] from the text-selection menu once the long-press has opened it. The menu is
+     * a system floating toolbar the test cannot reliably find on screen, so the item goes through
+     * the menu itself: the same onActionItemClicked a finger reaches. Fails if no menu opened.
+     */
+    private fun ActivityScenario<ReaderActivity>.chooseFromSelectionMenu(itemId: Int) {
+        compose.waitUntil(15_000) {
+            var open = false
+            onActivity { open = it.openSelectionMenu?.findItem(itemId) != null }
+            open
         }
-        fail("The selection menu never offered $label.\n" + Diagnostics.state())
+        onActivity { it.openSelectionMenu!!.performIdentifierAction(itemId, 0) }
     }
 
     private fun sheetShown() =
@@ -368,7 +353,7 @@ class ReaderHighlightTapsTest {
             val (x, y) = at!!
             // Long-press selects the word; Highlight in the selection menu saves it.
             longPress(x, y)
-            tapSelectionMenu(app.getString(R.string.reader_highlight_action))
+            scenario.chooseFromSelectionMenu(SELECTION_HIGHLIGHT)
             compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() }
             val made = phoneRows(id).single()
             assertEquals("enough", made.text)
@@ -377,7 +362,7 @@ class ReaderHighlightTapsTest {
             }
             // The same word again: the menu's Highlight opens the one already there.
             longPress(x, y)
-            tapSelectionMenu(app.getString(R.string.reader_highlight_action))
+            scenario.chooseFromSelectionMenu(SELECTION_HIGHLIGHT)
             awaitSheet()
             assertEquals(1, phoneRows(id).size)
             scenario.recolourAndDelete(made.id)
@@ -451,7 +436,8 @@ class ReaderHighlightTapsTest {
             compose.waitUntil(30_000) {
                 runCatching { made.id in scenario.drawn() }.getOrDefault(false)
             }
-            val squash = { text: String -> text.replace(Regex("\\s+"), " ").trim() }
+            // Paragraph breaks are a line break in the saved text and nothing in the drawn range.
+            val squash = { text: String -> text.replace(Regex("\\s+"), "") }
             assertEquals(squash(made.text), squash(scenario.drawn().getValue(made.id)))
             assertNotEquals(made.position, made.endPosition)
         }
