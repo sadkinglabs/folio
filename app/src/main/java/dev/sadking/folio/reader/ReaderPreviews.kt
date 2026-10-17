@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -15,7 +16,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.reader.narration.BenchmarkReport
+import dev.sadking.folio.reader.narration.ConfigResult
+import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.ui.FolioTheme
+import dev.sadking.folio.ui.LocalReducedMotion
 
 /**
  * Previews of the reader's chrome over a stand-in page, since Readium's WebView cannot render in a
@@ -250,7 +255,15 @@ internal fun ReaderListenNaturalPreview() {
                 onVoice = {},
                 onAddVoices = {},
                 natural =
-                    NaturalVoiceRow(fits = true, NaturalVoice.Ready, speaking = true, pace = 1.4),
+                    NaturalVoiceRow(
+                        fits = true,
+                        NaturalVoice.Ready,
+                        speaking = true,
+                        pace = 1.4,
+                        readyAheadSeconds = 42,
+                        faster = NaturalVoice.Missing,
+                        hasRecording = true,
+                    ),
             )
         }
     }
@@ -277,6 +290,161 @@ internal fun ReaderListenOfferPreview() {
                 onAddVoices = {},
                 natural =
                     NaturalVoiceRow(fits = true, NaturalVoice.Downloading(0.42f), speaking = false),
+            )
+        }
+    }
+}
+
+/**
+ * The listen bar while the first audio is made: the play button pauses, the pill counts down. Drawn
+ * with reduced motion, so the spinner is still and the JVM renderer can settle on one frame.
+ */
+@Preview(name = "Reader listening preparing · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenPreparingPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        CompositionLocalProvider(LocalReducedMotion provides true) {
+            Box(Modifier.fillMaxSize()) {
+                ReaderPagePlaceholder(dark)
+                ListenBar(
+                    playing = true,
+                    starting = false,
+                    speed = 1.0,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    onToggle = {},
+                    onPrevious = {},
+                    onNext = {},
+                    onSpeed = {},
+                    onStop = {},
+                    note = ListenNote.Preparing(etaSeconds = 6),
+                )
+            }
+        }
+    }
+}
+
+@Preview(name = "Reader listening chapter · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenChapterPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        Box(Modifier.fillMaxSize()) {
+            ReaderPagePlaceholder(dark)
+            ListenBar(
+                playing = false,
+                starting = false,
+                speed = 1.5,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                onToggle = {},
+                onPrevious = {},
+                onNext = {},
+                onSpeed = {},
+                onStop = {},
+                note = ListenNote.Chapter(0.42f),
+            )
+        }
+    }
+}
+
+internal val sampleTooSlow =
+    NarrationStatus.TooSlow(
+        pace = 0.8,
+        prepareChapterSeconds = 150,
+        breakEverySeconds = 50,
+        breakSeconds = 10,
+        offerFasterModel = true,
+        fasterModelMb = 350,
+    )
+
+@Preview(name = "Reader listening too slow · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenTooSlowPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            TooSlowSheet(sampleTooSlow, onChoice = {}, onDismiss = {})
+        }
+    }
+}
+
+@Preview(name = "Reader speed test running · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenBenchmarkRunningPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            NarrationTestSheet(
+                NarrationBenchmark.State.Running(
+                    step = NarrationBenchmark.Step.SWEEP,
+                    stepIndex = 2,
+                    stepCount = 5,
+                    fraction = 0.35f,
+                    detail = "Standard, 4 threads",
+                ),
+                sustainedMinutes = 15,
+                variants = 2,
+                onMinutes = {},
+                onStart = {},
+                onCancel = {},
+                onShare = {},
+            )
+        }
+    }
+}
+
+private fun sampleConfig(variant: String, threads: Int, rtf: Double, provider: String = "cpu") =
+    ConfigResult(
+        variant = variant,
+        threads = threads,
+        provider = provider,
+        fellBack = provider != "cpu",
+        rtfMean = rtf,
+        rtfP95 = rtf * 1.3,
+        cv = 0.12,
+        firstUnitMs = 1800,
+        overheadA = 0.2,
+        perCharB1 = 0.03,
+    )
+
+internal val sampleBenchmarkReport: BenchmarkReport = run {
+    val best = sampleConfig("FP32", 4, 0.45)
+    BenchmarkReport(
+        loadMs = mapOf("INT8" to 2900L, "FP32" to 3400L),
+        configs =
+            listOf(
+                sampleConfig("INT8", 2, 1.9),
+                sampleConfig("INT8", 4, 1.3),
+                sampleConfig("FP32", 2, 0.71),
+                best,
+                sampleConfig("FP32", 6, 0.58),
+                sampleConfig("FP32", 4, 0.47, provider = "nnapi"),
+            ),
+        best = best,
+        wholeGapP50Ms = 170,
+        wholeGapP95Ms = 240,
+        separateGapP50Ms = 180,
+        separateGapP95Ms = 260,
+        sustainedMinutes = 15,
+        sustainedRtfFirst = 0.45,
+        sustainedRtfLast = 0.52,
+        thermalMax = 2,
+        predictedStartSeconds = 2.4,
+        tooSlow = false,
+    )
+}
+
+@Preview(name = "Reader speed test result · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderListenBenchmarkResultPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            NarrationTestSheet(
+                NarrationBenchmark.State.Done(sampleBenchmarkReport, java.io.File("bench")),
+                sustainedMinutes = 15,
+                variants = 2,
+                onMinutes = {},
+                onStart = {},
+                onCancel = {},
+                onShare = {},
             )
         }
     }

@@ -5,6 +5,7 @@ package dev.sadking.folio.reader
 import android.app.Application
 import android.content.ComponentName
 import android.content.SharedPreferences
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,8 @@ import androidx.compose.runtime.setValue
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import dev.sadking.folio.reader.narration.NarrationStatus
+import dev.sadking.folio.reader.narration.SlowChoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -85,8 +88,45 @@ internal fun englishBook(languages: List<String>): Boolean =
 internal enum class ListenState {
     OFF,
     STARTING,
+    /** Asked to play, while the natural voice prepares narration. */
+    PREPARING,
     PLAYING,
     PAUSED,
+}
+
+/** What the listen bar shows for Readium's play intent and the natural voice's status. */
+internal fun listenState(playWhenReady: Boolean, narration: NarrationStatus): ListenState =
+    when {
+        !playWhenReady -> ListenState.PAUSED
+        narration is NarrationStatus.TooSlow -> ListenState.PAUSED
+        narration is NarrationStatus.Loading ||
+            narration is NarrationStatus.Preparing ||
+            narration is NarrationStatus.PreparingChapter -> ListenState.PREPARING
+        else -> ListenState.PLAYING
+    }
+
+/** The engine actions behind the "too slow" choices. */
+internal interface SlowActions {
+    fun prepareChapter()
+
+    fun playWithBreaks()
+
+    fun usePhoneVoice()
+
+    fun getFasterModel()
+}
+
+/** Routes one "too slow" choice; the faster model also starts reading with breaks meanwhile. */
+internal fun routeSlow(choice: SlowChoice, actions: SlowActions) {
+    when (choice) {
+        SlowChoice.PREPARE_CHAPTER -> actions.prepareChapter()
+        SlowChoice.WITH_BREAKS -> actions.playWithBreaks()
+        SlowChoice.PHONE_VOICE -> actions.usePhoneVoice()
+        SlowChoice.FASTER_MODEL -> {
+            actions.getFasterModel()
+            actions.playWithBreaks()
+        }
+    }
 }
 
 /** The speeds the speed button steps through, in order. */
@@ -154,6 +194,34 @@ internal class ReadAloud(
     var naturalPace by mutableStateOf<Double?>(null)
         private set
 
+    /** Listening seconds ready ahead of the voice; null when not natural. */
+    var readyAheadSeconds by mutableStateOf<Int?>(null)
+        private set
+
+    /**
+     * The natural voice's status; Idle when not natural. A "too slow" question stays until
+     * answered.
+     */
+    var narration by mutableStateOf<NarrationStatus>(NarrationStatus.Idle)
+        private set
+
+    /** The question on screen, kept while the engine pauses for it. */
+    private var slow: NarrationStatus.TooSlow? = null
+
+    /** Which Kokoro model plays: the chosen one if installed, else the faster measured one. */
+    var naturalVariant by mutableStateOf(chooseVariant())
+        private set
+
+    /** Saves each listening session's timings under files/narration/sessions (numbers only). */
+    var recordMeasurements by mutableStateOf(settings.getBoolean("narrationRecord", false))
+        private set
+
+    /** The last finished recording, for Share; null when none. */
+    var lastRecording by mutableStateOf<java.io.File?>(NarrationRecorder.last(app))
+        private set
+
+    private var recorder: NarrationRecorder? = null
+
     /** True when the book can use the natural voice: Kokoro speaks English only. */
     var naturalFits by mutableStateOf(false)
         private set
@@ -185,16 +253,18 @@ internal class ReadAloud(
         from: Locator? = null,
     ): Boolean {
         if (state != ListenState.OFF) return true
+        val tappedAtMs = SystemClock.elapsedRealtime()
         state = ListenState.STARTING
         reading = Reading(bookId, publication, page, onFailure)
         val from = from ?: page()
         naturalFits = englishBook(publication.metadata.languages)
         val wantsNatural =
             naturalFits &&
-                KokoroModel.ready(app) &&
+                KokoroModel.installed(app).isNotEmpty() &&
                 settings.getString("listenEngine", "natural") == "natural"
         val started =
-            (wantsNatural && startNatural(publication, from)) || startPhone(publication, from)
+            (wantsNatural && startNatural(publication, from, tappedAtMs)) ||
+                startPhone(publication, from)
         if (!started) {
             state = ListenState.OFF
             reading = null
@@ -217,12 +287,26 @@ internal class ReadAloud(
         return true
     }
 
-    private suspend fun startNatural(publication: Publication, from: Locator?): Boolean {
-        val provider = KokoroEngineProvider(app)
+    private suspend fun startNatural(
+        publication: Publication,
+        from: Locator?,
+        tappedAtMs: Long,
+    ): Boolean {
+        val variant = chooseVariant().also { naturalVariant = it }
+        // The model starts loading now, while Readium opens the book's first chapter.
+        KokoroRuntime.preload(app, KokoroRuntime.configFor(app, variant))
+        narration = NarrationStatus.Loading
+        val recording = if (recordMeasurements) NarrationRecorder.start(app) else null
+        val provider = KokoroEngineProvider(app, from, tappedAtMs, variant, recording)
         val created =
-            TtsNavigatorFactory(app, publication, provider, sentenceTokenizer)
+            TtsNavigatorFactory(app, publication, provider, kokoroSentenceTokenizer)
                 ?.createNavigator(listener, from, kokoroPreferences())
-                ?.getOrNull() ?: return false
+                ?.getOrNull()
+        if (created == null) {
+            narration = NarrationStatus.Idle
+            return false
+        }
+        recorder = recording
         kokoro = provider
         natural = true
         voices = emptyList()
@@ -273,11 +357,27 @@ internal class ReadAloud(
         navigator = created
         val onFailure = reading?.onFailure ?: {}
         watch = scope.launch {
-            kokoro?.engine?.let { engine -> launch { engine.pace.collect { naturalPace = it } } }
+            kokoro?.engine?.let { engine ->
+                launch { engine.pace.collect { naturalPace = it } }
+                launch { engine.readyAheadSeconds.collect { readyAheadSeconds = it } }
+                launch { engine.settings.collect { followEngineSpeed(it.speed) } }
+                launch {
+                    engine.status.collect { status ->
+                        if (status is NarrationStatus.TooSlow) {
+                            slow = status
+                            // The question waits with the reader paused.
+                            created.pause()
+                        }
+                        narration = slow ?: status
+                        val playing = created.playback.value.playWhenReady
+                        if (state != ListenState.OFF) state = listenState(playing, narration)
+                    }
+                }
+            }
             launch {
                 created.location.collect {
                     utterance = it.utteranceLocator
-                    kokoro?.engine?.prefetchFrom(it.utteranceLocator, it.utterance)
+                    kokoro?.engine?.onLocation(it.utteranceLocator, it.utterance)
                     val chapter = sleepChapter
                     if (sleep == SleepTimer.CHAPTER && chapter != null && it.href != chapter) {
                         created.pause()
@@ -292,9 +392,11 @@ internal class ReadAloud(
                         stop()
                         onFailure()
                     }
-                    else ->
-                        state =
-                            if (playback.playWhenReady) ListenState.PLAYING else ListenState.PAUSED
+                    else -> {
+                        // Readium does not tell the engine about a pause between sentences.
+                        if (!playback.playWhenReady) kokoro?.engine?.pauseNow()
+                        state = listenState(playback.playWhenReady, narration)
+                    }
                 }
             }
         }
@@ -302,11 +404,78 @@ internal class ReadAloud(
 
     fun toggle() {
         val current = navigator ?: return
-        if (state == ListenState.PLAYING) current.pause() else current.play()
+        if (state == ListenState.PLAYING || state == ListenState.PREPARING) current.pause()
+        else current.play()
     }
 
     fun pause() {
-        if (state == ListenState.PLAYING) navigator?.pause()
+        if (state == ListenState.PLAYING || state == ListenState.PREPARING) navigator?.pause()
+    }
+
+    /** The speed the engine uses now, which a media controller may also change. */
+    internal fun followEngineSpeed(engineSpeed: Double) {
+        if (engineSpeed == speed) return
+        speed = engineSpeed
+        settings.edit().putFloat("listenSpeed", engineSpeed.toFloat()).apply()
+    }
+
+    /**
+     * Acts on the "too slow" question. The phone voice restarts reading with it; the faster model
+     * downloads while reading goes on with breaks.
+     */
+    fun chooseSlow(choice: SlowChoice) {
+        settings.edit().putString("narrationSlowChoice", choice.name).apply()
+        slow = null
+        val engine = kokoro?.engine
+        routeSlow(
+            choice,
+            object : SlowActions {
+                override fun prepareChapter() {
+                    engine?.prepareChapter()
+                    navigator?.play()
+                }
+
+                override fun playWithBreaks() {
+                    engine?.playWithBreaks()
+                    navigator?.play()
+                }
+
+                override fun usePhoneVoice() = chooseVoice(null)
+
+                override fun getFasterModel() = KokoroModel.install(app, KokoroModel.Variant.FP32)
+            },
+        )
+        engine?.status?.value?.let { narration = it }
+    }
+
+    /** Closes the question and stays paused. */
+    fun dismissSlow() {
+        slow = null
+        navigator?.pause()
+        narration = kokoro?.engine?.status?.value ?: NarrationStatus.Idle
+    }
+
+    /** Picks the Kokoro model; restarts reading at the sentence being read if it is speaking. */
+    fun chooseVariant(variant: KokoroModel.Variant) {
+        settings.edit().putString("narrationVariant", variant.name).apply()
+        if (variant == naturalVariant) return
+        naturalVariant = variant
+        if (natural) restartHere()
+    }
+
+    private fun chooseVariant(): KokoroModel.Variant =
+        KokoroRuntime.chooseVariant(
+            app,
+            settings.getString("narrationVariant", null)?.let { name ->
+                KokoroModel.Variant.entries.firstOrNull { it.name == name }
+            },
+        )
+
+    // The property's private setter already has the plain JVM name.
+    @JvmName("turnRecordMeasurements")
+    fun setRecordMeasurements(on: Boolean) {
+        recordMeasurements = on
+        settings.edit().putBoolean("narrationRecord", on).apply()
     }
 
     fun previous() {
@@ -427,6 +596,11 @@ internal class ReadAloud(
         language = null
         natural = false
         naturalPace = null
+        readyAheadSeconds = null
+        narration = NarrationStatus.Idle
+        slow = null
+        recorder?.let { lastRecording = it.dir }
+        recorder = null
         state = ListenState.OFF
     }
 }

@@ -71,32 +71,46 @@ class KokoroModelTest {
     }
 
     @Test
-    fun longSentencesSplitAtClausesShortOnesStayWhole() {
-        val short = "They shook hands over the body."
-        assertEquals(listOf(short), clauses(short))
-        val long =
-            "A little squeamishly, Ben helped him turn the body on its belly, and the flesh was " +
-                "cool, not yet cold, still pliant, while Jimmy stared closely at the back and then " +
-                "pulled the jockey shorts down from the buttocks."
-        val parts = clauses(long)
-        assertTrue(parts.size > 1)
-        assertEquals(long, parts.joinToString(""))
-        assertTrue(parts.all { it.length >= 50 })
+    fun eachVariantKeepsItsOwnModelFileInItsOwnFolder() {
+        // The standard package keeps the folder existing installs already have.
+        assertEquals("kokoro-v1_0", KokoroModel.Variant.INT8.dirName)
+        assertEquals("kokoro-v1_0-fp32", KokoroModel.Variant.FP32.dirName)
+        assertTrue(KokoroModel.keep("model.int8.onnx", KokoroModel.Variant.INT8))
+        assertFalse(KokoroModel.keep("model.onnx", KokoroModel.Variant.INT8))
+        assertTrue(KokoroModel.keep("model.onnx", KokoroModel.Variant.FP32))
+        assertFalse(KokoroModel.keep("model.int8.onnx", KokoroModel.Variant.FP32))
+        for (variant in KokoroModel.Variant.entries) {
+            assertTrue(KokoroModel.keep("voices.bin", variant))
+            assertTrue(KokoroModel.keep("espeak-ng-data/en_dict", variant))
+            assertFalse(KokoroModel.keep("lexicon-zh.txt", variant))
+        }
+        assertEquals(KokoroModel.DOWNLOAD_BYTES, KokoroModel.Variant.INT8.downloadBytes)
+        assertTrue(
+            KokoroModel.modelId(KokoroModel.Variant.FP32) !=
+                KokoroModel.modelId(KokoroModel.Variant.INT8)
+        )
     }
 
     @Test
-    fun cleanAudioSilencesBadValuesAndFadesTheEdges() {
-        val raw =
-            FloatArray(1000) { 0.5f }
-                .also {
-                    it[500] = Float.NaN
-                    it[501] = 3f
-                }
-        val clean = cleanAudio(raw)
-        assertEquals(0f, clean[500], 0f)
-        assertEquals(1f, clean[501], 0f)
-        assertEquals(0f, clean[0], 0f)
-        assertEquals(0f, clean[999], 0f)
-        assertEquals(0.5f, clean[300], 0f)
+    fun theFasterPackageUnpacksItsFullPrecisionModel() {
+        val into = Files.createTempDirectory("voice").toFile()
+        KokoroModel.unpack(
+            archive(
+                mapOf(
+                    "kokoro-multi-lang-v1_0/model.onnx" to "fp32",
+                    "kokoro-multi-lang-v1_0/voices.bin" to "voices",
+                    "kokoro-multi-lang-v1_0/lexicon-gb-en.txt" to "gb",
+                )
+            ),
+            into,
+            KokoroModel.Variant.FP32,
+        )
+        assertEquals("fp32", File(into, "model.onnx").readText())
+        assertFalse(File(into, "lexicon-gb-en.txt").exists())
+        val wrong = Files.createTempDirectory("voice").toFile()
+        val int8Only = archive(mapOf("kokoro/model.int8.onnx" to "model"))
+        assertThrows(IOException::class.java) {
+            KokoroModel.unpack(int8Only, wrong, KokoroModel.Variant.FP32)
+        }
     }
 }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Read-aloud with the natural voice: preparation, the too-slow choices and the speed test. -->
+<!-- Thread counts are always 2 to 6, so "threads" needs no plural form. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Listen bar, while narration is being prepared -->
+    <string name="listen_preparing">Preparing narration…</string>
+    <string name="listen_preparing_eta">Preparing narration… about %1$d s</string>
+    <string name="listen_chapter_progress">Preparing chapter… %1$d%%</string>
+
+    <!-- Listening sheet -->
+    <string name="listen_ready_ahead">Ready ahead: %1$d s</string>
+    <string name="listen_pace">Makes speech %1$s× faster than it reads</string>
+    <string name="listen_pace_slow">Makes speech at %1$s× its reading speed</string>
+    <string name="listen_variant">Natural voice model</string>
+    <string name="listen_variant_standard">Standard</string>
+    <string name="listen_variant_faster">Faster (larger download)</string>
+    <!-- The faster model's name in the speed test's results -->
+    <string name="listen_variant_faster_name">Faster</string>
+    <string name="listen_record">Record read-aloud measurements</string>
+    <string name="listen_record_share">Share last measurements</string>
+    <string name="listen_share_failed">The files could not be prepared for sharing.</string>
+
+    <!-- Too-slow sheet -->
+    <string name="listen_slow_title">This phone can\'t make the natural voice fast enough</string>
+    <string name="listen_slow_body">It makes speech at %1$s× the speed it reads, so reading would keep stopping.</string>
+    <string name="listen_slow_prepare">Prepare this chapter first (about %1$d min)</string>
+    <string name="listen_slow_breaks">Start now, with a pause of about %1$d s every %2$d s</string>
+    <string name="listen_slow_phone">Use the phone voice</string>
+    <string name="listen_slow_faster">Get the faster natural voice (%1$d MB)</string>
+    <string name="listen_slow_dismiss">Not now</string>
+
+    <!-- Speed test sheet -->
+    <string name="listen_test">Test read-aloud speed</string>
+    <string name="listen_test_body">Reads a sample passage, not your book, with each setting and measures how fast this phone makes speech.</string>
+    <string name="listen_test_duration">Takes about %1$d min.</string>
+    <string name="listen_test_minutes">Sustained run: %1$d min</string>
+    <string name="listen_test_start">Start test</string>
+    <string name="listen_test_again">Test again</string>
+    <string name="listen_test_running">Testing… step %1$d of %2$d</string>
+    <string name="listen_test_step_load">Loading the voice</string>
+    <string name="listen_test_step_sweep">Trying each setting</string>
+    <string name="listen_test_step_diagnostic">Measuring the pauses between sentences</string>
+    <string name="listen_test_step_sustained">Long run</string>
+    <string name="listen_test_step_result">Saving the results</string>
+    <string name="listen_test_screen_off">You can turn the screen off now.</string>
+    <string name="listen_test_cancel">Stop test</string>
+    <string name="listen_test_result_ok" tools:ignore="PluralsCandidate">Best: %1$s, %2$d threads. Makes speech %3$s× faster than it reads. Starts in about %4$d s.</string>
+    <string name="listen_test_result_pace" tools:ignore="PluralsCandidate">Best: %1$s, %2$d threads. Makes speech %3$s× faster than it reads.</string>
+    <string name="listen_test_result_slow">%1$s makes speech at %2$s× its reading speed: it can\'t keep up.</string>
+    <string name="listen_test_settings">Each setting</string>
+    <string name="listen_test_config" tools:ignore="PluralsCandidate">%1$s, %2$d threads</string>
+    <string name="listen_test_config_provider" tools:ignore="PluralsCandidate">%1$s, %2$d threads, %3$s</string>
+    <string name="listen_test_config_fell_back" tools:ignore="PluralsCandidate">%1$s, %2$d threads, %3$s not available</string>
+    <string name="listen_test_gaps">Pause between sentences: %1$d ms read whole, %2$d ms one by one.</string>
+    <string name="listen_test_sustained">Over %1$d min the speed went from %2$s× to %3$s×.</string>
+    <string name="listen_test_share">Share results</string>
+    <string name="listen_test_failed">The test did not finish.</string>
+</resources>

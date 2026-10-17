@@ -160,5 +160,21 @@ class ScreenshotTest {
 
     @Test fun readerListenOffer() = shoot("reader-listen-offer") { ReaderListenOfferPreview() }
 
+    @Test fun listenPreparing() = shoot("listen-preparing") { ReaderListenPreparingPreview() }
+
+    @Test
+    fun listenPreparingChapter() =
+        shoot("listen-preparing-chapter") { ReaderListenChapterPreview() }
+
+    @Test fun listenTooSlow() = shoot("listen-too-slow") { ReaderListenTooSlowPreview() }
+
+    @Test
+    fun listenBenchmarkRunning() =
+        shoot("listen-benchmark-running") { ReaderListenBenchmarkRunningPreview() }
+
+    @Test
+    fun listenBenchmarkResult() =
+        shoot("listen-benchmark-result", tall = true) { ReaderListenBenchmarkResultPreview() }
+
     @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
 }

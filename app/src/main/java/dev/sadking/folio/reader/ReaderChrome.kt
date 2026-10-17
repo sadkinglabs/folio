@@ -88,9 +88,11 @@ internal fun readerThemeTag(theme: String) = "reader-theme-$theme"
 /** How long the Folio Link offer stays before it steps aside unanswered. */
 internal const val LINK_OFFER_TIMEOUT_MS = 8_000L
 
-/** The sheets the top bar opens. */
+/** The sheets the top bar and the listen bar open. */
 internal enum class ReaderPanel {
     LISTEN,
+    /** "Test read-aloud speed", opened from the Listening sheet. */
+    LISTEN_TEST,
     CONTENTS,
     TEXT,
     DEVICES,
@@ -589,7 +591,12 @@ private fun ChoiceSlider(
 
 /** A switch row inside a sheet: no icon, the title does the work. */
 @Composable
-private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+private fun SheetSwitch(
+    title: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit,
+    inset: androidx.compose.ui.unit.Dp = FolioSpace.section,
+) {
     val haptics = rememberHaptics()
     Row(
         Modifier.fillMaxWidth()
@@ -597,7 +604,7 @@ private fun SheetSwitch(title: String, checked: Boolean, onChecked: (Boolean) ->
                 haptics.toggle(it)
                 onChecked(it)
             }
-            .padding(horizontal = FolioSpace.section, vertical = 8.dp),
+            .padding(horizontal = inset, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -860,6 +867,8 @@ internal fun LinkOfferCard(
 /**
  * The read-aloud player, floating over the page while listening: previous and next sentence,
  * play/pause, speed, and stop. It stays while the bars are hidden so the page can be read along.
+ * [note] puts "Preparing narration…" or the chapter's preparation above the controls; play/pause
+ * stays usable meanwhile, so preparation can always be paused.
  */
 @Composable
 internal fun ListenBar(
@@ -874,11 +883,45 @@ internal fun ListenBar(
     onStop: () -> Unit,
     timerOn: Boolean = false,
     onOptions: () -> Unit = {},
+    note: ListenNote? = null,
+) {
+    Column(
+        modifier.testTag(READER_LISTEN_BAR_TAG),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        if (note != null) ListenNoteChip(note)
+        ListenControls(
+            playing,
+            starting,
+            speed,
+            onToggle,
+            onPrevious,
+            onNext,
+            onSpeed,
+            onStop,
+            timerOn,
+            onOptions,
+        )
+    }
+}
+
+@Composable
+private fun ListenControls(
+    playing: Boolean,
+    starting: Boolean,
+    speed: Double,
+    onToggle: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSpeed: () -> Unit,
+    onStop: () -> Unit,
+    timerOn: Boolean,
+    onOptions: () -> Unit,
 ) {
     // Material's floating toolbar: the player's controls in one rounded, raised strip.
     HorizontalFloatingToolbar(
         expanded = true,
-        modifier = modifier.testTag(READER_LISTEN_BAR_TAG),
         colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
     ) {
         val speedLabel = listenSpeedLabel(speed)
@@ -937,12 +980,36 @@ internal class NaturalVoiceRow(
     val speaking: Boolean,
     /** How fast this phone makes Kokoro's speech compared with reading it; null until measured. */
     val pace: Double? = null,
+    /** Listening seconds made ahead of the voice while it speaks; null otherwise. */
+    val readyAheadSeconds: Int? = null,
+    /** The model that speaks the natural voice. */
+    val variant: KokoroModel.Variant = KokoroModel.Variant.INT8,
+    /** Where the faster (fp32) model stands on this phone; [state] is the standard one. */
+    val faster: NaturalVoice? = null,
+    /** "Record read-aloud measurements" is on. */
+    val recording: Boolean = false,
+    /** A finished recording exists to share. */
+    val hasRecording: Boolean = false,
+) {
+    /** At least one model is installed, so its voices can be chosen. */
+    val installed: Boolean
+        get() = state == NaturalVoice.Ready || faster == NaturalVoice.Ready
+}
+
+/** What the natural voice's model, test and measurement rows in the Listening sheet do. */
+internal class NarrationActions(
+    val onVariant: (KokoroModel.Variant) -> Unit = {},
+    val onDownloadFaster: () -> Unit = {},
+    val onTest: () -> Unit = {},
+    val onRecord: (Boolean) -> Unit = {},
+    val onShareRecording: () -> Unit = {},
 )
 
 /**
- * Listening options: the sleep timer, the natural voice (Kokoro: download, then its voices) and the
- * phone's voices for the book's language. More phone voices can be added in Android's
- * text-to-speech settings through [onAddVoices].
+ * Listening options: the sleep timer, the natural voice (Kokoro: download, then its voices, how far
+ * ahead it is, and which model makes it) and the phone's voices for the book's language. More phone
+ * voices can be added in Android's text-to-speech settings through [onAddVoices]. Once a natural
+ * model is installed, the end of the sheet offers the speed test and the measurement recording.
  */
 @Composable
 internal fun ListenOptionsSheet(
@@ -954,6 +1021,7 @@ internal fun ListenOptionsSheet(
     onAddVoices: () -> Unit,
     natural: NaturalVoiceRow = NaturalVoiceRow(fits = false, state = null, speaking = false),
     onDownload: () -> Unit = {},
+    narration: NarrationActions = NarrationActions(),
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -983,18 +1051,30 @@ internal fun ListenOptionsSheet(
                 stringResource(R.string.listen_natural),
                 style = MaterialTheme.typography.titleMedium,
             )
-            NaturalVoiceSection(natural.state, voice, onVoice, onDownload)
+            NaturalVoiceSection(
+                if (natural.installed) NaturalVoice.Ready else natural.state,
+                voice,
+                onVoice,
+                onDownload,
+            )
             natural.pace?.let { pace ->
                 Text(
                     stringResource(
-                        if (pace >= 1.0) R.string.listen_natural_pace
-                        else R.string.listen_natural_pace_slow,
-                        String.format(LocalConfiguration.current.locales[0], "%.1f", pace),
+                        if (pace >= 1.0) R.string.listen_pace else R.string.listen_pace_slow,
+                        formatPace(pace, LocalConfiguration.current.locales[0]),
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            natural.readyAheadSeconds?.let {
+                Text(
+                    stringResource(R.string.listen_ready_ahead, it),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (natural.installed) NaturalModelChoice(natural, narration)
         }
         Spacer(Modifier.height(FolioSpace.small))
         Text(
@@ -1029,7 +1109,97 @@ internal fun ListenOptionsSheet(
             }
         }
         TextButton(onClick = onAddVoices) { Text(stringResource(R.string.listen_add_voices)) }
+        if (natural.fits && natural.installed) {
+            HorizontalDivider(Modifier.padding(vertical = FolioSpace.small))
+            NarrationTools(natural, narration)
+        }
     }
+}
+
+/**
+ * Which model makes the natural voice: the standard 8-bit one, or the faster, larger one, offered
+ * for download here when it is missing.
+ */
+@Composable
+private fun NaturalModelChoice(natural: NaturalVoiceRow, actions: NarrationActions) {
+    Text(
+        stringResource(R.string.listen_variant),
+        Modifier.padding(top = FolioSpace.small),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    Column(Modifier.selectableGroup()) {
+        VoiceRow(
+            stringResource(R.string.listen_variant_standard),
+            null,
+            selected = natural.variant == KokoroModel.Variant.INT8,
+            onClick = { actions.onVariant(KokoroModel.Variant.INT8) },
+            enabled = natural.state == NaturalVoice.Ready,
+        )
+        VoiceRow(
+            stringResource(R.string.listen_variant_faster),
+            null,
+            selected = natural.variant == KokoroModel.Variant.FP32,
+            onClick = { actions.onVariant(KokoroModel.Variant.FP32) },
+            enabled = natural.faster == NaturalVoice.Ready,
+        )
+    }
+    when (val faster = natural.faster) {
+        NaturalVoice.Ready -> Unit
+        is NaturalVoice.Downloading -> {
+            LinearProgressIndicator(
+                progress = { faster.fraction },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(
+                    R.string.listen_natural_downloading,
+                    (faster.fraction * 100).toInt(),
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        NaturalVoice.Unpacking -> {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(
+                stringResource(R.string.listen_natural_unpacking),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        else -> {
+            if (faster == NaturalVoice.Failed)
+                Text(
+                    stringResource(R.string.listen_natural_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            FilledTonalButton(onClick = actions.onDownloadFaster) {
+                Text(
+                    stringResource(
+                        R.string.listen_natural_download,
+                        megabytes(KokoroModel.Variant.FP32.downloadBytes),
+                    )
+                )
+            }
+        }
+    }
+}
+
+/** The speed test, and the switch that records measurements while listening. */
+@Composable
+private fun NarrationTools(natural: NaturalVoiceRow, actions: NarrationActions) {
+    TextButton(onClick = actions.onTest) { Text(stringResource(R.string.listen_test)) }
+    SheetSwitch(
+        stringResource(R.string.listen_record),
+        natural.recording,
+        actions.onRecord,
+        inset = 4.dp,
+    )
+    if (natural.hasRecording)
+        TextButton(onClick = actions.onShareRecording) {
+            Text(stringResource(R.string.listen_record_share))
+        }
 }
 
 /** The natural voice: an offer to download it, its progress, or its voices once it is here. */
@@ -1104,19 +1274,36 @@ private fun voiceName(voice: ListenVoice, voices: List<ListenVoice>, index: Int)
 }
 
 @Composable
-private fun VoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+private fun VoiceRow(
+    title: String,
+    detail: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     Row(
         Modifier.fillMaxWidth()
             .heightIn(min = 56.dp)
             .clip(FolioSpace.tileShape)
-            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                enabled = enabled,
+                role = Role.RadioButton,
+            )
             .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
     ) {
-        RadioButton(selected = selected, onClick = null)
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color =
+                    if (enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            )
             if (detail != null)
                 Text(
                     detail,

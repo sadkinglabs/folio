@@ -19,6 +19,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -55,6 +57,7 @@ import dev.sadking.folio.R
 import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
@@ -190,6 +193,43 @@ class ReaderActivity : FragmentActivity() {
             val page = suspend { nav.firstVisibleElementLocator() ?: nav.currentLocator.value }
             if (!model.listen.start(bookId, publication, page, { navigationError = failed }))
                 navigationError = getString(R.string.listen_no_voice)
+        }
+    }
+
+    /**
+     * Shares a measurements or speed-test folder as one zip through the app's file provider. The
+     * folder holds timings, lengths and the sample passage's audio, never book text.
+     */
+    private fun shareFolder(dir: java.io.File) {
+        lifecycleScope.launch {
+            val uri =
+                try {
+                    withContext(Dispatchers.IO) {
+                        val out = java.io.File(cacheDir, "epub-share/narration-${dir.name}.zip")
+                        zipFolder(dir, out)
+                        FileProvider.getUriForFile(
+                            this@ReaderActivity,
+                            "$packageName.photos",
+                            out,
+                        )
+                    }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    navigationError = getString(R.string.listen_share_failed)
+                    return@launch
+                }
+            val send =
+                Intent(Intent.ACTION_SEND)
+                    .setType("application/zip")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            send.clipData = ClipData.newUri(contentResolver, dir.name, uri)
+            try {
+                startActivity(Intent.createChooser(send, null))
+            } catch (_: android.content.ActivityNotFoundException) {
+                navigationError = getString(R.string.listen_share_failed)
+            }
         }
     }
 
@@ -723,7 +763,26 @@ class ReaderActivity : FragmentActivity() {
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
-        SideEffect { panelOpen = panel != null || shownHighlight != null || pendingNote != null }
+        val listen = model.listen
+        // The natural voice cannot keep up: its sheet replaces any other until answered.
+        val slow = listen.narration as? NarrationStatus.TooSlow
+        LaunchedEffect(slow != null) { if (slow != null) panel = null }
+        SideEffect {
+            panelOpen =
+                panel != null || shownHighlight != null || pendingNote != null || slow != null
+        }
+        // The speed test keeps the screen on, except in its long run, which may run with it off.
+        val bench by NarrationBenchmark.state.collectAsState()
+        val keepScreenOn =
+            (bench as? NarrationBenchmark.State.Running)?.step.let {
+                it != null && it != NarrationBenchmark.Step.SUSTAINED
+            }
+        DisposableEffect(keepScreenOn) {
+            if (keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            onDispose {
+                if (keepScreenOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
         BackHandler { if (panel != null) panel = null else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
@@ -756,7 +815,6 @@ class ReaderActivity : FragmentActivity() {
             if (controls) bars.show(WindowInsetsCompat.Type.systemBars())
             else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
-        val listen = model.listen
         val highlight = MaterialTheme.colorScheme.primary.toArgb()
         SideEffect {
             listenTint = highlight
@@ -871,7 +929,10 @@ class ReaderActivity : FragmentActivity() {
                 listen.state != ListenState.OFF && (showBars || listen.state != ListenState.PLAYING)
             )
                 ListenBar(
-                    playing = listen.state == ListenState.PLAYING,
+                    // While preparing, play is wanted: the button pauses, like during playback.
+                    playing =
+                        listen.state == ListenState.PLAYING ||
+                            listen.state == ListenState.PREPARING,
                     starting = listen.state == ListenState.STARTING,
                     speed = listen.speed,
                     modifier = floating,
@@ -882,6 +943,7 @@ class ReaderActivity : FragmentActivity() {
                     onStop = listen::stop,
                     timerOn = listen.sleep != SleepTimer.OFF,
                     onOptions = { panel = ReaderPanel.LISTEN },
+                    note = listenNote(listen.state, listen.narration),
                 )
             model.linkOffer?.let { offer ->
                 LinkOfferCard(
@@ -909,6 +971,12 @@ class ReaderActivity : FragmentActivity() {
             SnackbarHost(snackbar, floating)
         }
         val naturalState by remember { KokoroModel.state(this@ReaderActivity) }.collectAsState()
+        val fasterState by
+            remember { KokoroModel.state(this@ReaderActivity, KokoroModel.Variant.FP32) }
+                .collectAsState()
+        var testMinutes by rememberSaveable {
+            mutableIntStateOf(NarrationBenchmark.Plan().sustainedMinutes)
+        }
         panel?.let { open ->
             ModalBottomSheet(
                 onDismissRequest = { panel = null },
@@ -930,8 +998,51 @@ class ReaderActivity : FragmentActivity() {
                                     naturalState,
                                     listen.natural,
                                     listen.naturalPace,
+                                    readyAheadSeconds = listen.readyAheadSeconds,
+                                    variant = listen.naturalVariant,
+                                    faster = fasterState,
+                                    recording = listen.recordMeasurements,
+                                    hasRecording = listen.lastRecording != null,
                                 ),
                             onDownload = { KokoroModel.install(this@ReaderActivity) },
+                            narration =
+                                NarrationActions(
+                                    onVariant = listen::chooseVariant,
+                                    onDownloadFaster = {
+                                        KokoroModel.install(
+                                            this@ReaderActivity,
+                                            KokoroModel.Variant.FP32,
+                                        )
+                                    },
+                                    onTest = { panel = ReaderPanel.LISTEN_TEST },
+                                    onRecord = listen::setRecordMeasurements,
+                                    onShareRecording = { listen.lastRecording?.let(::shareFolder) },
+                                ),
+                        )
+                    ReaderPanel.LISTEN_TEST ->
+                        NarrationTestSheet(
+                            bench,
+                            testMinutes,
+                            variants =
+                                remember {
+                                    NarrationBenchmark.installedVariants(this@ReaderActivity).size
+                                },
+                            onMinutes = { testMinutes = it },
+                            onStart = {
+                                // Reading aloud would compete for the same processor and
+                                // holds the voice the test loads: end it first.
+                                listen.stop()
+                                NarrationBenchmark.start(
+                                    this@ReaderActivity,
+                                    NarrationBenchmark.Plan(sustainedMinutes = testMinutes),
+                                )
+                            },
+                            onCancel = NarrationBenchmark::cancel,
+                            onShare = {
+                                (bench as? NarrationBenchmark.State.Done)
+                                    ?.exportDir
+                                    ?.let(::shareFolder)
+                            },
                         )
                     ReaderPanel.TEXT ->
                         if (model.kind == ReaderKind.EPUB) TextPanel()
@@ -942,6 +1053,15 @@ class ReaderActivity : FragmentActivity() {
                             DevicesPanel(book?.id, scope) { panel = null }
                         else PanelNote(R.string.reader_m9_devices_epub_only)
                 }
+            }
+        }
+        slow?.let {
+            ModalBottomSheet(
+                onDismissRequest = listen::dismissSlow,
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                TooSlowSheet(it, onChoice = listen::chooseSlow, onDismiss = listen::dismissSlow)
             }
         }
         shownHighlight?.let { shown ->
