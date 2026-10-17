@@ -754,10 +754,32 @@ Placeholders. Each will name its files, components and strings from `STATS_UI.md
 
 ---
 
-## Open questions for the owner
+## Owner's answers (2026-10-17)
 
-1. **Kindle books that were never in Librillo.** The plan says no titles leave the e-reader, so these show as "A book on your e-reader". Should the plugin send the title and author of a book the phone can't match? It would be KOReader's metadata, never text.
-2. **Listening and the daily goal.** Listening is never added to reading time. Should it count toward the daily minutes goal, or keep a streak alive? Today: no to both.
-3. **Forgotten devices.** A device the owner forgot still counts toward the statistics: the reading happened. Should it be left out instead?
-4. **Six slots in the phone's bottom bar.** A Stats tab makes five tabs plus the Now Reading tile. Material suggests three to five destinations. This is for `STATS_UI.md` to settle.
-5. **A reading day** starts at 1 minute of reading, and a session under 1 minute is a glance (left out of session lengths, kept in time). Change these if you prefer.
+1. **Kindle books never in Librillo: yes, send KOReader's title and author, but only for books the phone can't match.** This applies as amendment A1 below.
+2. **Listening and goals: no.** Listening doesn't count toward the daily minutes goal or keep a streak going, as planned.
+3. **Forgotten devices: keep counting them**, as planned.
+4. **Bottom bar slots:** left to `STATS_UI.md`.
+5. **Thresholds: keep 1 minute**, as planned.
+
+## Amendment A1: names for unmatched Kindle books
+This amends D1, D2, D3, D4, D8 and D9. Workers on those tasks must apply it.
+
+- **Wire (D1):**
+  - **GET `/folio/v2/statistics`** also answers `"known": [<lowercase 32-hex digest>, …]`: every KOReader digest the phone can match to a library book (`SyncLibrary.knownDigests(): List<String> = emptyList()`).
+  - **POST version 2** may carry an optional `"books"` object: `{ "<digest>": {"title": "<text>", "authors": "<text>"} }`.
+    - At most `KoreaderSessions.MAX_PER_REQUEST` entries.
+    - Each digest is 32 lowercase hex characters.
+    - Title and authors are strings of at most 512 characters each, with no control characters; authors may be empty.
+    - Anything else gives `invalid()`.
+    - Valid names go to `SyncLibrary.saveBookNames(ereaderId, names: Map<String, Pair<String, String>>)`, which defaults to a no-op.
+  - **Tests:** GET answers `known`; names are saved; a bad digest, an over-long title and a control character each give 403; a body without `books` still works.
+- **Plugin (D2):**
+  - After the GET, read `known` into a set; a missing `known` means an empty set.
+  - For each chunk, the `books` object holds an entry for every distinct session book not in `known`, from `SELECT md5, title, authors FROM book` (read once in the same read-only transaction; md5 lowercased). Titles and authors are cut to 512 characters, with control characters removed.
+  - Never send names for known digests.
+  - **Tests:** names go only for unknown digests; a phone answering without `known` gets names for every book; nothing other than title and authors is ever sent.
+- **Room (D3):** schema 14 also gets the table `stats_book_names(digest TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, authors TEXT NOT NULL, updatedAt INTEGER NOT NULL)`, in the same additive migration and the same migration test.
+- **Storage (D4):** `saveBookNames` upserts into `stats_book_names`, newest wins. `knownDigests` returns the digests of library books that have one (from D6's digest store; until D6 lands, those already known).
+- **Backups (D8):** `stats_book_names` is carried like the sessions. Optional, so older backups restore.
+- **Repository (D9):** a session whose book isn't in the library takes its name from `stats_book_names`, else "A book on your e-reader".
