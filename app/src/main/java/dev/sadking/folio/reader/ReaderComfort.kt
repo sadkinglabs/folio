@@ -65,6 +65,8 @@ data class ReaderComfort(
     val leftHanded: Boolean = false,
     /** Taps, volume keys and the bar's arrows slide the page instead of jumping. */
     val pageAnimation: Boolean = false,
+    /** Sliding up or down along the left edge sets [warmth]; along the right edge, brightness. */
+    val edgeSwipes: Boolean = true,
 ) {
     fun bounded() =
         copy(
@@ -99,6 +101,7 @@ data class ReaderComfort(
                         } ?: TapZones.EDGES,
                     leftHanded = prefs.getBoolean("leftHanded", false),
                     pageAnimation = prefs.getBoolean("pageAnimation", false),
+                    edgeSwipes = prefs.getBoolean("edgeSwipes", true),
                 )
                 .bounded()
 
@@ -113,6 +116,7 @@ data class ReaderComfort(
                 .putString("tapZones", bounded.tapZones.name)
                 .putBoolean("leftHanded", bounded.leftHanded)
                 .putBoolean("pageAnimation", bounded.pageAnimation)
+                .putBoolean("edgeSwipes", bounded.edgeSwipes)
                 .apply()
         }
     }
@@ -312,6 +316,12 @@ internal fun ReaderComfortSection(
             comfort.keepScreenOn,
             { onChange(comfort.copy(keepScreenOn = it)) },
             detail = stringResource(R.string.reader_keep_screen_on_detail),
+        )
+        SheetSwitch(
+            stringResource(R.string.reader_edge_swipes),
+            comfort.edgeSwipes,
+            { onChange(comfort.copy(edgeSwipes = it)) },
+            detail = stringResource(R.string.reader_edge_swipes_detail),
         )
         SectionHeading(stringResource(R.string.reader_comfort_pages))
         Column(Modifier.selectableGroup()) {

@@ -13,11 +13,14 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.ActionMode
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
@@ -153,6 +156,8 @@ class ReaderActivity : FragmentActivity() {
                 SELECTION_MENU.forEachIndexed { order, (id, label) ->
                     menu.add(Menu.NONE, id, order, label)
                 }
+                selectionMode = mode
+                watchSelection()
                 return true
             }
 
@@ -164,18 +169,34 @@ class ReaderActivity : FragmentActivity() {
                 return true
             }
 
-            override fun onDestroyActionMode(mode: ActionMode) = Unit
+            override fun onDestroyActionMode(mode: ActionMode) {
+                if (selectionMode === mode) {
+                    selectionMode = null
+                    selectionWatch?.cancel()
+                    selectionWatch = null
+                }
+            }
         }
 
-    /** A tap on a highlight opens its sheet instead of toggling the controls. */
+    /** The text-selection menu while it is open: the page is busy with a selection then. */
+    private var selectionMode: ActionMode? = null
+
+    /** Turns the page when a selection is dragged to its end; runs while text is selected. */
+    private var selectionWatch: Job? = null
+
+    /**
+     * A tap on a highlight opens its sheet instead of toggling the controls. Readium calls this on
+     * the page's script thread, in the middle of the page's own tap, so the sheet is opened from
+     * the main thread once that tap is over.
+     */
     private val highlightTaps =
         object : DecorableNavigator.Listener {
             override fun onDecorationActivated(
                 event: DecorableNavigator.OnActivatedEvent
             ): Boolean {
-                val tapped =
-                    model.highlights.firstOrNull { it.id == event.decoration.id } ?: return false
-                shownHighlightId = tapped.id
+                val id = event.decoration.id
+                if (model.highlights.none { it.id == id }) return false
+                window.decorView.post { openHighlight(id) }
                 return true
             }
         }
@@ -210,6 +231,79 @@ class ReaderActivity : FragmentActivity() {
     override fun onUserInteraction() {
         super.onUserInteraction()
         interactions++
+    }
+
+    /** Follows edge slides for warmth and brightness; see ReaderEdgeSwipe.kt. */
+    private val edgeSwipe by lazy {
+        EdgeSwipeTracker(
+            strip = EDGE_STRIP_DP * resources.displayMetrics.density,
+            slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat(),
+            claimWithinMs = ViewConfiguration.getLongPressTimeout().toLong(),
+        )
+    }
+
+    /** The comfort when the edge slide under the finger began. */
+    private var edgeStart: ReaderComfort? = null
+
+    /** The edge last slid on, for the level on screen. */
+    private var edgeShown by mutableStateOf<EdgeSide?>(null)
+
+    /** True while an edge slide is under the finger. */
+    private var edgeSliding by mutableStateOf(false)
+
+    /**
+     * Edge slides work over a page with nothing on top and no text being selected (a selection's
+     * handles may be dragged to the edge).
+     */
+    private fun edgeSwipesOn() =
+        model.comfort.edgeSwipes &&
+            navigator != null &&
+            !panelOpen &&
+            !closing &&
+            selectionMode == null
+
+    /**
+     * Every touch on the reader's window passes here first, so an edge slide can be told from a
+     * tap, a page swipe or a selection before the page acts on it. See [EdgeSwipeTracker].
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        val step =
+            edgeSwipe.onTouch(
+                ev.actionMasked,
+                ev.x,
+                ev.y,
+                window.decorView.width.toFloat(),
+                ev.eventTime,
+                ev.pointerCount,
+                edgeSwipesOn(),
+            )
+        val side = edgeSwipe.side
+        when (step) {
+            EdgeStep.PASS -> return super.dispatchTouchEvent(ev)
+            EdgeStep.CLAIM -> {
+                // The page and the controls saw this touch start: end it there as cancelled.
+                val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                super.dispatchTouchEvent(cancel)
+                cancel.recycle()
+                edgeStart = model.comfort
+                edgeShown = side
+                edgeSliding = true
+            }
+            EdgeStep.DRAG -> {
+                val start = edgeStart
+                if (start != null && side != null)
+                    model.previewComfort(
+                        edgeSwiped(start, side, edgeSwipe.travel, window.decorView.height.toFloat())
+                    )
+            }
+            EdgeStep.END -> {
+                edgeStart = null
+                edgeSliding = false
+                // Kept like the sliders keep theirs, for every book.
+                model.comfort(model.comfort)
+            }
+        }
+        return true
     }
 
     override fun onPause() {
@@ -672,14 +766,20 @@ class ReaderActivity : FragmentActivity() {
      * colour; Colour… asks for one first; Add note opens the note dialog first. A passage that is
      * already highlighted (the same, or inside one) opens that highlight instead: its sheet, or its
      * note for Add note. The selection is cleared when it is done. Internal for tests.
+     *
+     * A sheet or dialog it asks for opens only after the menu has closed and the selection is
+     * cleared, on a later turn of the main thread, never from inside the menu's own callback.
      */
     internal fun selectionAction(itemId: Int): Job = lifecycleScope.launch {
         val nav = epubNavigator ?: return@launch
+        var open: (() -> Unit)? = null
         try {
             val selection = nav.currentSelection() ?: return@launch
             if (itemId == SELECTION_DEFINE) {
                 // The selected words stay on the phone and are never logged.
-                selection.locator.text.highlight?.takeIf { it.isNotBlank() }?.let(model::define)
+                selection.locator.text.highlight
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { words -> open = { model.define(words) } }
                 return@launch
             }
             if (itemId == SELECTION_COPY) {
@@ -702,14 +802,18 @@ class ReaderActivity : FragmentActivity() {
             }
             val existing = model.highlightFor(passage)
             if (existing != null) {
-                if (itemId == SELECTION_NOTE) editingNoteId = existing.id
-                else shownHighlightId = existing.id
+                open =
+                    if (itemId == SELECTION_NOTE) {
+                        { editingNoteId = existing.id }
+                    } else {
+                        { openHighlight(existing.id) }
+                    }
                 return@launch
             }
             val chapter = model.publication?.let { chapterTitle(it, href) }.orEmpty()
             when (itemId) {
-                SELECTION_NOTE -> pendingNote = PendingNote(passage, chapter)
-                SELECTION_COLOUR -> pendingColour = PendingHighlight(passage, chapter)
+                SELECTION_NOTE -> open = { pendingNote = PendingNote(passage, chapter) }
+                SELECTION_COLOUR -> open = { pendingColour = PendingHighlight(passage, chapter) }
                 else -> model.addHighlight(passage, "", chapter)
             }
         } catch (cancel: CancellationException) {
@@ -718,6 +822,53 @@ class ReaderActivity : FragmentActivity() {
             navigationError = getString(R.string.reader_highlight_failed)
         } finally {
             nav.clearSelection()
+            // The menu closes when this job completes; what it asked for opens after that.
+            open?.let { action -> window.decorView.post { action() } }
+        }
+    }
+
+    /**
+     * Opens highlight [id]'s sheet once the page has let go of the touch: the selection menu
+     * closed, the selection cleared and the page's focus released, so nothing on the page is still
+     * busy with a gesture when the sheet takes the screen. Main thread only.
+     */
+    private fun openHighlight(id: String) {
+        selectionMode?.finish()
+        epubNavigator?.let {
+            it.clearSelection()
+            it.publicationView.clearFocus()
+        }
+        shownHighlightId = id
+    }
+
+    /**
+     * While text is selected in a paged book, turns the page when the selection's moving end is
+     * held on the page's last word (or first, going back). See ReaderSelectionTurn.kt. Started by
+     * the selection menu; internal for tests, whose selections are made by script and so get none.
+     */
+    internal fun watchSelection() {
+        selectionWatch?.cancel()
+        val nav = epubNavigator ?: return
+        selectionWatch = lifecycleScope.launch {
+            val turner = SelectionPageTurner()
+            while (isActive) {
+                delay(SELECTION_POLL_MS)
+                if (model.scrolling) continue
+                val raw =
+                    try {
+                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                            nav.bridge("JSON.stringify(FolioSelection.edge());")
+                        }
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        null
+                    }
+                when (turner.next(parseSelectionEdge(raw), SystemClock.uptimeMillis())) {
+                    1 -> nav.goForward(animated = false)
+                    -1 -> nav.goBackward(animated = false)
+                }
+            }
         }
     }
 
@@ -976,10 +1127,14 @@ class ReaderActivity : FragmentActivity() {
         // Reading keeps the screen on, when chosen, until ten minutes pass without a touch or key.
         // The flag belongs to this window, so it ends when the reader is not in front.
         var awake by remember { mutableStateOf(true) }
-        LaunchedEffect(interactions) {
-            awake = true
-            delay(ReaderComfort.IDLE_SLEEP_MS)
-            awake = false
+        // Counted in the effect, not read here: a touch must not recompose the whole screen.
+        LaunchedEffect(Unit) {
+            snapshotFlow { interactions }
+                .collectLatest {
+                    awake = true
+                    delay(ReaderComfort.IDLE_SLEEP_MS)
+                    awake = false
+                }
         }
         val screenOn = keepScreenOn || (model.comfort.keepScreenOn && awake)
         DisposableEffect(screenOn) {
@@ -1237,6 +1392,23 @@ class ReaderActivity : FragmentActivity() {
                 )
             }
             SnackbarHost(snackbar, floating)
+            // The level while sliding along an edge, then a moment after.
+            var levelShown by remember { mutableStateOf(false) }
+            LaunchedEffect(edgeSliding) {
+                if (edgeSliding) levelShown = true
+                else {
+                    delay(EDGE_LEVEL_LINGER_MS)
+                    levelShown = false
+                }
+            }
+            EdgeLevelIndicator(
+                edgeShown,
+                model.comfort,
+                levelShown,
+                Modifier.align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+                    .padding(top = 16.dp),
+            )
         }
         val naturalState by remember { KokoroModel.state(this@ReaderActivity) }.collectAsState()
         val fasterState by
@@ -1404,6 +1576,8 @@ class ReaderActivity : FragmentActivity() {
         shown?.let { row ->
             ModalBottomSheet(
                 onDismissRequest = { shownHighlightId = null },
+                // Always fully open: every action is on screen, however long the passage.
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                 shape = FolioSpace.sheetShape,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {

@@ -225,6 +225,8 @@ class ScreenshotTest {
     fun readerComfortScrolling() =
         shoot("reader-comfort-scrolling") { ReaderComfortScrollingPreview() }
 
+    @Test fun readerEdgeLevel() = shoot("reader-edge-level") { ReaderEdgeLevelPreview() }
+
     @Test
     fun readerBookmarkedWarm() = shoot("reader-bookmarked-warm") { ReaderBookmarkedWarmPreview() }
 

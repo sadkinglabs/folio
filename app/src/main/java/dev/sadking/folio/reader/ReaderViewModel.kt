@@ -190,6 +190,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         ReaderComfort.save(settings, comfort)
     }
 
+    /**
+     * Shows a comfort choice at once without keeping it yet: an edge slide in progress. The slide
+     * keeps its last value through [comfort] when the finger lifts.
+     */
+    fun previewComfort(value: ReaderComfort) {
+        comfort = value.bounded()
+    }
+
     private val bookmarkStore = BookmarkStore(dao)
 
     /** This book's bookmarks for the open revision, newest first, each with its place parsed. */

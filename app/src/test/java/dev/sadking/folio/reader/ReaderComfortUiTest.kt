@@ -60,12 +60,37 @@ class ReaderComfortUiTest {
         compose.onNodeWithText("50%").assertExists()
         compose.onNodeWithText("Keep screen on").performScrollTo().performClick()
         assertFalse(comfort.keepScreenOn)
+        // Edge slides are on until turned off here.
+        assertTrue(comfort.edgeSwipes)
+        compose.onNodeWithText("Swipe the edges").performScrollTo().performClick()
+        assertFalse(comfort.edgeSwipes)
         compose.onNodeWithText("Left and right halves").performScrollTo().performClick()
         assertEquals(TapZones.HALVES, comfort.tapZones)
         compose.onNodeWithText("Left-handed").performScrollTo().performClick()
         assertTrue(comfort.leftHanded)
         compose.onNodeWithText("Page-turn animation").performScrollTo().performClick()
         assertTrue(comfort.pageAnimation)
+    }
+
+    @Test
+    fun theEdgeLevelNamesTheSettingAndItsValue() {
+        var side by mutableStateOf(EdgeSide.RIGHT)
+        var shown by mutableStateOf(true)
+        compose.setContent {
+            FolioTheme(dynamic = false) {
+                EdgeLevelIndicator(
+                    side,
+                    ReaderComfort(autoBrightness = false, brightness = 0.62f, warmth = 0.3f),
+                    shown,
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Brightness 62%").assertIsDisplayed()
+        side = EdgeSide.LEFT
+        compose.onNodeWithContentDescription("Warmth 30%").assertIsDisplayed()
+        shown = false
+        compose.waitForIdle()
+        compose.onNodeWithTag(READER_EDGE_LEVEL_TAG).assertDoesNotExist()
     }
 
     @Test

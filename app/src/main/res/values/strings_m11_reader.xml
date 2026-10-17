@@ -9,6 +9,10 @@
     <string name="reader_warmth_value">%1$d%%</string>
     <string name="reader_keep_screen_on">Keep screen on</string>
     <string name="reader_keep_screen_on_detail">While you read. After 10 minutes without a tap, the screen can sleep.</string>
+    <string name="reader_edge_swipes">Swipe the edges</string>
+    <string name="reader_edge_swipes_detail">Slide up or down along the left edge for warmth, or the right edge for brightness.</string>
+    <!-- The level shown while sliding along an edge, with Warmth or Brightness as its name. -->
+    <string name="reader_edge_level">%1$s %2$d%%</string>
     <string name="reader_comfort_pages">Turning pages</string>
     <string name="reader_tap_edges">Edges and centre</string>
     <string name="reader_tap_edges_detail">Tap near an edge to turn. The centre shows the controls.</string>

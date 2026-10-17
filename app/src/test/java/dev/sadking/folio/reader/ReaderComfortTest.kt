@@ -29,6 +29,30 @@ class ReaderComfortTest {
         assertEquals(TapZones.EDGES, comfort.tapZones)
         assertFalse(comfort.leftHanded)
         assertFalse(comfort.pageAnimation)
+        // Edge slides for warmth and brightness are on.
+        assertTrue(comfort.edgeSwipes)
+    }
+
+    @Test
+    fun anEdgeSlideIsKeptLikeTheSliders() {
+        prefs.edit().clear().commit()
+        // A slide up the right edge from Auto, then down the left: kept for the next book.
+        val height = 2400f
+        val slid =
+            edgeSwiped(
+                edgeSwiped(ReaderComfort.load(prefs), EdgeSide.RIGHT, 360f, height),
+                EdgeSide.LEFT,
+                720f,
+                height,
+            )
+        ReaderComfort.save(prefs, slid)
+        val loaded = ReaderComfort.load(prefs)
+        assertFalse(loaded.autoBrightness)
+        assertEquals(0.75f, loaded.brightness, 0.0001f)
+        assertEquals(0.5f, loaded.warmth, 0.0001f)
+        // Turned off in the Text sheet, it stays off.
+        ReaderComfort.save(prefs, loaded.copy(edgeSwipes = false))
+        assertFalse(ReaderComfort.load(prefs).edgeSwipes)
     }
 
     @Test
@@ -43,6 +67,7 @@ class ReaderComfortTest {
                 tapZones = TapZones.HALVES,
                 leftHanded = true,
                 pageAnimation = true,
+                edgeSwipes = false,
             )
         ReaderComfort.save(prefs, chosen)
         assertEquals(chosen, ReaderComfort.load(prefs))
