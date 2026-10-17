@@ -701,14 +701,40 @@ internal fun PairingFirstRunPreview() {
     }
 }
 
-internal val sampleStatistics =
-    DeviceStatistics(
-        "device",
-        totalSeconds = 12 * 3600 + 4 * 60,
-        exportedAt = 1791750000L,
-        fetchedAt = 1791750100L,
-        days =
-            """[{"date":"2026-10-14","seconds":2700},{"date":"2026-10-13","seconds":1500},{"date":"2026-10-12","seconds":4200}]""",
+/** Reading time as two e-readers sent it after syncing: the owner's Kindle and a Kobo. */
+internal val sampleStatisticsRows =
+    listOf(
+        DeviceStatistics(
+            "${LINK_DEVICE_PREFIX}kindle-7f3a",
+            totalSeconds = 12 * 3600 + 4 * 60,
+            exportedAt = 1791750000L,
+            fetchedAt = 1791750100000L,
+            days =
+                """[{"date":"2026-10-11","seconds":2700},{"date":"2026-10-10","seconds":1500},{"date":"2026-10-09","seconds":4200}]""",
+        ),
+        DeviceStatistics(
+            "${LINK_DEVICE_PREFIX}kobo-21",
+            totalSeconds = 3 * 3600 + 20 * 60,
+            exportedAt = 1791660000L,
+            fetchedAt = 1791660100000L,
+            days = """[{"date":"2026-10-10","seconds":900},{"date":"2026-10-08","seconds":1800}]""",
+        ),
+    )
+
+internal val sampleReadingTime =
+    ReadingTime.of(
+        sampleStatisticsRows,
+        DeviceRoster(
+            deviceSightings(
+                listOf(
+                    EreaderSync("kindle-7f3a", "Kindle Paperwhite", 1791750100000L),
+                    EreaderSync("kobo-21", "Kobo Libra 2", 1791660100000L),
+                ),
+                emptyList(),
+                emptyList(),
+            ),
+            emptyList(),
+        ),
     )
 
 @Preview(name = "Settings · light", widthDp = 412, heightDp = 1500)
@@ -728,7 +754,7 @@ internal fun SettingsPreview() {
                 onTheme = {},
                 onDynamic = {},
                 reading = ReadingDefaults(),
-                statistics = sampleStatistics,
+                readingTime = sampleReadingTime,
                 hardcoverStatus =
                     HardcoverSyncStatus(
                         connected = true,
@@ -859,12 +885,12 @@ internal fun ReadingDefaultsPreview() {
     }
 }
 
-@Preview(name = "Reading time · light", widthDp = 412, heightDp = 500)
+@Preview(name = "Reading time · light", widthDp = 412, heightDp = 700)
 @Composable
 internal fun ReadingTimePreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReadingTimeContent(sampleStatistics)
+            ReadingTimeContent(sampleReadingTime)
         }
     }
 }

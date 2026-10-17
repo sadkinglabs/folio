@@ -60,8 +60,10 @@ import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BooksFolder
 import dev.sadking.folio.data.BooksFolderMove
+import dev.sadking.folio.data.DeviceReadingTime
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.FolderScanNotes
+import dev.sadking.folio.data.ReadingTime
 import dev.sadking.folio.device.HardcoverSettings
 import dev.sadking.folio.reader.ReaderDefaults
 import dev.sadking.folio.reader.ReaderTextActions
@@ -119,7 +121,8 @@ internal fun SettingsTab(
     dynamic: Boolean,
     onTheme: (String) -> Unit,
     onDynamic: (Boolean) -> Unit,
-    statistics: DeviceStatistics?,
+    /** Every stored reading-time row; named and joined by the device roster here. */
+    statistics: List<DeviceStatistics>,
     hardcoverUsername: String,
     onHardcover: () -> Unit,
     onImportHardcover: () -> Unit,
@@ -148,6 +151,8 @@ internal fun SettingsTab(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
+    val roster = LocalDevices.current
+    val readingTime = remember(statistics, roster) { ReadingTime.of(statistics, roster) }
     val dao = remember { app.database.library() }
     val allBooks by dao.books().collectAsState(emptyList())
     val allWishes by dao.wishes().collectAsState(emptyList())
@@ -198,7 +203,7 @@ internal fun SettingsTab(
             ReaderDefaults.savePageTheme(readerPrefs, value.pageTheme)
             ReaderDefaults.saveVolumeKeys(readerPrefs, value.volumeKeys)
         },
-        statistics = statistics,
+        readingTime = readingTime,
         hardcoverStatus = hardcoverStatus,
         onHardcoverSync = onHardcoverSync,
         onHardcoverSyncNow = onHardcoverSyncNow,
@@ -255,7 +260,7 @@ internal fun SettingsScreen(
     onDynamic: (Boolean) -> Unit,
     reading: ReadingDefaults = ReadingDefaults(),
     onReading: (ReadingDefaults) -> Unit = {},
-    statistics: DeviceStatistics? = null,
+    readingTime: ReadingTime = ReadingTime.EMPTY,
     hardcoverStatus: HardcoverSyncStatus = HardcoverSyncStatus(),
     onHardcoverSync: (Boolean) -> Unit = {},
     onHardcoverSyncNow: () -> Unit = {},
@@ -355,16 +360,15 @@ internal fun SettingsScreen(
                     { onReading(reading.copy(volumeKeys = it)) },
                     Modifier.testTag(SETTINGS_VOLUME_TAG),
                 )
-                // Reading time came from the old plugin over SSH; what was fetched stays readable.
-                if (statistics != null)
-                    SettingsRow(
-                        Icons.Outlined.Timer,
-                        stringResource(R.string.reading_time_title),
-                        readingTimeSummary(statistics),
-                        Modifier.testTag(SETTINGS_READING_TIME_TAG),
-                        onClick = { open(SettingsPane.READING_TIME) },
-                        selected = chosen(SettingsPane.READING_TIME),
-                    )
+                // KOReader's reading time, sent by each e-reader after it syncs.
+                SettingsRow(
+                    Icons.Outlined.Timer,
+                    stringResource(R.string.reading_time_title),
+                    readingTimeSummary(readingTime),
+                    Modifier.testTag(SETTINGS_READING_TIME_TAG),
+                    onClick = { open(SettingsPane.READING_TIME) },
+                    selected = chosen(SettingsPane.READING_TIME),
+                )
             }
             HardcoverSettings(
                 hardcoverUsername,
@@ -504,7 +508,7 @@ internal fun SettingsScreen(
     val content: @Composable (SettingsPane) -> Unit = { value ->
         when (value) {
             SettingsPane.TEXT -> ReadingDefaultsContent(reading, onReading)
-            SettingsPane.READING_TIME -> ReadingTimeContent(statistics)
+            SettingsPane.READING_TIME -> ReadingTimeContent(readingTime)
             SettingsPane.BACKUP ->
                 BackupContent(
                     onExport = {
@@ -865,14 +869,15 @@ private fun ThemeRow(appearance: String, onTheme: (String) -> Unit) {
 }
 
 @Composable
-private fun readingTimeSummary(statistics: DeviceStatistics?): String =
-    statistics?.let {
-        stringResource(
-            R.string.reading_time_total,
-            it.totalSeconds / 3600,
-            (it.totalSeconds % 3600) / 60,
-        )
-    } ?: stringResource(R.string.reading_time_none)
+private fun readingTimeSummary(time: ReadingTime): String =
+    if (time.isEmpty) stringResource(R.string.reading_time_none) else duration(time.seconds)
+
+/** "12 h 4 min", or "25 min" under an hour. */
+@Composable
+private fun duration(seconds: Long): String =
+    if (seconds >= 3600)
+        stringResource(R.string.reading_time_total, seconds / 3600, (seconds % 3600) / 60)
+    else stringResource(R.string.reading_time_minutes, seconds / 60)
 
 @Composable
 private fun SettingsSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -979,52 +984,116 @@ internal fun ReadingDefaultsContent(
     )
 }
 
-/** KOReader's reading statistics, as last fetched from the old plugin. Read only. */
+internal const val READING_TIME_DEVICE_TAG = "reading-time-device"
+internal const val READING_TIME_DAY_TAG = "reading-time-day"
+
+/**
+ * KOReader's reading time from every e-reader, as each sent it after its last sync. Read only. With
+ * several e-readers, the total is the sum and each one shows under the roster's name.
+ */
 @Composable
-internal fun ReadingTimeSheet(statistics: DeviceStatistics?, onDismiss: () -> Unit) {
-    SettingsSheet(onDismiss) { ReadingTimeContent(statistics) }
+internal fun ReadingTimeSheet(readingTime: ReadingTime, onDismiss: () -> Unit) {
+    SettingsSheet(onDismiss) { ReadingTimeContent(readingTime) }
 }
 
 @Composable
-internal fun ReadingTimeContent(statistics: DeviceStatistics?) {
+internal fun ReadingTimeContent(readingTime: ReadingTime) {
     Column(
         Modifier.fillMaxWidth().padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.item),
     ) {
-        SheetHeading(stringResource(R.string.reading_time_title), readingTimeSummary(statistics))
-        statistics?.let { stats ->
+        SheetHeading(stringResource(R.string.reading_time_title), readingTimeSummary(readingTime))
+        val muted = Modifier.padding(horizontal = FolioSpace.section)
+        if (readingTime.isEmpty) {
             Text(
-                stringResource(
-                    R.string.reading_time_exported,
-                    java.text.DateFormat.getDateTimeInstance()
-                        .format(java.util.Date(stats.exportedAt * 1000)),
-                ),
-                style = MaterialTheme.typography.bodySmall,
+                stringResource(R.string.reading_time_empty),
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = FolioSpace.section),
+                modifier = muted,
             )
+            return@Column
         }
-        statistics?.let { stats ->
-            val days = org.json.JSONArray(stats.days)
-            Column(Modifier.padding(horizontal = FolioSpace.section)) {
-                repeat(minOf(days.length(), 30)) { index ->
-                    val day = days.getJSONObject(index)
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(day.getString("date"), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            stringResource(
-                                R.string.reading_time_minutes,
-                                day.getLong("seconds") / 60,
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+        Text(
+            stringResource(
+                R.string.reading_time_updated,
+                java.text.DateFormat.getDateTimeInstance(
+                        java.text.DateFormat.MEDIUM,
+                        java.text.DateFormat.SHORT,
+                    )
+                    .format(java.util.Date(readingTime.updatedAt * 1000)),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = muted,
+        )
+        // One e-reader: its name under the total. Several: each one's own time.
+        if (readingTime.devices.size > 1) {
+            ReadingTimeSection(stringResource(R.string.reading_time_by_device)) {
+                readingTime.devices.forEach { device ->
+                    ReadingTimeLine(
+                        readingTimeDeviceName(device),
+                        duration(device.seconds),
+                        Modifier.testTag(READING_TIME_DEVICE_TAG),
+                    )
                 }
             }
+        } else {
+            Text(
+                stringResource(
+                    R.string.reading_time_from,
+                    readingTimeDeviceName(readingTime.devices.single()),
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = muted.testTag(READING_TIME_DEVICE_TAG),
+            )
         }
+        if (readingTime.days.isNotEmpty())
+            ReadingTimeSection(stringResource(R.string.reading_time_recent)) {
+                val format =
+                    java.time.format.DateTimeFormatter.ofLocalizedDate(
+                        java.time.format.FormatStyle.MEDIUM
+                    )
+                readingTime.days.take(30).forEach { (date, seconds) ->
+                    ReadingTimeLine(
+                        runCatching { java.time.LocalDate.parse(date).format(format) }
+                            .getOrDefault(date),
+                        duration(seconds),
+                        Modifier.testTag(READING_TIME_DAY_TAG),
+                    )
+                }
+            }
+    }
+}
+
+@Composable
+private fun readingTimeDeviceName(device: DeviceReadingTime): String =
+    device.name
+        ?: stringResource(
+            if (device.old) R.string.reading_time_old_device else R.string.dev_unnamed
+        )
+
+@Composable
+private fun ReadingTimeSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.padding(horizontal = FolioSpace.section)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp).semantics { heading() },
+        )
+        content()
+    }
+}
+
+@Composable
+private fun ReadingTimeLine(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(FolioSpace.item),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

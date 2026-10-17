@@ -9,6 +9,7 @@ local lfs = require("libs/libkoreader-lfs")
 local ffiUtil = require("ffi/util")
 local Link
 local Sync
+local Stats
 local Folio = WidgetContainer:extend { name = "folio", }
 local function message(text) UIManager:show(InfoMessage:new { text = text }) end
 local function bounded_read(path)
@@ -22,6 +23,7 @@ function Folio:init()
     math.randomseed(os.time() + math.floor((os.clock() % 1) * 1e6))
     Link = dofile(self.path .. "/link.lua")
     Sync = dofile(self.path .. "/sync.lua")
+    Stats = dofile(self.path .. "/stats.lua")
     self:applySetup()
     self.ui.menu:registerToMainMenu(self)
     Folio.startAutoSync()
@@ -396,6 +398,12 @@ local function sync_deps(progress)
                 color = G_reader_settings:readSetting("highlight_color") }
         end,
         open_path = open_path,
+        -- KOReader's reading statistics, or nil when there are none. Only read (stats.lua).
+        open_statistics = function()
+            local path = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
+            if lfs.attributes(path, "mode") ~= "file" then return nil end
+            return require("lua-ljsqlite3/init").open(path)
+        end,
     }
 end
 
@@ -429,7 +437,10 @@ function Runner.run(automatic, look)
             local deps = sync_deps(progress)
             if automatic and not Sync.wants(cfg, deps, state) then return nil end
             ran = true
-            return Sync.run(cfg, deps, state)
+            local done = Sync.run(cfg, deps, state)
+            -- Reading time follows a confirmed sync; it never fails it.
+            Stats.send(cfg, deps, Sync.headers(cfg))
+            return done
         end)
         -- Saved even when the sync failed: the hashes stay useful, and answers are only cleared
         -- once Librillo confirmed.

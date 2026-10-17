@@ -99,11 +99,16 @@
     <string name="settings_forget_body">Its address and sign-in details are removed. Books stay where they are.</string>
     <string name="settings_forget_confirm">Forget</string>
 
-    <!-- Reading time (Settings), as last fetched from the old plugin -->
+    <!-- Reading time (Settings): KOReader's statistics, sent by each e-reader when it syncs -->
     <string name="reading_time_title">Reading time</string>
     <string name="reading_time_total">%1$d h %2$d min</string>
-    <string name="reading_time_none">Not fetched yet</string>
-    <string name="reading_time_exported">Exported %1$s</string>
+    <string name="reading_time_none">Not synced yet</string>
+    <string name="reading_time_empty">Your e-reader sends its reading time from KOReader each time it syncs.</string>
+    <string name="reading_time_updated">Updated %1$s</string>
+    <string name="reading_time_from">From %1$s</string>
+    <string name="reading_time_by_device">By e-reader</string>
+    <string name="reading_time_recent">Recent days</string>
+    <string name="reading_time_old_device">E-reader, before sync</string>
     <string name="reading_time_minutes">%1$d min</string>
     <!-- The Books folder (M8): Author/Title.epub, the only copy of each book. -->
     <string name="settings_books_folder">Books folder</string>

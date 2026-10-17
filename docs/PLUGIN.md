@@ -32,7 +32,7 @@ In KOReader's main menu (the tools tab), **Librillo**:
 
 That is the whole menu. If the phone's address changed, a sync finds it on the network by itself.
 
-The older items (Get books from Librillo, Find Librillo on this network, Continue from Librillo automatically, Review phone reading position, Review collection additions and Export reading statistics) are gone. Sync does what they did. Settings they left behind (`folio_folder`, `folio_auto_fetch`, `folio_auto_positions`, `folio_applied_positions`) are no longer read.
+The older items (Get books from Librillo, Find Librillo on this network, Continue from Librillo automatically, Review phone reading position, Review collection additions and Export reading statistics) are gone. Sync does what they did, reading time included. Settings they left behind (`folio_folder`, `folio_auto_fetch`, `folio_auto_positions`, `folio_applied_positions`) are no longer read.
 
 ## What a sync does
 
@@ -42,6 +42,7 @@ The older items (Get books from Librillo, Find Librillo on this network, Continu
 - **Status.** Reading, Finished and On hold, both ways.
 - **Highlights, notes and bookmarks.** Merged both ways. Nothing is ever deleted.
 - **Collections.** KOReader collections and Librillo lists match by name.
+- **Reading time.** After each sync, the totals from KOReader's reading statistics (time read in all and per day, for the last 366 days) go to the phone, which shows them in Settings → Reading time. No titles. The statistics database is only read. Without statistics, nothing is sent and the sync is not affected.
 
 When both sides changed the same thing, nothing changes until you answer a question, on either device.
 

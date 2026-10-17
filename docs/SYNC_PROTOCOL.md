@@ -7,7 +7,7 @@ Three parts:
 - **The server** (`transport`, `LinkRoutes`): the `/folio/v2` routes on the Link server. It runs the planner, hands out files, takes uploads, and records the result.
 - **The plugin** (`koreader/folio.koplugin`): sends the Kindle's manifest, runs the Kindle's actions in order, and reports each result.
 
-Reading positions are not part of this protocol. KOReader's Progress sync (kosync) already handles them.
+Reading positions are not part of this protocol. KOReader's Progress sync (kosync) already handles them. KOReader's reading time (its statistics) follows each confirmed sync on its own route, `POST /folio/v2/statistics`.
 
 ## What both sides keep in step
 
@@ -311,6 +311,26 @@ Only now does the phone change anything, in this order:
 6. **Refused files.** `SyncLibrary.saveRefused(device, list)`: the files refused in this sync (`RefusedFile`: hash, Kindle path, reason, time), plus the earlier ones whose hash is still in this manifest. A refusal for content the Kindle no longer has is dropped.
 7. `SyncLibrary.synced(device, name, now)`, and the temporary uploads are deleted.
 
+### POST /folio/v2/statistics
+After `/finish` answers ok, the plugin sends KOReader's reading time. It is not part of a session and needs none; the sync never depends on it.
+```json
+{"device": {"id": "kindle-7f3a", "name": "Kindle Paperwhite"},
+ "format": "folio-statistics", "version": 1,
+ "seconds": 43440, "exportedAt": 1791750000,
+ "days": [{"date": "2026-10-14", "seconds": 2700}, {"date": "2026-10-13", "seconds": 1500}]}
+```
+Answer `{"ok": true}`.
+
+| Field | Meaning |
+|---|---|
+| `seconds` | Every second read, from KOReader's statistics database (`settings/statistics.sqlite3`, table `page_stat_data`, rows with `duration >= 0`). |
+| `exportedAt` | When the plugin read it, in epoch **seconds** on the e-reader's clock (as the first plugin's `.folio-statistics.json` did). |
+| `days` | Seconds read per day (`YYYY-MM-DD`, the e-reader's local time), newest first, at most 366. |
+
+Only totals travel: no titles, no book ids, no pages. The plugin reads the database read-only (`PRAGMA query_only=ON`, one transaction), with the same queries as the first plugin's export. A missing or unreadable database, a row without a usable date, or a phone that doesn't answer sends nothing for that row or that sync and never fails the sync. A phone without the route answers 404, which the plugin ignores.
+
+**Checks.** `format` must be `folio-statistics` and `version` 1; `device.id` 1 to 128 characters; `seconds`, `exportedAt`, each day's `date` and `seconds` present; at most 366 days. Then `SyncLibrary.saveStatistics(ereaderId, statistics)` applies the phone's limits and throws `IllegalArgumentException` on anything else. Anything refused is 403 (`{"code":2003}`) and nothing is kept.
+
 ### Sessions
 Once `/sync` has planned, the server calls `SyncLibrary.started(device, name, now)`, so the phone can say "Syncing…". A session lasts 30 minutes after its last request, so a long transfer can't expire half way. Each device has one at a time: a new `/sync` replaces the old one and deletes its uploads. At most 16 sessions exist; the oldest is dropped. An unknown or ended session is 410 (`{"code":2005}`) on every route that takes one. Planning and finishing run one at a time; uploads stream in parallel.
 
@@ -328,6 +348,7 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 - `refused(ereaderId)`, `saveRefused(ereaderId, refused)`: the e-reader's refused files (rule 13); the planner gets their hashes as `ignored`.
 - `started(ereaderId, deviceName, at)`: a sync was planned.
 - `synced(ereaderId, deviceName, at)`: a sync finished.
+- `saveStatistics(ereaderId, statistics)`: keeps the e-reader's reading time (`ReadingStatistics`: `seconds`, `exportedAt`, `days`), replacing what it sent before. Throws `IllegalArgumentException` to refuse it.
 
 `receive` and `revise` get a temporary file the server deletes afterwards, so they copy or move it.
 
@@ -341,6 +362,8 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 - `pending(ereaderId)` is true when the owner tapped Sync since that e-reader's last finished sync (`SyncState.requestSync`), or when an answer given on the phone is waiting, else `SyncPending.pending(phoneBooks, baselines, root = null, waiting)` (core). `root = null` accepts any library folder, because hello doesn't say which one the e-reader uses. Books with an open question, a blank baseline status, and a missing phone file don't count, so the e-reader doesn't sync every 5 minutes for nothing.
 - Questions, answers, refused files, the last sync time, the number of books both sides held after it and the device name are kept per e-reader in `SyncState` (SharedPreferences `librillo-sync`, JSON), with a StateFlow for the UI (`ereaders`). State saved before step 4 has no refused files and loads as such. "Syncing since" is kept in memory only, from `started` until `synced`, and stops counting after 30 minutes. The Sync button's time is `requestedAt` (`syncRequestedAt`).
 - After `apply`, the books whose status sync set (a `SetStatus`, or an `Import` with a status) are passed to `HardcoverSync.statusChanged`, as a status set on the phone is. Hardcover gets them at its next sync (M10): a finish on the e-reader goes to Hardcover on its own, with no prompt.
+- `saveStatistics` stores one row in `device_statistics` keyed `link:<e-reader id>` (`exportedAt` as sent, `fetchedAt` the phone's time in milliseconds, `days` as JSON), after the same check a backup's statistics get (`validateStatistics`: total 0 to 10,000,000,000 s, `exportedAt` > 0, at most 366 days, real and distinct dates, 0 to 10,000,000 s a day). A new row replaces that e-reader's earlier one: KOReader's database is the record. Rows fetched over SSH by the first plugin keep their saved connection's id and stay as they were.
+- **Settings → Reading time** reads every row through the device roster (`ReadingTime.of`): a `link:` row belongs to `ereader:<id>`, any other to `ssh:<id>`. Forgotten devices are left out. Devices the owner joined are one e-reader with one statistics database, so their newest row wins instead of adding up. The total is the sum over the e-readers shown, each under the roster's name (or "E-reader", or "E-reader, before sync" for an SSH row with no name), and the recent days are summed by date.
 - `uploadDir()` is `Books/.librillo/uploads` when the Books folder is ready, else `cacheDir/sync-uploads`; uploads left over for more than a day are deleted.
 
 ## Hardcover (M10)
@@ -366,6 +389,7 @@ The end of a KOReader range is taken as exclusive, like a DOM range end. That is
 - **Delete** moves the file and its `.sdr` to `<home>/.librillo/trash`. The trash is emptied after `/finish` answers ok; otherwise the books are put back, and leftovers are put back at the start of the next sync.
 - **Download** lands in `<home>/.librillo/parts/<sha256>.part`, is checked for size and hash, checked again just before it is renamed into place.
 - **The open book** is never moved, replaced, deleted or written: those actions fail with "open on the e-reader" and the next sync tries again.
+- **Reading time** (`stats.lua`): after `/finish` answers ok, `POST /folio/v2/statistics` with the totals above. Hooked in `main.lua` after `Sync.run`, so `sync.lua` doesn't know about it.
 - **Automatic sync:** when Wi-Fi connects, when a book closes, and every 5 minutes (spaced out to 80 minutes while the phone can't be reached). It syncs only when it never synced, when hello says `pending`, or when something changed on the e-reader since the last confirmed sync. It never turns Wi-Fi on.
 
 ## Setup (version 2)

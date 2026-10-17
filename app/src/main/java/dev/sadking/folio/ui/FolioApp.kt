@@ -925,8 +925,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                             dynamic = it
                                             prefs.edit().putBoolean("dynamic", it).apply()
                                         },
-                                        statistics =
-                                            statistics.firstOrNull { it.deviceId == device.id },
+                                        statistics = statistics,
                                         hardcoverUsername = hardcoverUsername,
                                         onHardcover = { showAccount = true },
                                         onImportHardcover = {

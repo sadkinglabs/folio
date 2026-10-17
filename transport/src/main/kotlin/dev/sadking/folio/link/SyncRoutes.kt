@@ -27,6 +27,9 @@ import org.json.JSONObject
  * 3. `POST /finish` reports each action's result. Only then does the phone take uploads, apply its
  *    own actions and record what both sides now agree on.
  *
+ * 4. After a confirmed finish, `POST /statistics` may bring KOReader's reading time. It is not part
+ *    of a session, and the sync never depends on it.
+ *
  * A session lasts [SESSION_MS] after its last request. Each device has at most one; a new `/sync`
  * replaces it.
  */
@@ -76,6 +79,7 @@ class SyncRoutes(
             request.method == "PUT" && route == "/upload" ->
                 upload(request, query["session"].orEmpty(), query["path"].orEmpty(), upload)
             request.method == "POST" && route == "/finish" -> finish(request.body)
+            request.method == "POST" && route == "/statistics" -> statistics(request.body)
             else -> notFound()
         }
     }
@@ -370,6 +374,42 @@ class SyncRoutes(
         return (fresh + earlier).distinctBy { it.sha256 }.sortedBy { it.path }
     }
 
+    /**
+     * KOReader's reading time from one e-reader: totals per day, no titles. The shape is checked
+     * here; the library applies the phone's own limits and refuses the rest (403).
+     */
+    private fun statistics(text: String?): LinkResponse {
+        val body = parse(text) ?: return invalid()
+        val device: String
+        val statistics: ReadingStatistics
+        try {
+            device = body.getJSONObject("device").getString("id").trim()
+            if (body.getString("format") != STATISTICS_FORMAT || body.getInt("version") != 1)
+                return invalid()
+            val days = body.getJSONArray("days")
+            if (days.length() > MAX_DAYS) return invalid()
+            statistics =
+                ReadingStatistics(
+                    seconds = body.getLong("seconds"),
+                    exportedAt = body.getLong("exportedAt"),
+                    days =
+                        (0 until days.length()).map {
+                            val day = days.getJSONObject(it)
+                            ReadingDay(day.getString("date"), day.getLong("seconds"))
+                        },
+                )
+        } catch (_: JSONException) {
+            return invalid()
+        }
+        if (device.isEmpty() || device.length > MAX_ID) return invalid()
+        try {
+            library.saveStatistics(device, statistics)
+        } catch (_: IllegalArgumentException) {
+            return invalid()
+        }
+        return json(JSONObject().put("ok", true))
+    }
+
     /** The session [id], if it is still current; using it keeps it alive. Call under [lock]. */
     private fun current(id: String): Session? {
         purge()
@@ -429,6 +469,9 @@ class SyncRoutes(
         const val MAX_FILES = 50_000
         const val MAX_SESSIONS = 16
         const val MAX_ID = 128
+        const val STATISTICS_FORMAT = "folio-statistics"
+        /** The most days of reading time an e-reader sends: a year and a day, newest first. */
+        const val MAX_DAYS = 366
 
         fun contentType(path: String): String =
             when (path.substringAfterLast('.', "").lowercase()) {

@@ -8,8 +8,9 @@ from pathlib import Path
 LuaRuntime=importlib.import_module('lupa.'+os.environ['FOLIO_LUA'] if os.environ.get('FOLIO_LUA') else 'lupa').LuaRuntime
 root=Path(__file__).resolve().parents[1]
 plugin_files=sorted(p.name for p in (root/'koreader/folio.koplugin').glob('*.lua'))
-# The old book fetch, collection requests, reading handoff and statistics export are gone.
-assert plugin_files==['_meta.lua','link.lua','main.lua','sync.lua'], plugin_files
+# The old book fetch, collection requests, reading handoff and statistics file export are gone;
+# reading time now goes to the phone after a sync (stats.lua).
+assert plugin_files==['_meta.lua','link.lua','main.lua','stats.lua','sync.lua'], plugin_files
 lua=LuaRuntime(unpack_returned_tuples=True)
 # Compile all plugin Lua files, without loading KOReader-only require calls.
 for file in plugin_files:
@@ -691,6 +692,120 @@ with tempfile.TemporaryDirectory(prefix='folio-sync-names-') as tmp:
     assert(Sync.summary(one, false) == "Everything is up to date.")
     ''')
 print('Sync names and messages: " (n)" numbering, library folder and path checks, quiet automatic syncs, plain summaries.')
+
+# Reading time (stats.lua): KOReader's statistics database, read only, sent after a sync. A real
+# SQLite file stands in for KOReader's; the connection mimics lua-ljsqlite3 (exec returns columns).
+import sqlite3
+stats=lua.execute((root/'koreader/folio.koplugin/stats.lua').read_text())
+g.Stats=stats
+class StatsDb:
+    def __init__(self,path): self.c=sqlite3.connect(path,isolation_level=None); self.sql=[]; self.closed=False
+    def exec(self,sql):
+        self.sql.append(sql); rows=self.c.execute(sql).fetchall()
+        if not rows: return None
+        return lua.table_from([lua.table_from(list(column)) for column in zip(*rows)])
+    def rowexec(self,sql):
+        self.sql.append(sql); return self.c.execute(sql).fetchone()[0]
+    def close(self): self.c.close(); self.closed=True
+lua.execute(r'''
+function stats_db(py) return {
+  exec = function(self, sql) return py.exec(sql) end,
+  rowexec = function(self, sql) return py.rowexec(sql) end,
+  close = function(self) py.close() end } end
+''')
+def day_of(ts): return time.strftime('%Y-%m-%d',time.localtime(ts))
+with tempfile.TemporaryDirectory(prefix='folio-stats-') as tmp:
+    path=tmp+'/statistics.sqlite3'
+    c=sqlite3.connect(path)
+    c.execute('CREATE TABLE page_stat_data (id_book INTEGER, page INTEGER NOT NULL DEFAULT 0, start_time INTEGER NOT NULL DEFAULT 0, duration INTEGER NOT NULL DEFAULT 0, total_pages INTEGER NOT NULL DEFAULT 0, UNIQUE (id_book, page, start_time))')
+    T=1791000000
+    rows=[(1,1,T,600),(1,2,T+700,900),(2,5,T-86400,1200),(2,6,T-86400+60,-5)]
+    # 400 more days of reading: only the newest 366 days are sent.
+    rows+=[(3,i,T-86400*(i+2),60) for i in range(400)]
+    c.executemany('INSERT INTO page_stat_data (id_book,page,start_time,duration,total_pages) VALUES (?,?,?,?,100)',[r for r in rows])
+    c.commit(); c.close()
+    before=Path(path).read_bytes()
+    g.py_old_phone=StatsDb(path)
+    db=StatsDb(path); g.py_db=db
+    lua.execute(r'''
+    local K, P, d, cfg = fake(home)
+    d.open_statistics = function() return stats_db(py_old_phone) end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false, "a phone without the route: nothing kept, no error")
+    stats_request = nil
+    d.open_statistics = function() return stats_db(py_db) end
+    d.request = function(method, url, headers, body)
+      stats_request = { method = method, url = url, headers = headers, body = body }
+      return 200, { ok = true }
+    end
+    stats_sent = Stats.send(cfg, d, Sync.headers(cfg))
+    ''')
+    assert db.closed, 'the database is closed after reading'
+    assert Path(path).read_bytes()==before, 'the statistics database is never written'
+    statements=[s.split(' ')[0] for s in db.sql]
+    assert statements[:2]==['PRAGMA','BEGIN;'] and statements[-1]=='COMMIT;' and set(statements[2:-1])=={'SELECT'}, db.sql
+    assert 'query_only=ON' in db.sql[0]
+    request=lua.eval('stats_request')
+    assert lua.eval('stats_sent')==True
+    assert request['method']=='POST' and request['url']=='http://phone:8765/folio/v2/statistics', request['url']
+    headers=request['headers']
+    assert headers['x-auth-user']=='folio' and headers['x-auth-key']=='k' and headers['x-folio-device']=='dev1'
+    body=request['body']
+    assert body['format']=='folio-statistics' and body['version']==1 and body['exportedAt']==1791000000
+    assert body['device']['id']=='dev1' and body['device']['name']=='Kindle'
+    assert body['seconds']==600+900+1200+400*60, body['seconds']
+    days=[(body['days'][i]['date'],body['days'][i]['seconds']) for i in range(1,len(body['days'])+1)]
+    expected={}
+    for _,_,start,duration in rows:
+        if duration>=0: expected[day_of(start)]=expected.get(day_of(start),0)+duration
+    assert days==sorted(expected.items(),reverse=True)[:366], days[:3]
+    assert len(days)==366 and (day_of(T-86400),1200) in days, 'the newest 366 days; a negative time is left out of its day'
+    assert sum(s for _,s in days)<=body['seconds']
+    # Only totals leave the e-reader: no titles, no book ids, no pages.
+    for i in range(1,len(body['days'])+1):
+        assert sorted(body['days'][i].keys())==['date','seconds']
+    assert sorted(k for k in body.keys())==['days','device','exportedAt','format','seconds','version']
+
+    # Nothing to send, and the sync is never failed: no database, a broken one, a phone that errs.
+    Path(tmp+'/broken.sqlite3').write_bytes(b'not a database at all')
+    broken=StatsDb(tmp+'/broken.sqlite3'); g.py_broken=broken
+    empty=sqlite3.connect(tmp+'/empty.sqlite3'); empty.close()
+    g.py_empty=StatsDb(tmp+'/empty.sqlite3')
+    lua.execute(r'''
+    local K, P, d, cfg = fake(home)
+    local asked = 0
+    d.request = function() asked = asked + 1; return 200 end
+    d.open_statistics = function() return nil end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false and asked == 0, "no database: nothing sent")
+    d.open_statistics = function() error("cannot open") end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false and asked == 0, "an unopenable database: nothing sent")
+    d.open_statistics = function() return stats_db(py_broken) end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false and asked == 0, "a damaged database: nothing sent")
+    d.open_statistics = function() return stats_db(py_empty) end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false and asked == 0, "statistics never switched on: nothing sent")
+    d.open_statistics = nil
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false and asked == 0)
+    ''')
+    assert broken.closed and g.py_empty.closed, 'a database that could not be read is still closed'
+    g.py_db_again=StatsDb(path)
+    lua.execute(r'''
+    local K, P, d, cfg = fake(home)
+    d.open_statistics = function() return stats_db(py_db_again) end
+    d.request = function() error("timeout") end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false, "a phone that stops answering: no error")
+    d.request = function() return 403 end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == false, "refused: no error")
+    -- Odd rows are left out rather than sent: no date, a day longer than Librillo takes.
+    local odd = { exec = function(self, sql)
+        if sql:find("GROUP BY", 1, true) then
+          return { { "2026-10-14", false, "bad", "2026-10-12", "2026-10-11" }, { 600, 5, 7, 20000000, 30.5 } }
+        end
+      end, rowexec = function() return 605 end, close = function() end }
+    local value = Stats.read(odd)
+    assert(value.seconds == 605 and #value.days == 2, #value.days)
+    assert(value.days[1].date == "2026-10-14" and value.days[1].seconds == 600)
+    assert(value.days[2].date == "2026-10-11" and value.days[2].seconds == 30)
+    ''')
+print('Reading time: read only from a real statistics database (366 newest days, negative times left out, totals only), sent after a sync with the sign-in; no database, a damaged one, statistics off, or a phone that errs sends nothing and raises nothing.')
 
 
 # main.lua glue: a version 2 setup file applied at start, the menu, and the sync settings.

@@ -204,7 +204,7 @@ private fun TabletSettings(hinge: Boolean, pane: String = SettingsPane.TEXT.name
             onTheme = {},
             onDynamic = {},
             reading = ReadingDefaults(),
-            statistics = sampleStatistics,
+            readingTime = sampleReadingTime,
             hardcoverStatus =
                 HardcoverSyncStatus(
                     connected = true,

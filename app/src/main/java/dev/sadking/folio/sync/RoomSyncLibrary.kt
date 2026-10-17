@@ -11,6 +11,8 @@ import dev.sadking.folio.core.sync.PhoneBook
 import dev.sadking.folio.core.sync.Question
 import dev.sadking.folio.core.sync.SyncAnnotation
 import dev.sadking.folio.core.sync.SyncPending
+import dev.sadking.folio.data.DeviceStatistics
+import dev.sadking.folio.data.LINK_DEVICE_PREFIX
 import dev.sadking.folio.data.LibraryRepository
 import dev.sadking.folio.data.Membership
 import dev.sadking.folio.data.NotABook
@@ -20,6 +22,8 @@ import dev.sadking.folio.data.UnreadableBook
 import dev.sadking.folio.data.WishMembership
 import dev.sadking.folio.data.decode
 import dev.sadking.folio.data.encode
+import dev.sadking.folio.data.validateStatistics
+import dev.sadking.folio.link.ReadingStatistics
 import dev.sadking.folio.link.Refusal
 import dev.sadking.folio.link.RefusedFile
 import dev.sadking.folio.link.SyncLibrary
@@ -29,6 +33,8 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * The phone's side of sync protocol v2: Librillo's library in Room and the Books folder, as the
@@ -338,6 +344,36 @@ internal constructor(
 
     override fun synced(ereaderId: String, deviceName: String, at: Long) =
         state.synced(ereaderId, deviceName, at, books = baselineDao.forEreader(ereaderId).size)
+
+    /**
+     * KOReader's reading time from [ereaderId], kept as `link:<id>` in `device_statistics` so the
+     * device roster names it. It replaces what that e-reader sent before: KOReader's own database
+     * is the record, and the phone keeps its latest totals. Checked as a backup's are
+     * ([validateStatistics]); anything that fails is refused and nothing is kept.
+     */
+    override fun saveStatistics(ereaderId: String, statistics: ReadingStatistics) {
+        val value =
+            DeviceStatistics(
+                deviceId = LINK_DEVICE_PREFIX + ereaderId,
+                totalSeconds = statistics.seconds,
+                exportedAt = statistics.exportedAt,
+                fetchedAt = now(),
+                days =
+                    JSONArray(
+                            statistics.days.map {
+                                JSONObject().put("date", it.date).put("seconds", it.seconds)
+                            }
+                        )
+                        .toString(),
+            )
+        try {
+            validateStatistics(value)
+        } catch (e: RuntimeException) {
+            // A malformed date or number fails as a parse error; to the routes it is all refused.
+            throw IllegalArgumentException("Invalid reading statistics", e)
+        }
+        io { dao.statistics(value) }
+    }
 
     /**
      * On the Books folder's volume when it can be used, so filing an upload is a rename; else in

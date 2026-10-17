@@ -188,6 +188,15 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
     override fun started(ereaderId: String, deviceName: String, at: Long) {
         started += ereaderId
     }
+
+    val statistics = HashMap<String, ReadingStatistics>()
+    /** Refuses statistics the way the app does when they fail its checks. */
+    var refuseStatistics = false
+
+    override fun saveStatistics(ereaderId: String, statistics: ReadingStatistics) {
+        require(!refuseStatistics)
+        this.statistics[ereaderId] = statistics
+    }
 }
 
 /** A Kindle running the plugin: it keeps files in memory and does what the phone asks. */
@@ -1112,6 +1121,72 @@ class SyncRoutesTest {
         assertEquals("lighten", read.drawer)
         assertFalse("a tombstone flag never comes from the wire", read.deleted)
         assertFalse(SyncWire.toJson(note.copy(deleted = true)).has("deleted"))
+    }
+
+    private fun statisticsBody(
+        days: JSONArray =
+            JSONArray()
+                .put(JSONObject().put("date", "2026-10-14").put("seconds", 2700))
+                .put(JSONObject().put("date", "2026-10-13").put("seconds", 1500)),
+        change: JSONObject.() -> Unit = {},
+    ) =
+        JSONObject()
+            .put("device", JSONObject().put("id", "kindle-1").put("name", "Kindle"))
+            .put("format", "folio-statistics")
+            .put("version", 1)
+            .put("seconds", 43_440)
+            .put("exportedAt", 1_791_750_000)
+            .put("days", days)
+            .apply(change)
+            .toString()
+
+    private fun postStatistics(body: String, headers: Map<String, String> = kindle.headers) =
+        routes.handle(KosyncRequest("POST", "/folio/v2/statistics", headers, body))
+
+    @Test
+    fun readingStatisticsAreKeptForTheEreaderThatSentThem() {
+        val response = postStatistics(statisticsBody()) as LinkResponse.Text
+        assertEquals(200, response.status)
+        assertTrue(JSONObject(response.body).getBoolean("ok"))
+        assertEquals(
+            ReadingStatistics(
+                43_440,
+                1_791_750_000,
+                listOf(ReadingDay("2026-10-14", 2700), ReadingDay("2026-10-13", 1500)),
+            ),
+            library.statistics.getValue("kindle-1"),
+        )
+        // No sync session is needed, and none is started.
+        assertTrue(library.started.isEmpty() && library.synced.isEmpty())
+        // Only after the login check.
+        assertEquals(401, postStatistics(statisticsBody(), mapOf("x-folio-device" to "x")).status)
+    }
+
+    @Test
+    fun malformedReadingStatisticsAreRefusedAndNothingIsKept() {
+        val tooMany = JSONArray()
+        repeat(SyncRoutes.MAX_DAYS + 1) {
+            tooMany.put(JSONObject().put("date", "2026-01-01").put("seconds", 1))
+        }
+        listOf(
+                "{",
+                "[]",
+                statisticsBody { put("format", "other") },
+                statisticsBody { put("version", 2) },
+                statisticsBody { remove("seconds") },
+                statisticsBody { put("seconds", "lots") },
+                statisticsBody { remove("exportedAt") },
+                statisticsBody { put("device", JSONObject().put("id", " ")) },
+                statisticsBody { remove("device") },
+                statisticsBody(JSONArray().put(JSONObject().put("date", "2026-10-14"))),
+                statisticsBody(JSONArray().put("2026-10-14")),
+                statisticsBody(tooMany),
+            )
+            .forEach { assertEquals(it, 403, postStatistics(it).status) }
+        // The phone's own checks refuse the rest.
+        library.refuseStatistics = true
+        assertEquals(403, postStatistics(statisticsBody()).status)
+        assertTrue(library.statistics.isEmpty())
     }
 
     @Test

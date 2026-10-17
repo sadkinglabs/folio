@@ -35,6 +35,16 @@ data class RefusedFile(val sha256: String, val path: String, val reason: Refusal
  */
 class SyncRefusal(val reason: Refusal) : Exception("Refused: $reason")
 
+/** Reading time on one day, [date] being `YYYY-MM-DD` in the e-reader's local time. */
+data class ReadingDay(val date: String, val seconds: Long)
+
+/**
+ * KOReader's reading statistics, as the plugin read them from its statistics database after a sync:
+ * [seconds] read in all, [exportedAt] (epoch seconds, the e-reader's clock) and the most recent
+ * [days], newest first. Totals only: no titles, no book content.
+ */
+data class ReadingStatistics(val seconds: Long, val exportedAt: Long, val days: List<ReadingDay>)
+
 /**
  * The phone's side of sync protocol v2 ([SyncRoutes]), implemented by the app over Room and the
  * Books folder. [ereaderId] is the id the e-reader's plugin sends as `device.id`. The routes call
@@ -121,4 +131,10 @@ interface SyncLibrary {
 
     /** A sync with [ereaderId], called [deviceName] on the e-reader, finished at [at]. */
     fun synced(ereaderId: String, deviceName: String, at: Long) {}
+
+    /**
+     * Keeps [statistics] as [ereaderId]'s reading time, replacing what it sent before. Throws
+     * [IllegalArgumentException] when they fail the phone's checks; nothing is kept then.
+     */
+    fun saveStatistics(ereaderId: String, statistics: ReadingStatistics) {}
 }
