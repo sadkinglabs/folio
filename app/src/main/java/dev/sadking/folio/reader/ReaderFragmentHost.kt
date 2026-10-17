@@ -1,5 +1,8 @@
 package dev.sadking.folio.reader
 
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.core.view.doOnAttach
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
@@ -23,4 +26,21 @@ internal fun mountReaderWhenReady(
             }
         }
     }
+}
+
+/**
+ * Asks for a normal refresh rate whenever the page's WebViews draw. A phone with an adaptive
+ * display (the owner's Pixel) lowers the rate when nothing seems to move, and changes made by the
+ * page's own script (a read-aloud highlight, a page sliding across) do not count as movement: they
+ * showed seconds late, or the slide as a jump. Readium adds a WebView per chapter, so every layout
+ * looks for new ones.
+ */
+internal fun keepPageFramesSmooth(container: ViewGroup) {
+    fun apply(view: View) {
+        if (view is WebView) {
+            if (view.requestedFrameRate != View.REQUESTED_FRAME_RATE_CATEGORY_NORMAL)
+                view.requestedFrameRate = View.REQUESTED_FRAME_RATE_CATEGORY_NORMAL
+        } else if (view is ViewGroup) for (i in 0 until view.childCount) apply(view.getChildAt(i))
+    }
+    container.viewTreeObserver.addOnGlobalLayoutListener { apply(container) }
 }

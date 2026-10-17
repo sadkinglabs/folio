@@ -341,6 +341,7 @@ class ReaderActivity : FragmentActivity() {
         if (navigator != null) return
         val publication = model.publication ?: return
         val kind = model.kind ?: return
+        keepPageFramesSmooth(container)
         val place = model.lastLocation ?: model.initialLocator
         val factory: FragmentFactory
         val fragmentClass: Class<out Fragment>
