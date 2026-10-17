@@ -707,6 +707,36 @@ Decided with the owner on 2026-10-17. It started from: "I can highlight a passag
 - A highlight is never lost to a sync race: an unknown, missing or unreadable id is never a deletion.
 - A Kindle without the new plugin keeps the old rule (merge, never delete), so mixing versions loses nothing.
 
+
+### M12: Reading statistics
+Decided with the owner on 2026-10-17. In the owner's words: "a beautiful statistics dashboard that breaks down my reading habits and milestones. It'll have a calendar where I can see how long I've read what per day, the way KOReader has it, and more", using Material 3 Expressive, looking "native and stunning".
+
+**Owner's choices**
+- **Sources, all four:**
+  - **Kindle (KOReader):** full history, per book and per day, sent at each sync.
+  - **Phone reading:** counted from now on.
+  - **Listening:** counted separately from reading.
+  - **Hardcover history:** books marked Read, with dates, for the years before Librillo.
+- **Contents, all four:**
+  - **Calendar:** KOReader-style. Each day shows the books read, with a coloured bar per book; tap a day for its details.
+  - **Habits:** streaks, time of day, session length, speed, busiest weekdays, trends.
+  - **Per book:** time, sessions, days to finish, speed, time left at your pace, a reading timeline. Also shown as a card on the book page.
+  - **Milestones and year in review:** finished books, hours, records and firsts. Includes a shareable year-in-review image.
+- **Goals:** optional, off until the owner signs up. A yearly book target and a daily minutes target.
+- **Speed:** words per minute, counted from each EPUB's own text, so the Kindle and the phone compare fairly. The same pace gives time left in a book.
+- **What counts:** reading only. Time with a book open and pages turning, or audio playing. A pause of more than 2 minutes without a page turn doesn't count, as in KOReader.
+- **Where it lives:** a new Stats tab in the bottom bar and the tablet rail.
+
+**Data**
+- **Kindle:** the plugin turns KOReader's page statistics into reading sessions: book fingerprint (KOReader's partial MD5, which the phone already matches to books), start, duration, pages and progress.
+  - The first sync sends the full history. Later syncs send only new sessions.
+  - No titles and no book text leave the e-reader.
+- **Phone:** the reader records sessions from page turns, with the idle cutoff. Listening records sessions from playback. Both store how far into the book they started and ended.
+- **Storage:** Room schema 14 (additive) holds the sessions and each book's word count. Backups carry both. Older backups still restore.
+- **Hardcover:** read dates and books read before Librillo, pulled through the existing paced queue.
+
+**Never:** no statistic deletes or changes a book, a position or an annotation. Nothing is logged with book text.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)
