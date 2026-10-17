@@ -39,6 +39,7 @@ Screenshots without an emulator: `./gradlew :app:testDebugUnitTest --tests '*Scr
 ## Style
 - No new layer or dependency without a concrete benefit.
 - UI copy goes in `strings.xml`, in plain language.
+- Reuse the app's existing components and Material 3 ones; never invent a look-alike. For example, every search field is `FolioSearchBar` (Material's docked search bar).
 - Prefer finishing one complete slice over starting several.
 
 ## Git

@@ -649,41 +649,23 @@ private fun SearchField(
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Column {
-        DockedSearchBar(
-            inputField = {
-                SearchBarDefaults.InputField(
-                    query = query,
-                    onQueryChange = onQuery,
-                    onSearch = {
-                        onSearched(it)
-                        keyboard?.hide()
-                    },
-                    expanded = false,
-                    onExpandedChange = {},
-                    placeholder = { Text(hint) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty())
-                            IconButton(onClick = onClear) {
-                                Icon(
-                                    Icons.Outlined.Close,
-                                    stringResource(R.string.library_clear_search),
-                                )
-                            }
-                    },
-                    modifier =
-                        Modifier.focusRequester(focus)
-                            .onFocusChanged { focused = it.isFocused }
-                            .semantics { contentDescription = hint },
-                )
-            },
-            expanded = false,
-            onExpandedChange = {},
+        FolioSearchBar(
+            query,
+            onQuery,
+            hint,
+            stringResource(R.string.library_clear_search),
             modifier =
                 Modifier.fillMaxWidth()
                     .padding(horizontal = FolioSpace.item, vertical = FolioSpace.small)
                     .testTag(LIBRARY_SEARCH_BAR_TAG),
-        ) {}
+            fieldModifier =
+                Modifier.focusRequester(focus).onFocusChanged { focused = it.isFocused },
+            onSearch = {
+                onSearched(it)
+                keyboard?.hide()
+            },
+            onClear = onClear,
+        )
         // Recent searches as chips while the field is empty: a short row, so the books stay in
         // view.
         AnimatedVisibility(focused && query.isBlank() && recent.isNotEmpty()) {

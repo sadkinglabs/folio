@@ -9,11 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,11 +27,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
+import dev.sadking.folio.ui.FolioSearchBar
 import dev.sadking.folio.ui.FolioSpace
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -187,33 +182,20 @@ internal fun ReaderSearchSheet(
             Modifier.padding(horizontal = FolioSpace.section).semantics { heading() },
             style = MaterialTheme.typography.titleLarge,
         )
-        val fieldLabel = stringResource(R.string.rd6_search_field)
-        OutlinedTextField(
+        FolioSearchBar(
             text,
             onText,
-            Modifier.fillMaxWidth()
-                .padding(horizontal = FolioSpace.section, vertical = FolioSpace.small)
-                .focusRequester(focus)
-                .testTag(READER_SEARCH_FIELD_TAG),
-            label = { Text(fieldLabel) },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Outlined.Search, null) },
-            trailingIcon =
-                if (text.isNotEmpty()) {
-                    {
-                        IconButton(onClick = { onText("") }) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.rd6_search_clear))
-                        }
-                    }
-                } else null,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions =
-                KeyboardActions(
-                    onSearch = {
-                        keyboard?.hide()
-                        onSearch(text)
-                    }
-                ),
+            stringResource(R.string.rd6_search_field),
+            stringResource(R.string.rd6_search_clear),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = FolioSpace.section, vertical = FolioSpace.small),
+            fieldModifier = Modifier.focusRequester(focus).testTag(READER_SEARCH_FIELD_TAG),
+            onSheet = true,
+            onSearch = {
+                keyboard?.hide()
+                onSearch(text)
+            },
         )
         SearchStatusLine(results)
         LazyColumn(

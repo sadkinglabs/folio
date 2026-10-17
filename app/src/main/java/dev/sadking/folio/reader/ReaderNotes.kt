@@ -10,7 +10,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +40,7 @@ import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.HighlightColour
 import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.data.UNDERSCORE
+import dev.sadking.folio.ui.FolioSearchBar
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.Tooltipped
 import java.text.Normalizer
@@ -222,25 +221,14 @@ internal fun ReaderNotesList(
                 .padding(start = FolioSpace.item, end = FolioSpace.small, top = FolioSpace.gap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
+            FolioSearchBar(
                 query,
                 { query = it },
-                Modifier.weight(1f).testTag(READER_NOTES_SEARCH_TAG),
-                placeholder = {
-                    Text(
-                        stringResource(R.string.notes_search),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                trailingIcon = {
-                    if (query.isNotEmpty())
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.notes_search_clear))
-                        }
-                },
-                singleLine = true,
+                stringResource(R.string.notes_search),
+                stringResource(R.string.notes_search_clear),
+                modifier = Modifier.weight(1f),
+                fieldModifier = Modifier.testTag(READER_NOTES_SEARCH_TAG),
+                onSheet = true,
             )
             NotesExportButton(export, enabled = items.isNotEmpty(), iconOnly = true)
         }
