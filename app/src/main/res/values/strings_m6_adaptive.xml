@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M6 adaptive: tablet and foldable layouts, Book sources and Licences in Settings
+         (docs/M5_M6.md §4.7, §4.8). -->
+
+    <!-- The right pane while nothing is chosen -->
+    <string name="ad6_choose_book">Choose a book to see it here</string>
+    <string name="ad6_choose_list">Choose a list to see its books here</string>
+    <string name="ad6_choose_setting">Choose a setting to see it here</string>
+
+    <!-- Settings → Library → Book sources: opens Librillo's browser on its sources -->
+    <string name="ad6_book_sources">Book sources</string>
+    <string name="ad6_book_sources_value">Sites where Get this book looks</string>
+
+    <!-- Settings → About → Licences -->
+    <string name="ad6_licences">Licences</string>
+    <string name="ad6_licences_value">Parts made by others, and the dictionary</string>
+    <string name="ad6_licences_body">Librillo uses these. Each keeps its own licence.</string>
+</resources>

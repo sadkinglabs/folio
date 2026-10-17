@@ -77,10 +77,41 @@ class TouchTargetTest {
             "SetupPreview" to { SetupPreview() },
             "SyncLinePreview" to { SyncLinePreview() },
             "ReaderListenNaturalPreview" to { ReaderListenNaturalPreview() },
+            "LicencesPreview" to { LicencesPreview() },
         )
 
+    /** The tablet frame: the rail and both panes. */
+    private val tabletScreens: List<Pair<String, @Composable () -> Unit>> =
+        listOf(
+            "TabletLibraryPreview" to { TabletLibraryPreview() },
+            "TabletLibraryEmptyPreview" to { TabletLibraryEmptyPreview() },
+            "TabletListsPreview" to { TabletListsPreview() },
+            "TabletSettingsPreview" to { TabletSettingsPreview() },
+            "TabletLicencesPreview" to { TabletLicencesPreview() },
+            "TabletDevicePreview" to { TabletDevicePreview() },
+        )
+
+    /** A foldable, flat and half open like a book. */
+    private val foldableScreens: List<Pair<String, @Composable () -> Unit>> =
+        listOf(
+            "TabletLibraryPreview" to { TabletLibraryPreview() },
+            "FoldLibraryPreview" to { FoldLibraryPreview() },
+            "FoldListsPreview" to { FoldListsPreview() },
+            "FoldSettingsPreview" to { FoldSettingsPreview() },
+            "FoldDevicePreview" to { FoldDevicePreview() },
+        )
+
+    @Test fun everythingTappableIsAtLeast48dp() = check(screens)
+
     @Test
-    fun everythingTappableIsAtLeast48dp() {
+    @Config(qualifiers = "w840dp-h1280dp-xhdpi")
+    fun everythingTappableIsAtLeast48dpOnATablet() = check(tabletScreens)
+
+    @Test
+    @Config(qualifiers = "w700dp-h840dp-xhdpi")
+    fun everythingTappableIsAtLeast48dpOnAFoldable() = check(foldableScreens)
+
+    private fun check(screens: List<Pair<String, @Composable () -> Unit>>) {
         var current by androidx.compose.runtime.mutableStateOf(screens.first().second)
         compose.setContent { current() }
         val small = mutableListOf<String>()

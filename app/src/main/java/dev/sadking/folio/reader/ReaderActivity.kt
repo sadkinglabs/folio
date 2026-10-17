@@ -40,6 +40,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -57,6 +59,9 @@ import dev.sadking.folio.R
 import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.reader.dictionary.DefineSheet
+import dev.sadking.folio.reader.dictionary.DictionaryModel
+import dev.sadking.folio.reader.dictionary.DictionaryState
 import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSpace
@@ -75,6 +80,8 @@ import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.OverflowableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.css.Length
+import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
@@ -102,6 +109,12 @@ class ReaderActivity : FragmentActivity() {
     private var navigationError by mutableStateOf<String?>(null)
     /** The highlight colour for the sentence being read, from the current theme. */
     private var listenTint = android.graphics.Color.YELLOW
+    /** The highlight colour for the search match on the page. */
+    private var searchTint = android.graphics.Color.YELLOW
+    /** The search decorations last drawn on the page; read by the instrumented test. */
+    internal var appliedSearch: List<Decoration> = emptyList()
+        private set
+
     /** The highlight or note the owner tapped, shown read-only in a sheet. */
     private var shownHighlight by mutableStateOf<BookAnnotation?>(null)
     /** A passage waiting for its note in the Add note dialog. */
@@ -113,23 +126,22 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * The menu over selected text: Highlight, Add note and Copy. It replaces the WebView's own
-     * menu, so Copy is offered here too.
+     * The menu over selected text: Highlight, Add note, Define and Copy. It replaces the WebView's
+     * own menu, so Copy is offered here too.
      */
     private val selectionActions =
         object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.add(Menu.NONE, SELECTION_HIGHLIGHT, 0, R.string.reader_highlight_action)
-                menu.add(Menu.NONE, SELECTION_NOTE, 1, R.string.reader_highlight_note_action)
-                menu.add(Menu.NONE, SELECTION_COPY, 2, R.string.reader_highlight_copy_action)
+                SELECTION_MENU.forEachIndexed { order, (id, label) ->
+                    menu.add(Menu.NONE, id, order, label)
+                }
                 return true
             }
 
             override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
 
             override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-                if (item.itemId !in listOf(SELECTION_HIGHLIGHT, SELECTION_NOTE, SELECTION_COPY))
-                    return false
+                if (SELECTION_MENU.none { it.first == item.itemId }) return false
                 selectionAction(item.itemId).invokeOnCompletion { mode.finish() }
                 return true
             }
@@ -178,6 +190,8 @@ class ReaderActivity : FragmentActivity() {
     }
 
     override fun onPause() {
+        // Time away from the page is not reading time.
+        model.speed.interrupt()
         model.saveOnPause()
         super.onPause()
     }
@@ -325,6 +339,10 @@ class ReaderActivity : FragmentActivity() {
                                 EpubNavigatorFragment.Configuration {
                                     shouldApplyInsetsPadding = false
                                     selectionActionModeCallback = selectionActions
+                                    // Readium's own default, pinned: lines stay a comfortable
+                                    // length on a tablet or an unfolded phone.
+                                    readiumCssRsProperties =
+                                        RsProperties(maxLineLength = Length.Rem(40.0))
                                 },
                         )
                 fragmentClass = EpubNavigatorFragment::class.java
@@ -375,6 +393,7 @@ class ReaderActivity : FragmentActivity() {
         if (epub != null) {
             epub.addDecorationListener(HIGHLIGHT_GROUP, highlightTaps)
             lifecycleScope.launch { showHighlights(epub) }
+            lifecycleScope.launch { showSearchHit(epub) }
         }
         // The sentence being read: highlight it and keep its page in view. The page turn saves the
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
@@ -443,6 +462,8 @@ class ReaderActivity : FragmentActivity() {
                 model.location(locator)
                 // One durable write per settled page: a further page turn cancels this one.
                 delay(SAVE_DEBOUNCE_MS)
+                // A settled page is a reading-speed sample when it follows the last one closely.
+                locator.locations.position?.let { model.speed.observe(kind, it) }
                 try {
                     savePosition()
                 } catch (cancel: CancellationException) {
@@ -569,6 +590,7 @@ class ReaderActivity : FragmentActivity() {
             return false
         }
         positionNavigation = true
+        model.speed.interrupt()
         try {
             val previous = nav.currentLocator.value
             val locator =
@@ -631,6 +653,11 @@ class ReaderActivity : FragmentActivity() {
         val nav = epubNavigator ?: return@launch
         try {
             val selection = nav.currentSelection() ?: return@launch
+            if (itemId == SELECTION_DEFINE) {
+                // The selected words stay on the phone and are never logged.
+                selection.locator.text.highlight?.takeIf { it.isNotBlank() }?.let(model::define)
+                return@launch
+            }
             if (itemId == SELECTION_COPY) {
                 selection.locator.text.highlight?.takeIf { it.isNotBlank() }?.let(::copy)
                 return@launch
@@ -734,6 +761,47 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
+     * Draws the search match the owner tapped, and removes it when the search closes. Redrawn after
+     * a rotation, since the match is kept in the model.
+     */
+    private suspend fun showSearchHit(epub: EpubNavigatorFragment) {
+        var drawn = false
+        snapshotFlow { model.shownHit }
+            .collectLatest { hit ->
+                if (hit == null && !drawn) return@collectLatest
+                drawn = hit != null
+                val decorations =
+                    listOfNotNull(
+                        hit?.let {
+                            Decoration(
+                                SEARCH_DECORATION_ID,
+                                it.locator,
+                                Decoration.Style.Highlight(tint = searchTint),
+                            )
+                        }
+                    )
+                withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
+                    epub.applyDecorations(decorations, SEARCH_GROUP)
+                }
+                appliedSearch = decorations
+            }
+    }
+
+    /** Opens a search match: the page moves there and the match is highlighted. */
+    private fun openHit(hit: SearchHit) {
+        model.speed.interrupt()
+        model.shownHit = hit
+        model.panel = null
+        navigator?.go(hit.locator, animated = false)
+    }
+
+    /** Closes the open sheet; closing the search also takes its highlight off the page. */
+    private fun closePanel() {
+        if (model.panel == ReaderPanel.SEARCH) model.shownHit = null
+        model.panel = null
+    }
+
+    /**
      * Asks the page on screen where [rows] sit, once it is the chapter at [path]. Null when the
      * page never answered for that chapter (the reader moved on, or it is still loading).
      */
@@ -761,13 +829,14 @@ class ReaderActivity : FragmentActivity() {
         val positions = model.positions ?: return
         val index = positionIndexAt(fraction, positions.locators.size)
         val target = positions.locators.getOrNull(index) ?: return
+        model.speed.interrupt()
         navigator?.go(target, animated = false)
     }
 
     @Composable
     private fun ReaderScreen(dark: Boolean) {
         val book = model.book
-        var panel by rememberSaveable { mutableStateOf<ReaderPanel?>(null) }
+        var panel by model::panel
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
         val density = LocalDensity.current
@@ -779,7 +848,11 @@ class ReaderActivity : FragmentActivity() {
         LaunchedEffect(slow != null) { if (slow != null) panel = null }
         SideEffect {
             panelOpen =
-                panel != null || shownHighlight != null || pendingNote != null || slow != null
+                panel != null ||
+                    shownHighlight != null ||
+                    pendingNote != null ||
+                    slow != null ||
+                    model.defineText != null
         }
         // The speed test keeps the screen on, except in its long run, which may run with it off.
         val bench by NarrationBenchmark.state.collectAsState()
@@ -793,7 +866,7 @@ class ReaderActivity : FragmentActivity() {
                 if (keepScreenOn) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         }
-        BackHandler { if (panel != null) panel = null else closeReader() }
+        BackHandler { if (panel != null) closePanel() else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
             if (text != null) {
@@ -836,6 +909,7 @@ class ReaderActivity : FragmentActivity() {
             model.lineHeight,
             model.margins,
             model.publisherStyles,
+            model.twoPages,
             dark,
         ) {
             epubNavigator?.submitPreferences(model.preferences(dark))
@@ -852,8 +926,10 @@ class ReaderActivity : FragmentActivity() {
             else bars.hide(WindowInsetsCompat.Type.systemBars())
         }
         val highlight = MaterialTheme.colorScheme.primary.toArgb()
+        val searchHighlight = MaterialTheme.colorScheme.tertiary.toArgb()
         SideEffect {
             listenTint = highlight
+            searchTint = searchHighlight
             // While listening, volume keys set the speech volume, even in the pause between
             // sentences when nothing is playing and Android would otherwise pick the ringer.
             volumeControlStream =
@@ -927,6 +1003,7 @@ class ReaderActivity : FragmentActivity() {
                 val location = model.lastLocation
                 val positions = model.positions
                 val progression = location?.locations?.totalProgression
+                val resources = LocalResources.current
                 ReaderBottomBar(
                     null,
                     fraction = progressFraction(progression),
@@ -946,6 +1023,7 @@ class ReaderActivity : FragmentActivity() {
                     onBookmark = model::bookmark,
                     modifier =
                         Modifier.onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+                    timeLeft = model.timeLeftNow()?.let { timeLeftText(it, resources) },
                 )
             }
             // Above the bottom bar while it shows; otherwise just above the navigation bar.
@@ -1015,7 +1093,7 @@ class ReaderActivity : FragmentActivity() {
         }
         panel?.let { open ->
             ModalBottomSheet(
-                onDismissRequest = { panel = null },
+                onDismissRequest = ::closePanel,
                 shape = FolioSpace.sheetShape,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
@@ -1084,6 +1162,16 @@ class ReaderActivity : FragmentActivity() {
                         if (model.kind == ReaderKind.EPUB) TextPanel()
                         else PanelNote(R.string.reader_m9_text_epub_only)
                     ReaderPanel.CONTENTS -> ContentsPanel(book?.id) { panel = null }
+                    ReaderPanel.SEARCH ->
+                        if (model.kind == ReaderKind.EPUB)
+                            ReaderSearchSheet(
+                                model.searchText,
+                                model.searchResults,
+                                onText = model::editSearch,
+                                onSearch = model::search,
+                                onHit = ::openHit,
+                            )
+                        else PanelNote(R.string.rd6_search_epub_only)
                     ReaderPanel.DEVICES ->
                         if (model.kind == ReaderKind.EPUB)
                             DevicesPanel(book?.id, scope) { panel = null }
@@ -1107,6 +1195,29 @@ class ReaderActivity : FragmentActivity() {
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 HighlightSheet(shown, onCopy = { copy(highlightCopyText(shown)) })
+            }
+        }
+        model.defineText?.let { text ->
+            ModalBottomSheet(
+                onDismissRequest = { model.define(null) },
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                val dictionary by
+                    remember { DictionaryModel.state(this@ReaderActivity) }.collectAsState()
+                LaunchedEffect(text, dictionary) {
+                    if (dictionary == DictionaryState.Ready) model.lookUp()
+                }
+                DefineSheet(
+                    text,
+                    dictionary,
+                    model.definitions,
+                    onDownload = { DictionaryModel.install(this@ReaderActivity) },
+                    onRemove = {
+                        DictionaryModel.remove(this@ReaderActivity)
+                        model.forgetDefinitions()
+                    },
+                )
             }
         }
         pendingNote?.let { pending ->
@@ -1133,8 +1244,12 @@ class ReaderActivity : FragmentActivity() {
                 onBookStyles = { model.appearance(bookStyles = it) },
                 onScroll = { model.appearance(scroll = it) },
                 onBookOnly = model::keepForThisBook,
+                onTwoPages = { model.appearance(pages = it) },
             )
         }
+        // The window's own width, so split screen and an unfolded phone count as they are.
+        val windowWidth = LocalWindowInfo.current.containerSize.width
+        val wide = with(LocalDensity.current) { windowWidth.toDp() } >= TWO_PAGES_MIN_WIDTH_DP.dp
         ReaderTextSheet(
             ReaderTextState(
                 model.fontSize,
@@ -1145,6 +1260,8 @@ class ReaderActivity : FragmentActivity() {
                 model.margins,
                 model.publisherStyles,
                 model.bookOnly,
+                twoPages = model.twoPages,
+                showTwoPages = wide && !model.scrolling,
             ),
             actions,
         )
@@ -1180,10 +1297,12 @@ class ReaderActivity : FragmentActivity() {
             current,
             bookmarks,
             onEntry = { index ->
+                model.speed.interrupt()
                 flat.getOrNull(index)?.let { (link, _) -> navigator?.go(link, animated = false) }
                 close()
             },
             onBookmark = {
+                model.speed.interrupt()
                 val loc = Locator.fromJSON(JSONObject(it.locator))
                 if (loc != null) navigator?.go(loc, animated = false)
                 close()
@@ -1246,6 +1365,9 @@ class ReaderActivity : FragmentActivity() {
         private const val BRIDGE_WAIT_MS = 8_000L
         private const val PLACE_ATTEMPTS = 5
         private const val PLACE_RETRY_MS = 400L
+        private const val SEARCH_DECORATION_ID = "search-hit"
+        /** The narrowest window that offers two pages side by side. */
+        private const val TWO_PAGES_MIN_WIDTH_DP = 600
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
         private const val LEGACY_ROW = "legacy-ssh"
 

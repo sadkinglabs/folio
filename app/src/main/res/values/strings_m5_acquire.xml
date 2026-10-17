@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M5: getting books in. The in-app browser, book sources and what happens to a download. -->
+<resources>
+    <!-- Outcomes (exact text, docs/M5_M6.md §3.3) -->
+    <string name="acq_saved">Saved to your library</string>
+    <string name="acq_already">Already in your library</string>
+    <string name="acq_protected">This book is protected (DRM) and can\'t be opened</string>
+    <string name="acq_not_a_book">Not a book Librillo can open</string>
+    <string name="acq_too_large">This file is too large for Librillo</string>
+    <string name="acq_failed">Couldn\'t download this book. Check your connection and try again.</string>
+    <string name="acq_next_sync">It will be on your e-reader after the next sync</string>
+
+    <!-- Entry points -->
+    <string name="acq_add_row">Get a book online</string>
+    <string name="acq_add_row_none">Choose sites in Book sources</string>
+
+    <!-- Start page -->
+    <string name="acq_find_title">Get a book</string>
+    <string name="acq_search_label">Title or author</string>
+    <string name="acq_find_sites">Search on</string>
+    <string name="acq_find_note">Free books from these sites. Borrowed and bought books are usually protected, and Librillo can\'t open them.</string>
+    <string name="acq_find_no_sites">No sites to search. Turn one on in Book sources.</string>
+    <string name="acq_manage_sources">Book sources</string>
+
+    <!-- Book sources -->
+    <string name="acq_sources_title">Book sources</string>
+    <string name="acq_sources_built_in">Built in</string>
+    <string name="acq_sources_yours">Your sites</string>
+    <string name="acq_sources_yours_empty">Add any site that offers EPUB, PDF or comic downloads.</string>
+    <string name="acq_add_site">Add a site</string>
+    <string name="acq_edit_site">Edit %1$s</string>
+    <string name="acq_remove_site">Remove %1$s</string>
+    <string name="acq_remove_confirm">Remove %1$s?</string>
+    <string name="acq_remove_body">Your books stay in your library. Only the site is removed from this list.</string>
+    <string name="acq_remove">Remove</string>
+    <string name="acq_cancel">Cancel</string>
+    <string name="acq_shown">Shown when you get a book</string>
+
+    <!-- Site editor -->
+    <string name="acq_new_site">New site</string>
+    <string name="acq_field_name">Name</string>
+    <string name="acq_field_start">Start page</string>
+    <string name="acq_field_search">Search address (optional)</string>
+    <string name="acq_field_search_hint">Search the site for “test” and paste the address here, with {query} in place of test.</string>
+    <string name="acq_field_scripts">Allow scripts on this site</string>
+    <string name="acq_field_scripts_hint">Some sites need scripts to search or download.</string>
+    <string name="acq_save">Save</string>
+    <string name="acq_problem_name">Give the site a name</string>
+    <string name="acq_problem_https">Use an address that starts with https://</string>
+    <string name="acq_problem_query">Put {query} where the search words go</string>
+
+    <!-- Browser -->
+    <string name="acq_back">Back</string>
+    <string name="acq_close">Close</string>
+    <string name="acq_search_other">Search another site</string>
+    <string name="acq_open_other">Open another site</string>
+    <string name="acq_blocked_link">Librillo can\'t open this kind of link</string>
+    <string name="acq_one_at_a_time">Wait for this download to finish</string>
+    <string name="acq_downloading">Downloading %1$s</string>
+    <string name="acq_progress">%1$s of %2$s</string>
+    <string name="acq_stop">Stop</string>
+    <string name="acq_done">Done</string>
+    <string name="acq_keep_browsing">Keep browsing</string>
+</resources>

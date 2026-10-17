@@ -11,16 +11,25 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.sadking.folio.core.dictionary.DictionaryEntry
+import dev.sadking.folio.core.dictionary.PartOfSpeech
+import dev.sadking.folio.core.dictionary.Sense
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.reader.dictionary.DefineSheet
+import dev.sadking.folio.reader.dictionary.DictionaryState
 import dev.sadking.folio.reader.narration.BenchmarkReport
 import dev.sadking.folio.reader.narration.ConfigResult
 import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.ui.FolioTheme
 import dev.sadking.folio.ui.LocalReducedMotion
+import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 /**
  * Previews of the reader's chrome over a stand-in page, since Readium's WebView cannot render in a
@@ -459,5 +468,181 @@ internal fun ReaderFailedPreview() {
             onBack = {},
             backEnabled = true,
         )
+    }
+}
+
+private fun sampleHit(chapter: String?, before: String, match: String, after: String) =
+    SearchHit(
+        Locator(Url("chapter.xhtml")!!, MediaType.XHTML, title = chapter),
+        chapter,
+        before,
+        match,
+        after,
+    )
+
+private val sampleHits =
+    listOf(
+        sampleHit(
+            "Chapter one",
+            "Nobody in the village remembered a name, only that the ",
+            "orchard",
+            " was older than the oldest house.",
+        ),
+        sampleHit(
+            "Chapter two",
+            "…Ada worked from the east end of the ",
+            "orchard",
+            ", where the frost lingered longest, and by the time she reached the walnut…",
+        ),
+        sampleHit("Chapter four", "The river ran below the ", "Orchard", " terrace."),
+        sampleHit(null, "", "orchard", " keepers"),
+    )
+
+@Preview(name = "Reader search · light", widthDp = 412, heightDp = 760)
+@Composable
+internal fun ReaderSearchPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderSearchSheet(
+                "orchard",
+                SearchResults("orchard", sampleHits, SearchStatus.DONE),
+                onText = {},
+                onSearch = {},
+                onHit = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Reader search · no matches", widthDp = 412, heightDp = 400)
+@Composable
+internal fun ReaderSearchEmptyPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderSearchSheet(
+                "walnut tree",
+                SearchResults("walnut tree", emptyList(), SearchStatus.DONE),
+                onText = {},
+                onSearch = {},
+                onHit = {},
+            )
+        }
+    }
+}
+
+/** The bottom bar with the time left under the page label. */
+@Preview(name = "Reader time left · light", widthDp = 412, heightDp = 892)
+@Composable
+internal fun ReaderTimeLeftPreview() {
+    val dark = isSystemInDarkTheme()
+    FolioTheme(dynamic = false) {
+        Box(Modifier.fillMaxSize()) {
+            ReaderPagePlaceholder(dark)
+            ReaderBottomBar(
+                null,
+                fraction = 0.31f,
+                label = PageLabel(104, 340, 31),
+                ticks = sampleTicks,
+                pageCount = 340,
+                chapterAt = { "Chapter three" },
+                insets = WindowInsets(bottom = 24.dp),
+                onJump = {},
+                onPrevious = {},
+                onNext = {},
+                onBookmark = {},
+                modifier = Modifier.align(Alignment.BottomCenter),
+                timeLeft = timeLeftText(TimeLeft(12, 250), LocalResources.current),
+            )
+        }
+    }
+}
+
+/** The Text sheet on a wide screen, with "Two pages side by side". */
+@Preview(name = "Reader text sheet · wide", widthDp = 840, heightDp = 900)
+@Composable
+internal fun ReaderTextTwoPagesPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            ReaderTextSheet(
+                ReaderTextState(showTwoPages = true),
+                ReaderTextActions({}, {}, {}, {}, {}, {}, {}, {}, onTwoPages = {}),
+            )
+        }
+    }
+}
+
+private val sampleEntries =
+    listOf(
+        DictionaryEntry(
+            "run",
+            PartOfSpeech.VERB,
+            listOf(
+                Sense(
+                    "move fast by using one's feet, with one foot off the ground during each stride",
+                    listOf("Don't run — you'll be out of breath", "The children ran to the store"),
+                    emptyList(),
+                ),
+                Sense(
+                    "flee; take to one's heels; cut and run",
+                    listOf("If you see this man, run!"),
+                    listOf("scarper", "turn tail", "lam"),
+                ),
+                Sense(
+                    "stretch out over a distance, space, time, or scope",
+                    emptyList(),
+                    listOf("go"),
+                ),
+            ),
+        ),
+        DictionaryEntry(
+            "running",
+            PartOfSpeech.NOUN,
+            listOf(
+                Sense(
+                    "the act of running; traveling on foot at a fast pace",
+                    listOf("he broke into a run", "his daily run keeps him fit"),
+                    listOf("run"),
+                )
+            ),
+        ),
+    )
+
+@Preview(name = "Define · light", widthDp = 412, heightDp = 760)
+@Composable
+internal fun DefineSheetPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DefineSheet("running", DictionaryState.Ready, sampleEntries, {}, {})
+        }
+    }
+}
+
+@Preview(name = "Define · download offer", widthDp = 412, heightDp = 420)
+@Composable
+internal fun DefineDownloadPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DefineSheet("orchard", DictionaryState.Missing, null, {}, {})
+        }
+    }
+}
+
+@Preview(name = "Define · downloading", widthDp = 412, heightDp = 320)
+@Composable
+internal fun DefineDownloadingPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DefineSheet("orchard", DictionaryState.Downloading(0.42f), null, {}, {})
+        }
+    }
+}
+
+@Preview(name = "Define · not found", widthDp = 412, heightDp = 320)
+@Composable
+internal fun DefineNotFoundPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            DefineSheet("Ardwyn", DictionaryState.Ready, emptyList(), {}, {})
+        }
     }
 }

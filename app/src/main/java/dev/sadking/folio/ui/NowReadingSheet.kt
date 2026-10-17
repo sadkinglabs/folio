@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,11 +98,13 @@ internal fun ActionRow(actions: List<IconAction>, modifier: Modifier = Modifier)
                                 )
                             else Icon(action.icon, action.label)
                         }
+                        // The icon and its description carry the meaning; at large text the
+                        // label grows to 150% so a word still fits a third of a narrow pane.
                         Text(
                             action.label,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = cappedTextStyle(MaterialTheme.typography.labelSmall, 1.5f),
                             textAlign = TextAlign.Center,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -154,6 +157,7 @@ internal fun NowReadingSheet(
                             style = MaterialTheme.typography.titleLarge,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.semantics { heading() },
                         )
                         Text(
                             current.book.authorLabel.ifBlank {
@@ -243,7 +247,11 @@ internal fun NowReadingSheet(
 @Composable
 private fun EmptyNowReading(recent: List<Book>, onPick: (Book) -> Unit, onLibrary: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
-        Text(stringResource(R.string.rd_pick_a_book), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.rd_pick_a_book),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
         Text(
             stringResource(R.string.rd_pick_a_book_body),
             style = MaterialTheme.typography.bodyMedium,

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Reader: search in the book (M6). -->
+    <string name="rd6_search">Search in book</string>
+    <string name="rd6_search_title">Search this book</string>
+    <string name="rd6_search_field">Words to find</string>
+    <string name="rd6_search_clear">Clear search</string>
+    <string name="rd6_search_running">Searching…</string>
+    <plurals name="rd6_search_count">
+        <item quantity="one">%1$d match</item>
+        <item quantity="other">%1$d matches</item>
+    </plurals>
+    <!-- Always the cap (500), never one: no plural needed. -->
+    <string name="rd6_search_capped" tools:ignore="PluralsCandidate">Showing the first %1$d matches</string>
+    <string name="rd6_search_none">No matches for “%1$s”</string>
+    <string name="rd6_search_failed">Couldn\'t search this book. Try again.</string>
+    <string name="rd6_search_epub_only">Search works in EPUB books.</string>
+    <!-- Reader: time left, under the page label. -->
+    <string name="rd6_time_left_both">%1$s left in chapter · %2$s in book</string>
+    <string name="rd6_time_left_book">%1$s left in book</string>
+    <string name="rd6_minutes">%1$d min</string>
+    <string name="rd6_hours">%1$d h</string>
+    <string name="rd6_hours_minutes">%1$d h %2$d min</string>
+    <!-- Reader: the Text sheet on a wide screen. -->
+    <string name="rd6_two_pages">Two pages side by side</string>
+    <!-- Reader: Define, in the selection menu and its sheet. -->
+    <string name="rd6_define_action">Define</string>
+    <string name="rd6_define_offer">Download a free English dictionary once, and Define works without a connection.</string>
+    <string name="rd6_define_size">About %1$d MB.</string>
+    <string name="rd6_define_download">Download dictionary</string>
+    <string name="rd6_define_downloading">Downloading the dictionary · %1$d%%</string>
+    <string name="rd6_define_unpacking">Getting the dictionary ready…</string>
+    <string name="rd6_define_failed">Couldn\'t download the dictionary. Check your connection and try again.</string>
+    <string name="rd6_define_looking">Looking it up…</string>
+    <string name="rd6_define_none">No definition for “%1$s”</string>
+    <string name="rd6_define_select_word">Select one word, or a short phrase, to look it up.</string>
+    <string name="rd6_define_number">%1$d.</string>
+    <string name="rd6_define_example">“%1$s”</string>
+    <string name="rd6_define_also">Also: %1$s</string>
+    <string name="rd6_define_attribution">From Open English WordNet (CC BY 4.0)</string>
+    <string name="rd6_define_remove">Remove dictionary</string>
+    <string name="rd6_pos_noun">noun</string>
+    <string name="rd6_pos_verb">verb</string>
+    <string name="rd6_pos_adjective">adjective</string>
+    <string name="rd6_pos_adverb">adverb</string>
+</resources>

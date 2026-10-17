@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -166,6 +167,7 @@ internal fun TooSlowSheet(
     ) {
         Text(
             stringResource(R.string.listen_slow_title),
+            Modifier.semantics { heading() },
             style = MaterialTheme.typography.titleLarge,
         )
         Text(
@@ -264,7 +266,11 @@ internal fun NarrationTestSheet(
             .testTag(NARRATION_TEST_SHEET_TAG),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
     ) {
-        Text(stringResource(R.string.listen_test), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.listen_test),
+            Modifier.semantics { heading() },
+            style = MaterialTheme.typography.titleLarge,
+        )
         when (state) {
             NarrationBenchmark.State.Idle -> {
                 TestIntro(sustainedMinutes, variants, onMinutes)

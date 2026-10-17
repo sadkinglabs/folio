@@ -1,7 +1,5 @@
 package dev.sadking.folio.data
 
-import java.net.URI
-import java.net.URLDecoder
 import java.util.UUID
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -29,19 +27,6 @@ class BookDiscoveryTest {
             originalHash = "a",
             currentHash = "a",
         )
-
-    @Test
-    fun searchUrlEncodesUntrustedTextWithoutChangingOrigin() {
-        val url = URI(BookDiscovery.archiveSearch("A & B? # /", "writer ?".let(::listOf)))
-        assertEquals("https", url.scheme)
-        assertEquals("annas-archive.pk", url.host)
-        assertEquals("/search", url.path)
-        assertEquals(
-            "A & B? # / writer ?",
-            URLDecoder.decode(url.rawQuery.substringAfter("q="), "UTF-8"),
-        )
-        assertNull(url.fragment)
-    }
 
     @Test
     fun ocrHintIsBoundedAndEditableNotAnIdentity() {

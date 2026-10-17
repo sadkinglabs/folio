@@ -259,7 +259,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                             name,
                             msg(R.string.msg_library_import_failed),
                             null,
-                            importFailure(e),
+                            importFailure(e, app.resources),
                         )
                     }
                 }
@@ -299,7 +299,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     R.plurals.msg_books_folder_stayed,
                     result.failed.size,
                     result.failed.size,
-                    result.failed.joinToString(", "),
+                    result.failed.joinToString(", ") { title ->
+                        result.reasons[title]?.let {
+                            msg(R.string.data6_move_stayed_reason, title, it)
+                        } ?: title
+                    },
                 )
     }
 
@@ -349,8 +353,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 // Only news goes in the message: a book that was already missing, or a file that
                 // already couldn't be read, is not reported again on every check.
                 val newlyMissing = (scan.missing() - missingBefore).size
-                val newlyNotAdded = (found.notAdded - before?.notAdded.orEmpty().toSet()).size
-                lines += scanLines(found, newlyNotAdded)
+                // A file whose content is already in the library is not a failure; it isn't news.
+                val newlyNotAdded =
+                    (found.notAdded - before?.notAdded.orEmpty().toSet()).count {
+                        found.notAddedReasons[it] != InboxReason.ALREADY_IN_LIBRARY
+                    }
+                val newlyNotAccepted =
+                    (found.notAccepted - before?.notAccepted.orEmpty().toSet()).size
+                lines += scanLines(found, newlyNotAdded, newlyNotAccepted)
                 val missing = found.missing.size
                 val news =
                     lines +
@@ -361,6 +371,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         )
                 if (news.isNotEmpty())
                     runner.notices.emit(Operation(message = news.joinToString(" ")))
+                // Old revisions beyond the few kept per book, once a day (M6). Quiet: it frees
+                // space
+                // and never touches a book's original, current file or reading data.
+                if (RevisionPruner.dailyPassDue(app))
+                    try {
+                        RevisionPruner(repo).pruneAll()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {}
                 if (found.finishedAt > 0)
                     // Settings shows this check's news, and how many books still miss their file.
                     FolderScanNotes.recordScan(
@@ -389,8 +408,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private fun plural(id: Int, count: Int) = app.resources.getQuantityString(id, count, count)
 
-    /** The scan's news in plain lines: books added, followed and changed, and unreadable files. */
-    private fun scanLines(found: ScanResult, newlyNotAdded: Int) =
+    /**
+     * The scan's news in plain lines: books added, followed and changed, unreadable files, and
+     * books whose file was replaced by one Librillo can't open.
+     */
+    private fun scanLines(found: ScanResult, newlyNotAdded: Int, newlyNotAccepted: Int) =
         listOfNotNull(
             found.added.size.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_added, it) },
             found.relinked.size
@@ -398,6 +420,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 ?.let { plural(R.plurals.msg_scan_m9_relinked, it) },
             found.revised.size.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_revised, it) },
             newlyNotAdded.takeIf { it > 0 }?.let { plural(R.plurals.msg_scan_m9_not_added, it) },
+            newlyNotAccepted
+                .takeIf { it > 0 }
+                ?.let { plural(R.plurals.data6_scan_not_accepted, it) },
         )
 
     /** Inbox results for Settings → Imports, with the reason for each file not imported. */

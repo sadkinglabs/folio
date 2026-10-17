@@ -131,6 +131,7 @@ internal fun DecisionsContent(
         Text(
             stringResource(R.string.m9sync_decisions_title),
             style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
         )
         if (decisions.isEmpty() && checks.isEmpty() && questions.isEmpty())
             Text(

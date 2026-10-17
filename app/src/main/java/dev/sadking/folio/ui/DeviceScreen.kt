@@ -31,6 +31,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -200,7 +202,8 @@ internal fun DeviceScreen(
                 if (large) MaterialTheme.typography.headlineSmall
                 else MaterialTheme.typography.headlineMedium,
             modifier =
-                Modifier.padding(start = FolioSpace.page, end = FolioSpace.page, top = 12.dp),
+                Modifier.padding(start = FolioSpace.page, end = FolioSpace.page, top = 12.dp)
+                    .semantics { heading() },
         )
         if (!setUp) SetupCard(onSetUp, Modifier.padding(horizontal = FolioSpace.page))
         else
@@ -337,6 +340,7 @@ private fun SetupCard(onSetUp: () -> Unit, modifier: Modifier = Modifier) {
                 Text(
                     stringResource(R.string.device_setup_title),
                     style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
             Text(
@@ -384,6 +388,7 @@ private fun EreaderCard(
                     style = MaterialTheme.typography.titleLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
             Text(syncCardText(state.line, now), style = MaterialTheme.typography.bodyMedium)
@@ -546,7 +551,7 @@ private fun ActivitySheet(
             Text(
                 stringResource(R.string.device_activity_all),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
             if (entries.isNotEmpty())
                 TextButton(
@@ -657,6 +662,7 @@ internal fun LinkSignInSheet(
             Text(
                 stringResource(R.string.device_sign_in),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -28,7 +28,7 @@ import dev.sadking.folio.sync.MatchCandidateView
 import dev.sadking.folio.sync.MatchCheck
 import dev.sadking.folio.sync.StatusQuestion
 
-private val sampleBooks =
+internal val sampleBooks =
     listOf(
         Book(
             "sample1",
@@ -202,14 +202,14 @@ private val listSampleBooks =
             ),
         )
 
-private val listSampleShelves =
+internal val listSampleShelves =
     listOf(
         Shelf("slow", "Slow Sundays", syncEnabled = true),
         Shelf("spanish", "In Spanish", "Language", "es"),
         Shelf("discover", "To discover"),
     )
 
-private fun listSampleLibrary() =
+internal fun listSampleLibrary() =
     LibraryPresentation(
         listSampleBooks,
         listSampleBooks.map { it.id }.toSet(),
@@ -332,7 +332,7 @@ private val sampleQuestions =
         ),
     )
 
-private val sampleKindle =
+internal val sampleKindle =
     EreaderSync(
         "kindle-7f3a",
         "Kindle Paperwhite",
@@ -347,7 +347,7 @@ private val sampleKindle =
         books = 412,
     )
 
-private val sampleActivity =
+internal val sampleActivity =
     listOf(
         LinkLog.Entry(
             PREVIEW_NOW - 2 * 60_000,
@@ -672,7 +672,7 @@ internal fun PairingFirstRunPreview() {
     }
 }
 
-private val sampleStatistics =
+internal val sampleStatistics =
     DeviceStatistics(
         "device",
         totalSeconds = 12 * 3600 + 4 * 60,

@@ -175,3 +175,21 @@ internal fun observationDate(time: Long): String =
             java.text.DateFormat.SHORT,
         )
         .format(java.util.Date(time))
+
+/**
+ * [style] grown with the font scale only up to [cap]: for short labels under icons, where the icon
+ * carries the meaning and a larger label would cut mid-word.
+ */
+@Composable
+internal fun cappedTextStyle(
+    style: androidx.compose.ui.text.TextStyle,
+    cap: Float,
+): androidx.compose.ui.text.TextStyle {
+    val scale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    return if (scale <= cap) style
+    else
+        style.copy(
+            fontSize = style.fontSize * (cap / scale),
+            lineHeight = style.lineHeight * (cap / scale),
+        )
+}

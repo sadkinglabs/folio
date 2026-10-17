@@ -11,7 +11,9 @@ import androidx.room.withTransaction
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.core.Epub
+import dev.sadking.folio.core.dictionary.DictionaryEntry
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.dictionary.DictionaryModel
 import dev.sadking.folio.sync.SyncAnnotations
 import java.io.File
 import java.io.IOException
@@ -34,6 +36,7 @@ import org.readium.adapter.pdfium.document.PdfiumDocumentFactory
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Axis
+import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Fit
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
@@ -124,6 +127,42 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     var publisherStyles by mutableStateOf(settings.getBoolean("publisherStyles", false))
         private set
+
+    /** Two pages side by side where the window is wide enough; paginated EPUBs only. */
+    var twoPages by mutableStateOf(settings.getBoolean("twoPages", true))
+        private set
+
+    /**
+     * The open sheet. Kept here rather than in saved state: the activity starts without its saved
+     * state (the page is rebuilt from Room), so this is what brings a sheet back after a rotation.
+     */
+    internal var panel by mutableStateOf<ReaderPanel?>(null)
+
+    /** The owner's reading speed on this phone, for the time left. */
+    internal val speed = ReadingSpeed(settings)
+
+    /** What the search field holds; the search itself runs through [search]. */
+    internal var searchText by mutableStateOf("")
+        private set
+
+    internal var searchResults by mutableStateOf(SearchResults())
+        private set
+
+    /** The match tapped last, highlighted on the page until the search is closed. */
+    internal var shownHit by mutableStateOf<SearchHit?>(null)
+
+    private var searchJob: kotlinx.coroutines.Job? = null
+    private var searcher: ReaderSearch? = null
+
+    /** The text Define was asked for; null when its sheet is closed. */
+    internal var defineText by mutableStateOf<String?>(null)
+        private set
+
+    /** The entries for [defineText]; null while looking up. */
+    internal var definitions by mutableStateOf<List<DictionaryEntry>?>(null)
+        private set
+
+    private var defineJob: kotlinx.coroutines.Job? = null
 
     /** Set on the Settings tab; the reader only reads it. */
     val volumeKeys: Boolean
@@ -345,6 +384,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun preferences(dark: Boolean) =
         EpubPreferences(
+            // Two columns only where Readium judges the page wide enough (landscape tablets,
+            // unfolded phones); one column otherwise.
+            columnCount = if (twoPages) ColumnCount.AUTO else ColumnCount.ONE,
             // Readium wants a multiplier; passing the percentage made every size the largest.
             fontSize = readiumFontScale(fontSize),
             fontFamily = if (serif) FontFamily.SERIF else FontFamily.SANS_SERIF,
@@ -384,9 +426,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         spacing: Double = lineHeight,
         pageMargins: Double = margins,
         bookStyles: Boolean = publisherStyles,
+        pages: Boolean = twoPages,
     ) {
         pageTheme = theme
-        use(ReaderTypography(size, useSerif, scroll, spacing, pageMargins, bookStyles).bounded())
+        use(
+            ReaderTypography(size, useSerif, scroll, spacing, pageMargins, bookStyles, pages)
+                .bounded()
+        )
         val global = settings.edit().putString("theme", theme)
         val current = book
         if (bookOnly && current != null)
@@ -399,6 +445,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 .putFloat("lineHeight", lineHeight.toFloat())
                 .putFloat("margins", margins.toFloat())
                 .putBoolean("publisherStyles", publisherStyles)
+                .putBoolean("twoPages", twoPages)
         global.apply()
     }
 
@@ -417,7 +464,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun typography() =
-        ReaderTypography(fontSize, serif, scrolling, lineHeight, margins, publisherStyles)
+        ReaderTypography(fontSize, serif, scrolling, lineHeight, margins, publisherStyles, twoPages)
 
     private fun defaults() =
         ReaderTypography(
@@ -427,6 +474,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             settings.getFloat("lineHeight", 1.5f).toDouble(),
             settings.getFloat("margins", 1.0f).toDouble(),
             settings.getBoolean("publisherStyles", false),
+            settings.getBoolean("twoPages", true),
         )
 
     private fun use(value: ReaderTypography) {
@@ -436,6 +484,87 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         lineHeight = value.lineHeight
         margins = value.margins
         publisherStyles = value.publisherStyles
+        twoPages = value.twoPages
+    }
+
+    /** Sets the search field; clearing it clears the results and the highlight. */
+    internal fun editSearch(text: String) {
+        searchText = text
+        if (text.isBlank()) {
+            searchJob?.cancel()
+            searchResults = SearchResults()
+            shownHit = null
+        }
+    }
+
+    /**
+     * Runs a search for [query] unless it is the one already shown or running; a new search clears
+     * the highlight of the last one. Results arrive chapter by chapter.
+     */
+    internal fun search(query: String) {
+        val text = query.trim()
+        if (text.length < SEARCH_MIN_LENGTH) return
+        if (text == searchResults.query && searchResults.status != SearchStatus.FAILED) return
+        val opened = publication ?: return
+        val engine = searcher ?: ReaderSearch(opened).also { searcher = it }
+        searchJob?.cancel()
+        shownHit = null
+        searchResults = SearchResults(text, emptyList(), SearchStatus.RUNNING)
+        searchJob = viewModelScope.launch {
+            try {
+                engine.run(text).collect { searchResults = searchResults.copy(hits = it) }
+                searchResults = searchResults.copy(status = SearchStatus.DONE)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                searchResults = searchResults.copy(status = SearchStatus.FAILED)
+            }
+        }
+    }
+
+    /** Opens Define for [text], or closes it with null. */
+    internal fun define(text: String?) {
+        defineJob?.cancel()
+        defineText = text?.takeIf { it.isNotBlank() }
+        definitions = null
+    }
+
+    /** Looks [defineText] up once the dictionary is installed; nothing leaves the phone. */
+    internal fun lookUp() {
+        val text = defineText ?: return
+        if (definitions != null || defineJob?.isActive == true) return
+        defineJob = viewModelScope.launch {
+            definitions =
+                try {
+                    DictionaryModel.define(app, text)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    emptyList()
+                }
+        }
+    }
+
+    /** Forgets looked-up entries, as after the dictionary is removed. */
+    internal fun forgetDefinitions() {
+        defineJob?.cancel()
+        definitions = null
+    }
+
+    /**
+     * Time left in the chapter and the book at the owner's measured speed, once positions are
+     * known. PDFs and comics show the book part only.
+     */
+    internal fun timeLeftNow(): TimeLeft? {
+        val shown = kind ?: return null
+        val known = positions ?: return null
+        val total = known.locators.size
+        val position = lastLocation?.locations?.position ?: return null
+        if (total <= 0) return null
+        val chapterEnd =
+            if (shown == ReaderKind.EPUB) chapterEndAt(position, known.chapterFirst, total)
+            else null
+        return timeLeft(position, total, chapterEnd, speed.positionsPerMinute(shown))
     }
 
     /** Page colour Readium paints for the current theme, so system-bar areas match the page. */

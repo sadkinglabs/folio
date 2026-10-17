@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
 
@@ -51,6 +53,7 @@ fun LibraryFilterSheet(
                 Text(
                     stringResource(R.string.library_filter),
                     style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.semantics { heading() },
                 )
                 // The stored values are filter keys; only their labels are translated.
                 if (showStatus)

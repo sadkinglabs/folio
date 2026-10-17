@@ -2,8 +2,6 @@
 
 package dev.sadking.folio.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -22,11 +20,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.DiscoveryViewModel
 import dev.sadking.folio.R
+import dev.sadking.folio.acquire.BrowserLaunch
 import dev.sadking.folio.data.*
 import dev.sadking.folio.sync.HardcoverItemState
 
@@ -34,11 +35,12 @@ internal const val ATTACH_SHEET_TAG = "attach-sheet"
 internal const val ATTACH_PICK_FILE_TAG = "attach-pick-file"
 
 /**
- * A record (a book without an EPUB) on the same page as any other book. Its primary action looks
- * for an EPUB online; Attach takes a file from the phone or an EPUB already in Folio, with a
- * confirm sheet that shows both covers. The record keeps its details, lists and Hardcover match
- * throughout. [hardcoverState] is what the Hardcover tile says; while [hardcoverSync] is on, a
- * matched record reaches Hardcover by itself, so there is no "Add to Hardcover" button.
+ * A record (a book without an EPUB) on the same page as any other book. Its primary action, "Get
+ * this book", opens the in-app browser on a search for it; Attach takes a file from the phone or an
+ * EPUB already in Folio, with a confirm sheet that shows both covers. The record keeps its details,
+ * lists and Hardcover match throughout. [hardcoverState] is what the Hardcover tile says; while
+ * [hardcoverSync] is on, a matched record reaches Hardcover by itself, so there is no "Add to
+ * Hardcover" button.
  */
 @Composable
 fun CatalogueBookDetails(
@@ -84,14 +86,11 @@ fun CatalogueBookDetails(
             busy = state.busy,
             contentPadding = contentPadding,
             onRead = {
+                // "Get this book" (M5): the in-app browser searches the first source for this
+                // entry, and the book it gets is linked to the entry.
                 try {
                     context.startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(
-                                BookDiscovery.archiveSearch(wish.title, decode(wish.authors))
-                            ),
-                        )
+                        BrowserLaunch.find(context, wish.title, decode(wish.authors), wish.id)
                     )
                 } catch (_: android.content.ActivityNotFoundException) {
                     model.report(noBrowser)
@@ -197,7 +196,10 @@ internal fun AttachSheet(
                 Text(
                     stringResource(R.string.rd_attach_sheet_title),
                     style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = FolioSpace.section),
+                    modifier =
+                        Modifier.padding(horizontal = FolioSpace.section).semantics {
+                            heading()
+                        },
                 )
             }
             item {

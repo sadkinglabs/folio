@@ -25,6 +25,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [36], qualifiers = "w412dp-h892dp-xxhdpi")
 class ScreenshotTest {
+    private companion object {
+        const val TABLET = "w840dp-h1280dp-xhdpi"
+        const val TABLET_LANDSCAPE = "w1280dp-h800dp-xhdpi"
+        const val FOLDABLE = "w700dp-h840dp-xhdpi"
+    }
+
     @Before
     fun onlyWhenAsked() {
         assumeTrue(System.getProperty("roborazzi.test.record") == "true")
@@ -45,7 +51,62 @@ class ScreenshotTest {
         }
     }
 
+    /**
+     * The frame at a tablet or foldable size, [qualifiers] being one of the three below: light,
+     * dark and 200% text, like [shoot].
+     */
+    private fun shootAt(name: String, qualifiers: String, content: @Composable () -> Unit) {
+        RuntimeEnvironment.setQualifiers(qualifiers)
+        shoot(name, content = content)
+    }
+
     @Test fun library() = shoot("library") { LibraryPreview() }
+
+    @Test fun licences() = shoot("settings-licences", tall = true) { LicencesPreview() }
+
+    @Test fun tabletLibrary() = shootAt("tablet-library", TABLET) { TabletLibraryPreview() }
+
+    @Test
+    fun tabletLibraryLandscape() =
+        shootAt("tablet-library-landscape", TABLET_LANDSCAPE) { TabletLibraryPreview() }
+
+    @Test
+    fun tabletLibraryEmpty() =
+        shootAt("tablet-library-empty", TABLET) { TabletLibraryEmptyPreview() }
+
+    @Test fun foldableLibrary() = shootAt("foldable-library", FOLDABLE) { FoldLibraryPreview() }
+
+    @Test
+    fun foldableFlatLibrary() =
+        shootAt("foldable-flat-library", FOLDABLE) { TabletLibraryPreview() }
+
+    @Test fun tabletLists() = shootAt("tablet-lists", TABLET) { TabletListsPreview() }
+
+    @Test
+    fun tabletListsLandscape() =
+        shootAt("tablet-lists-landscape", TABLET_LANDSCAPE) { TabletListsPreview() }
+
+    @Test fun foldableLists() = shootAt("foldable-lists", FOLDABLE) { FoldListsPreview() }
+
+    @Test fun tabletSettings() = shootAt("tablet-settings", TABLET) { TabletSettingsPreview() }
+
+    @Test
+    fun tabletSettingsLandscape() =
+        shootAt("tablet-settings-landscape", TABLET_LANDSCAPE) { TabletSettingsPreview() }
+
+    @Test
+    fun tabletSettingsLicences() =
+        shootAt("tablet-settings-licences", TABLET) { TabletLicencesPreview() }
+
+    @Test fun foldableSettings() = shootAt("foldable-settings", FOLDABLE) { FoldSettingsPreview() }
+
+    @Test fun tabletDevice() = shootAt("tablet-device", TABLET) { TabletDevicePreview() }
+
+    @Test
+    fun tabletDeviceLandscape() =
+        shootAt("tablet-device-landscape", TABLET_LANDSCAPE) { TabletDevicePreview() }
+
+    @Test fun foldableDevice() = shootAt("foldable-device", FOLDABLE) { FoldDevicePreview() }
 
     @Test fun details() = shoot("details") { DetailsPreview() }
 

@@ -1,5 +1,6 @@
 package dev.sadking.folio
 
+import dev.sadking.folio.data.isStorageFull
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -27,6 +28,8 @@ class FailureText(
     val fileTransfer: String,
     val incomplete: String,
     val generic: String,
+    /** The phone ran out of space. Empty reads as [generic]. */
+    val storageFull: String = "",
 )
 
 /**
@@ -82,6 +85,15 @@ internal fun userMessage(e: Exception): String? =
     e.message?.takeUnless { it == "Failed requirement." || it == "Check failed." }?.take(200)
 
 internal fun safeError(e: Exception, text: FailureText, authentication: String = ""): String =
+    when {
+        // A full disk on the e-reader comes through SSH; that one is not the phone's.
+        e is com.jcraft.jsch.JSchException || e is com.jcraft.jsch.SftpException ->
+            knownError(e, text, authentication)
+        isStorageFull(e) -> text.storageFull.ifEmpty { text.generic }
+        else -> knownError(e, text, authentication)
+    }
+
+private fun knownError(e: Exception, text: FailureText, authentication: String): String =
     when (e) {
         is com.jcraft.jsch.JSchException ->
             when {

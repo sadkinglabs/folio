@@ -1,0 +1,31 @@
+Librillo's own code is licensed Apache License 2.0. The KOReader plugin that Librillo installs on your e-reader is its own work, licensed GNU AGPL 3.0 or later; its source travels with it.
+
+AndroidX: Jetpack Compose, Material 3 and Material icons, Activity, Fragment, Lifecycle, Room, WorkManager, Media3 and WindowManager. Apache License 2.0.
+
+Kotlin standard library and kotlinx.coroutines, by JetBrains. Apache License 2.0.
+
+Core library desugaring (desugar_jdk_libs), by Google. GNU GPL 2.0 with the Classpath Exception.
+
+Readium Kotlin toolkit 3.4.0, including its Pdfium adapter. BSD 3-Clause License.
+
+Parts of the reader's scripts come from Prose (prose-reader). MIT License.
+
+PdfiumAndroid and AndroidPdfViewer, by marain87. Apache License 2.0. The PDFium library inside them: BSD 3-Clause License.
+
+libarchive-android, by Hai Zhang. Apache License 2.0. The libarchive 3.8.1 library inside it: BSD 2-Clause License.
+
+JSch, by Matthias Wiedemann (a fork of JSch by JCraft), with JZlib. BSD-style licences.
+
+Haze, by Chris Banes. Apache License 2.0.
+
+Apache Commons Compress. Apache License 2.0.
+
+sherpa-onnx, by the k2-fsa project. Apache License 2.0. The ONNX Runtime library inside it: MIT License.
+
+Natural voice for reading aloud: the Kokoro voice model, Apache License 2.0, with espeak-ng data, GNU GPL 3.0 or later. Downloaded from GitHub when you choose to; not part of the app.
+
+Google ML Kit Text Recognition, by Google. Google's ML Kit terms of service.
+
+Definitions: Open English WordNet 2025+, by the Open English WordNet team, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Based on Princeton WordNet 3.1, © 2011 Princeton University, under the WordNet licence. Downloaded from GitHub when you choose to; not changed by Librillo.
+
+The full licence texts are in the THIRD_PARTY.md file and the docs/licenses folder of Librillo's source.

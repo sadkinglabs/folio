@@ -381,7 +381,7 @@ class ProductJourneyTest {
         cover("A Room of One’s Own, Virginia Woolf")
             .assert(hasStateDescription("No EPUB yet"))
             .performClick()
-        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Get this book")
         compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertDoesNotExist()
         capture("catalogue-light")
         val input = epub("A Room of One’s Own", "Virginia Woolf", Color.rgb(223, 202, 215))

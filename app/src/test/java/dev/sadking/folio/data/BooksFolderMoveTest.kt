@@ -125,7 +125,10 @@ class BooksFolderMoveTest {
         File(broken.currentPath).appendText("changed")
         val fine = imported("Fine", "Ann Lee")
         val result = BooksFolderMove(repo).run()
-        assertEquals(MoveResult(1, listOf("Broken")), result)
+        assertEquals(
+            MoveResult(1, listOf("Broken"), mapOf("Broken" to "its file changed or is missing")),
+            result,
+        )
         assertEquals(broken.currentPath, repo.dao.book(broken.id)!!.currentPath)
         assertTrue(File(broken.currentPath).isFile)
         assertTrue(repo.inBooksFolder(File(repo.dao.book(fine.id)!!.currentPath)))

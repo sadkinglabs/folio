@@ -10,14 +10,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
+import dev.sadking.folio.acquire.BookSourceStore
+import dev.sadking.folio.acquire.BrowserLaunch
 
 enum class AddBookAction {
     EPUB,
@@ -28,6 +35,7 @@ enum class AddBookAction {
 }
 
 internal const val ADD_SHEET_TAG = "add-sheet"
+internal const val ADD_GET_ONLINE_TAG = "add-get-online"
 
 /**
  * What the system file picker offers when adding a book. Providers label comics and PDFs
@@ -70,7 +78,7 @@ fun AddBooksSheet(
             Text(
                 stringResource(R.string.library_add_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 4.dp),
+                modifier = Modifier.padding(bottom = 4.dp).semantics { heading() },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
                 TonalTile(
@@ -104,6 +112,7 @@ fun AddBooksSheet(
                     onAction(AddBookAction.MANUAL)
                 }
             }
+            GetOnlineRow(onDismiss)
             ListItem(
                 headlineContent = { Text(stringResource(R.string.library_add_hardcover)) },
                 supportingContent = {
@@ -147,7 +156,8 @@ internal fun TonalTile(
         shape = FolioSpace.panelShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier = modifier.heightIn(min = 112.dp),
+        // Surface's own click sets no role; TalkBack should say "button".
+        modifier = modifier.heightIn(min = 112.dp).semantics { role = Role.Button },
     ) {
         Column(Modifier.padding(FolioSpace.item), verticalArrangement = Arrangement.SpaceBetween) {
             Icon(icon, null, Modifier.size(28.dp))
@@ -155,4 +165,39 @@ internal fun TonalTile(
             Text(label, style = MaterialTheme.typography.titleMedium, maxLines = 2)
         }
     }
+}
+
+/**
+ * "Get a book online" (M5): opens the in-app browser's start page, naming the sites it searches. It
+ * starts the browser itself, so [AddBookAction] and its callers stay as they are.
+ */
+@Composable
+internal fun GetOnlineRow(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val sites =
+        remember(context) {
+            runCatching { BookSourceStore(context).visible().joinToString(", ") { it.name } }
+                .getOrDefault("")
+        }
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.acq_add_row)) },
+        supportingContent = {
+            Text(sites.ifBlank { stringResource(R.string.acq_add_row_none) })
+        },
+        leadingContent = {
+            Icon(Icons.Outlined.Public, null, tint = MaterialTheme.colorScheme.tertiary)
+        },
+        trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier =
+            Modifier.clickable(role = Role.Button) {
+                    onDismiss()
+                    try {
+                        context.startActivity(BrowserLaunch.find(context))
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        // Not on this build; nothing to open.
+                    }
+                }
+                .testTag(ADD_GET_ONLINE_TAG),
+    )
 }

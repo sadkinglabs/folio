@@ -122,6 +122,16 @@ class LargeFontUiTest {
             waitFor("the library again") {
                 compose.onAllNodes(share).fetchSemanticsNodes().isEmpty()
             }
+            // Lists: the reading lists and New list stay reachable, names not cut mid-word.
+            compose.onNode(hasText("Lists") and hasClickAction()).performClick()
+            compose.waitForIdle()
+            compose.onNodeWithTag(LISTS_NEW_TAG).assertIsDisplayed()
+            compose
+                .onNodeWithTag(listCardTag("reading:WANT_TO_READ"))
+                .performScrollTo()
+                .assertIsDisplayed()
+            compose.onNodeWithTag(LISTS_NEW_CARD_TAG).performScrollTo().assertIsDisplayed()
+            QaScreenshots.capture("lists-font200")
             compose.onNode(hasText("Device") and hasClickAction()).performClick()
             compose.waitForIdle()
             // Not set up in this run: the setup card is on screen at 200%, and the Sync
@@ -135,6 +145,10 @@ class LargeFontUiTest {
             compose.onNodeWithTag(SETTINGS_THEME_TAG).assertIsDisplayed()
             compose.onNodeWithTag(SETTINGS_WALLPAPER_TAG).performScrollTo().assertIsDisplayed()
             QaScreenshots.capture("settings-font200")
+            // The rows M5 and M6 add: Book sources and Licences, and Licences opens.
+            compose.onNodeWithTag(SETTINGS_BOOK_SOURCES_TAG).performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag(SETTINGS_LICENCES_TAG).performScrollTo().performClick()
+            compose.onNodeWithTag(LICENCES_TAG).assertExists()
         }
     }
 }

@@ -33,7 +33,7 @@
     <string name="shell_keep_attached">Keep</string>
 
     <!-- Shell: book search -->
-    <string name="shell_no_browser">Install a browser to search for this book</string>
+    <string name="shell_no_browser">Couldn\'t open book search</string>
 
     <!-- Shell: lists and status sheets -->
     <string name="shell_lists_for_book">Lists · %1$s</string>

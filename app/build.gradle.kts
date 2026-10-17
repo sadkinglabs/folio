@@ -14,8 +14,8 @@ android {
         applicationId = "dev.sadking.folio"
         minSdk = 36
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.12.0-dev"
+        versionCode = 19
+        versionName = "0.13.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The owner's phone is arm64; the CI emulator is x86_64.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -90,6 +90,8 @@ dependencies {
     implementation(libs.lifecycle.vm.compose)
     // Already shipped through Compose; declared to tell when Librillo is in the foreground.
     implementation(libs.lifecycle.process)
+    // Already shipped through Compose; declared to find a fold's hinge for two panes.
+    implementation(libs.androidx.window)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)

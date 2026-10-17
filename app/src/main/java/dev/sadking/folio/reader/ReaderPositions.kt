@@ -19,6 +19,11 @@ class ReaderPositions(
     val chapterTitles: List<String?>,
     /** The ticks drawn on the slider: chapter starts after the first, thinned. */
     val ticks: List<Float>,
+    /**
+     * Where each reading-order item starts, as a 0-based index into [locators]; aligned with
+     * [chapterTitles]. Time left in the chapter counts to the next start.
+     */
+    val chapterFirst: List<Int> = emptyList(),
 ) {
     companion object {
         /** Ticks closer together than 1% of the book collapse into one. */
@@ -31,9 +36,11 @@ class ReaderPositions(
             val tocTitles = tocTitles(publication.tableOfContents)
             var start = 0
             val starts = mutableListOf<Float>()
+            val firsts = mutableListOf<Int>()
             val titles = mutableListOf<String?>()
             publication.readingOrder.forEachIndexed { index, link ->
                 starts += if (total > 0) start.toFloat() / total else 0f
+                firsts += start
                 titles += tocTitles[resourcePath(link.url().toString())] ?: link.title
                 start += counts.getOrElse(index) { 0 }
             }
@@ -42,6 +49,7 @@ class ReaderPositions(
                 starts,
                 titles,
                 thinTicks(chapterTicks(counts), MIN_TICK_GAP),
+                firsts,
             )
         }
 

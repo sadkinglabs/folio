@@ -91,7 +91,10 @@ internal fun SettingsGroup(
             title.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = FolioSpace.item, bottom = FolioSpace.small),
+            modifier =
+                Modifier.padding(start = FolioSpace.item, bottom = FolioSpace.small).semantics {
+                    heading()
+                },
         )
         Surface(
             Modifier.fillMaxWidth(),
@@ -117,6 +120,8 @@ internal fun SettingsRow(
     enabled: Boolean = true,
     badge: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    /** The row whose content shows beside the groups, on a tablet. */
+    selected: Boolean = false,
 ) {
     ListItem(
         headlineContent = {
@@ -163,7 +168,12 @@ internal fun SettingsRow(
                         )
                     }
                 },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        colors =
+            ListItemDefaults.colors(
+                containerColor =
+                    if (selected) MaterialTheme.colorScheme.secondaryContainer
+                    else Color.Transparent
+            ),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -172,6 +182,7 @@ internal fun SettingsRow(
                         Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                     else Modifier
                 )
+                .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
                 .alpha(if (enabled) 1f else 0.5f),
     )
 }
@@ -604,6 +615,7 @@ internal fun EmptyState(
             title,
             style = MaterialTheme.typography.headlineMedium,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.height(12.dp))
         Text(
@@ -684,7 +696,11 @@ internal fun EditorField(
 @Composable
 internal fun SectionHeading(title: String, subtitle: String = "") {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
         if (subtitle.isNotBlank())
             Text(
                 subtitle,
@@ -793,7 +809,7 @@ internal fun SheetTitle(
         Text(
             title,
             style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).semantics { heading() },
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )

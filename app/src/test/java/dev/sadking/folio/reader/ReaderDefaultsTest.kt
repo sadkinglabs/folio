@@ -27,7 +27,7 @@ class ReaderDefaultsTest {
     fun savedValuesRoundTripUnderTheReaderKeys() {
         prefs.edit().clear().commit()
         // Values a float stores exactly, since the reader keeps them as floats.
-        val value = ReaderTypography(130.0, false, true, 1.75, 0.5, true)
+        val value = ReaderTypography(130.0, false, true, 1.75, 0.5, true, twoPages = false)
         ReaderDefaults.saveTypography(prefs, value)
         ReaderDefaults.savePageTheme(prefs, "Paper")
         ReaderDefaults.saveVolumeKeys(prefs, false)
@@ -35,6 +35,7 @@ class ReaderDefaultsTest {
         // The keys the reader itself reads.
         assertEquals(130f, prefs.getFloat("fontSize", 0f), 0f)
         assertFalse(prefs.getBoolean("serif", true))
+        assertFalse(prefs.getBoolean("twoPages", true))
         assertEquals("Paper", prefs.getString("theme", null))
         assertFalse(prefs.getBoolean("volumeKeys", true))
     }

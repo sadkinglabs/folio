@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -167,7 +169,7 @@ internal fun RemovedBooksContent(
             Text(
                 stringResource(R.string.library_removed_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = FolioSpace.small),
+                modifier = Modifier.padding(bottom = FolioSpace.small).semantics { heading() },
             )
         }
         if (groups.isEmpty())
@@ -232,6 +234,7 @@ fun BatchListsSheet(
             Text(
                 stringResource(R.string.library_batch_add_to_list),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 pluralStringResource(R.plurals.library_batch_count, count, count),
@@ -277,6 +280,7 @@ fun BatchStatusSheet(count: Int, busy: Boolean, onStatus: (String) -> Unit, onDi
             Text(
                 stringResource(R.string.library_batch_status),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 pluralStringResource(R.plurals.library_batch_count, count, count),
@@ -352,7 +356,10 @@ internal fun ImportResultsContent(
             Text(
                 stringResource(R.string.library_import_results_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = FolioSpace.small, vertical = 4.dp),
+                modifier =
+                    Modifier.padding(horizontal = FolioSpace.small, vertical = 4.dp).semantics {
+                        heading()
+                    },
             )
         }
         items(results, key = { it.uri }) { result ->

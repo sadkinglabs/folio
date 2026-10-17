@@ -177,7 +177,7 @@ class BookActionsUiTest {
                 )
             }
         }
-        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Find EPUB")
+        compose.onNodeWithTag(BOOK_PRIMARY_TAG).assertTextEquals("Get this book")
         compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_SHARE_TAG).assertDoesNotExist()
         compose.onNodeWithTag(BOOK_ACTION_ATTACH_TAG).assertHasClickAction()

@@ -54,6 +54,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,7 +94,7 @@ internal const val BOOK_CHANGED_OUTSIDE_TAG = "book-changed-outside"
 
 /**
  * The one book page, for books with and without an EPUB. A record ([hasEpub] false) gets the same
- * page with fewer actions: Find EPUB instead of Read, Attach, no Share, and a status strip with
+ * page with fewer actions: Get this book instead of Read, Attach, no Share, and a status strip with
  * Hardcover only. Sync puts every book on the e-reader by itself, so there is no Send.
  *
  * Busy rules: a running library operation ([busy]) disables changes. Reading is never blocked. A
@@ -462,6 +463,7 @@ internal fun CoverHero(book: Book, modifier: Modifier = Modifier) {
                     if (large) MaterialTheme.typography.headlineSmall
                     else MaterialTheme.typography.displaySmall,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 book.authorLabel.ifBlank { stringResource(R.string.shell_unknown_author) },
@@ -708,7 +710,8 @@ internal fun ProgressSheet(
             Text(
                 stringResource(R.string.progress_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = FolioSpace.section),
+                modifier =
+                    Modifier.padding(horizontal = FolioSpace.section).semantics { heading() },
             )
             val ahead = aheadOfPhone(entries)
             entries.forEach { entry ->

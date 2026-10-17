@@ -16,8 +16,22 @@ class ReaderTypographyTest {
                 lineHeight = 1.8,
                 margins = 0.5,
                 publisherStyles = true,
+                twoPages = false,
             )
         assertEquals(book, ReaderTypography.fromJson(book.toJson(), global))
+    }
+
+    @Test
+    fun twoPagesRoundTripsAndOldOverridesKeepItOn() {
+        val one = ReaderTypography(twoPages = false)
+        assertEquals(false, ReaderTypography.fromJson(one.toJson(), global).twoPages)
+        // An override saved before M6 has no "twoPages": the book shows two pages where it fits.
+        val old =
+            """{"fontSize":150,"serif":true,"scroll":false,"lineHeight":1.8,""" +
+                """"margins":0.5,"publisherStyles":true}"""
+        val read = ReaderTypography.fromJson(old, ReaderTypography())
+        assertEquals(true, read.twoPages)
+        assertEquals(150.0, read.fontSize, 0.0)
     }
 
     @Test

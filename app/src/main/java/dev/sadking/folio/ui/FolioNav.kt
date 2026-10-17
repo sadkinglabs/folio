@@ -91,6 +91,34 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
     val discovering: Boolean
         get() = top is Route.Discover
 
+    /**
+     * With two panes, the screen in the right pane: the top screen when it is a book, a record, an
+     * editor or a list. The scan-a-cover screen fills the window instead.
+     */
+    val detail: Route?
+        get() =
+            when (val route = top) {
+                is Route.Book,
+                is Route.Record,
+                is Route.Edit,
+                is Route.List -> route
+                else -> null
+            }
+
+    /**
+     * With two panes, the list kept in the left pane while one of its books is open on the right:
+     * the nearest list under a book, record or editor on top. Back pops the book as on a phone.
+     */
+    val listBeside: String?
+        get() =
+            when (detail) {
+                is Route.Book,
+                is Route.Record,
+                is Route.Edit ->
+                    (stack.dropLast(1).lastOrNull { it is Route.List } as? Route.List)?.id
+                else -> null
+            }
+
     /** Opens [route]; opening the screen already on top does nothing. */
     fun open(route: Route) {
         if (top != route) stack.add(route)
@@ -102,6 +130,15 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
     fun replaceTop(route: Route) {
         stack.removeLastOrNull()
         open(route)
+    }
+
+    /**
+     * Drops every screen above [base], or every screen when [base] is null or not open. With two
+     * panes, a book chosen in the left pane takes the right pane's place instead of piling up.
+     */
+    fun clearAbove(base: Route?) {
+        val keep = if (base == null) 0 else stack.lastIndexOf(base) + 1
+        while (stack.size > keep) stack.removeAt(stack.lastIndex)
     }
 
     /** Shows a tab with nothing above it. */

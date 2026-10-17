@@ -19,6 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -150,7 +154,7 @@ internal fun DiscoveryContent(
             Text(
                 stringResource(R.string.discovery_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
             InfoAction(stringResource(R.string.discovery_privacy))
         }
@@ -163,14 +167,18 @@ internal fun DiscoveryContent(
                 TonalTile(
                     stringResource(R.string.discovery_take_photo),
                     Icons.Outlined.PhotoCamera,
-                    Modifier.weight(1f).testTag(DISCOVERY_CAMERA_TAG),
+                    Modifier.weight(1f).testTag(DISCOVERY_CAMERA_TAG).semantics {
+                        role = Role.Button
+                    },
                     enabled = !busy,
                     onClick = onCamera,
                 )
                 TonalTile(
                     stringResource(R.string.discovery_choose_photo),
                     Icons.Outlined.Image,
-                    Modifier.weight(1f).testTag(DISCOVERY_PHOTO_TAG),
+                    Modifier.weight(1f).testTag(DISCOVERY_PHOTO_TAG).semantics {
+                        role = Role.Button
+                    },
                     enabled = !busy,
                     onClick = onPhoto,
                 )

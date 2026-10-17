@@ -80,7 +80,7 @@ internal fun ListsScreen(
                 style =
                     if (large) MaterialTheme.typography.headlineSmall
                     else MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
             if (onScan != null) {
                 val scan = stringResource(R.string.library_wanted_empty_scan)
@@ -224,6 +224,7 @@ internal fun ListCardView(
             Modifier.fillMaxWidth()
                 .clip(FolioSpace.panelShape)
                 .combinedClickable(
+                    role = Role.Button,
                     onClick = onClick,
                     onLongClick =
                         if (shelf != null)
@@ -422,6 +423,7 @@ internal fun ListDetailScreen(
                             else MaterialTheme.typography.headlineMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Text(
                         pluralStringResource(R.plurals.lists_book_count, card.count, card.count),
@@ -540,7 +542,7 @@ internal fun ListEditorSheet(
                         else R.string.library_list_edit_title
                     ),
                     style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).semantics { heading() },
                 )
                 if (onDelete != null)
                     IconButton(onClick = onDelete, enabled = !busy) {

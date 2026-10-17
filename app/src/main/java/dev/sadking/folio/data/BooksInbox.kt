@@ -48,10 +48,18 @@ data class InboxResult(
     val waiting: Int = 0,
     /** Files that couldn't be filed this time, such as after a storage error. They stay put. */
     val retry: Int = 0,
+    /** True when at least one of the [retry] files failed because the phone is out of space. */
+    val storageFull: Boolean = false,
 ) {
     /** This pass followed by [next], a later pass over what was left. */
     operator fun plus(next: InboxResult) =
-        InboxResult(added + next.added, notImported + next.notImported, next.waiting, next.retry)
+        InboxResult(
+            added + next.added,
+            notImported + next.notImported,
+            next.waiting,
+            next.retry,
+            next.storageFull,
+        )
 }
 
 /**
@@ -84,6 +92,7 @@ class BooksInbox(
             val notImported = mutableListOf<InboxEntry>()
             var waiting = 0
             var retry = 0
+            var storageFull = false
             for (file in files) {
                 currentCoroutineContext().ensureActive()
                 if (!settled(file)) {
@@ -99,13 +108,14 @@ class BooksInbox(
                     }
                 } catch (cancel: CancellationException) {
                     throw cancel
-                } catch (_: Exception) {
+                } catch (e: Exception) {
                     retry++
+                    if (isStorageFull(e)) storageFull = true
                 } finally {
                     sizes.remove(file.path)
                 }
             }
-            InboxResult(added, notImported, waiting, retry)
+            InboxResult(added, notImported, waiting, retry, storageFull)
         }
 
     /**
@@ -207,6 +217,7 @@ fun InboxResult.message(res: Resources): String? {
         if (failed > 0)
             add(res.getQuantityString(R.plurals.msg_inbox_m9_not_imported, failed, failed))
         if (retry > 0) add(res.getQuantityString(R.plurals.msg_inbox_m9_retry, retry, retry))
+        if (storageFull) add(res.getString(R.string.data6_storage_full))
     }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" ")
 }

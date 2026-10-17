@@ -36,6 +36,17 @@ data class ScanResult(
     val notAdded: List<String> = emptyList(),
     /** When the scan finished, in epoch milliseconds. 0 when it didn't run. */
     val finishedAt: Long = 0,
+    /**
+     * Why each path in [notAdded] was not added, when it is known: a copy of a book already in the
+     * library, not a book, or unreadable. A path without a reason failed for another cause, such as
+     * storage, and is tried again at the next scan.
+     */
+    val notAddedReasons: Map<String, InboxReason> = emptyMap(),
+    /**
+     * Books whose file is still at its path but now holds something Librillo can't take: another
+     * kind of file, or not a book. They are not missing; their records, notes and progress stay.
+     */
+    val notAccepted: List<String> = emptyList(),
 )
 
 /**
@@ -120,6 +131,8 @@ class BooksFolderScan(
         val missing = mutableListOf<String>()
         val added = mutableListOf<String>()
         val notAdded = mutableListOf<String>()
+        val reasons = linkedMapOf<String, InboxReason>()
+        val notAccepted = mutableListOf<String>()
         val revisedIds = mutableSetOf<String>()
         val missingIds = mutableSetOf<String>()
         fun lost(id: String) {
@@ -136,18 +149,28 @@ class BooksFolderScan(
                             relinked += it.title
                         }
                     is ScanAction.Revise -> {
-                        val book =
-                            repo.acceptRevision(action.bookId, File(root, action.path), action.hash)
-                        if (book == null) lost(action.bookId)
-                        else {
+                        val file = File(root, action.path)
+                        val book = repo.acceptRevision(action.bookId, file, action.hash)
+                        if (book == null) {
+                            // The file is there but isn't a book of the same kind: changed, not
+                            // missing.
+                            val title = books[action.bookId]?.title
+                            if (title != null && file.isFile) notAccepted += title
+                            else lost(action.bookId)
+                        } else {
                             revised += book.title
                             revisedIds += book.id
                         }
                     }
                     is ScanAction.Missing -> lost(action.bookId)
                     is ScanAction.Add -> {
-                        val book = repo.addInPlace(File(root, action.path), action.hash)
-                        if (book == null) notAdded += action.path else added += book.title
+                        val (book, reason) =
+                            repo.placeInFolder(File(root, action.path), action.hash)
+                        if (book != null) added += book.title
+                        else {
+                            notAdded += action.path
+                            if (reason != null) reasons[action.path] = reason
+                        }
                     }
                 }
             } catch (cancel: CancellationException) {
@@ -157,7 +180,17 @@ class BooksFolderScan(
                 if (action is ScanAction.Add) notAdded += action.path
             }
         }
-        val result = ScanResult(relinked, revised, missing, added, notAdded, finishedAt = now())
+        val result =
+            ScanResult(
+                relinked,
+                revised,
+                missing,
+                added,
+                notAdded,
+                finishedAt = now(),
+                notAddedReasons = reasons,
+                notAccepted = notAccepted,
+            )
         runCatching { FolderScanNotes.markChanged(notes, revisedIds, books.keys) }
         runCatching {
             update { CacheState(files = files, missing = missingIds, last = result) }
@@ -259,6 +292,8 @@ class BooksFolderScan(
                     added = o.optJSONArray("added").strings(),
                     notAdded = o.optJSONArray("notAdded").strings(),
                     finishedAt = o.optLong("finishedAt"),
+                    notAddedReasons = o.optJSONObject("notAddedReasons").reasons(),
+                    notAccepted = o.optJSONArray("notAccepted").strings(),
                 )
             }
         return CacheState(
@@ -266,6 +301,17 @@ class BooksFolderScan(
             missing = json.optJSONArray("missing").strings().toSet(),
             last = last,
         )
+    }
+
+    /** Reasons by path; an unknown reason (from a newer version) is left out. */
+    private fun JSONObject?.reasons(): Map<String, InboxReason> {
+        if (this == null) return emptyMap()
+        val found = linkedMapOf<String, InboxReason>()
+        keys().forEach { path ->
+            val name = optString(path)
+            InboxReason.entries.firstOrNull { it.name == name }?.let { found[path] = it }
+        }
+        return found
     }
 
     private fun JSONArray?.strings(): List<String> =
@@ -294,7 +340,14 @@ class BooksFolderScan(
                     .put("missing", JSONArray(r.missing))
                     .put("added", JSONArray(r.added))
                     .put("notAdded", JSONArray(r.notAdded))
-                    .put("finishedAt", r.finishedAt),
+                    .put("finishedAt", r.finishedAt)
+                    .put(
+                        "notAddedReasons",
+                        JSONObject().apply {
+                            r.notAddedReasons.forEach { (path, reason) -> put(path, reason.name) }
+                        },
+                    )
+                    .put("notAccepted", JSONArray(r.notAccepted)),
             )
         }
         val folder = cacheFile.absoluteFile.parentFile!!.apply { mkdirs() }

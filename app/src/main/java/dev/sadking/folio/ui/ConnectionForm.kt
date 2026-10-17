@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -130,7 +131,7 @@ fun ConnectionForm(
             Text(
                 stringResource(R.string.pairing_title),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer) {
                 Text(
@@ -642,6 +643,7 @@ private fun FolderBrowserSheet(
             Text(
                 stringResource(R.string.pairing_folders_title),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 path,

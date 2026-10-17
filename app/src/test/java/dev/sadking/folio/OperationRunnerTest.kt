@@ -105,4 +105,26 @@ class OperationRunnerTest {
         screen.cancel()
         assertEquals(Operation(), runner.state.first { !it.busy })
     }
+
+    @Test
+    fun aFullPhoneIsExplainedWithoutRawDetails() {
+        val enospc = IOException("write failed: ENOSPC (No space left on device)")
+        // Without its own words it falls back to the generic explanation, never the raw message.
+        assertEquals(text.generic, safeError(enospc, text))
+        val full =
+            FailureText(
+                hostKey = "",
+                passwordFreeRejected = "",
+                signInRejected = "",
+                unsupportedAlgorithms = "",
+                connection = "",
+                fileTransfer = "file transfer",
+                incomplete = "",
+                generic = "generic",
+                storageFull = "out of space",
+            )
+        assertEquals("out of space", safeError(java.io.IOException("x", enospc), full))
+        assertEquals("out of space", safeError(IllegalStateException("x", enospc), full))
+        assertEquals("file transfer", safeError(com.jcraft.jsch.SftpException(4, "ENOSPC"), full))
+    }
 }

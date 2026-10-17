@@ -20,6 +20,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -76,24 +77,27 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             val name = displayName(uri)
             lock.withLock {
-                // The copy is made on the volume the book will live on, so filing it is a rename.
-                val toFolder = folderReady()
-                val stage =
-                    if (toFolder)
-                        File(booksRoot(), ".librillo/.import-${UUID.randomUUID()}.part").also {
-                            it.parentFile!!.mkdirs()
-                        }
-                    else File(root, ".import-${UUID.randomUUID()}")
-                try {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        FileOutputStream(stage).use { output ->
-                            Epub.copyBounded(input, output)
-                            output.fd.sync()
-                        }
-                    } ?: error("Cannot open selected file")
-                    addLocked(stage, name, toFolder)
-                } finally {
-                    stage.delete()
+                spaceChecked {
+                    // The copy is made on the volume the book will live on, so filing it is a
+                    // rename.
+                    val toFolder = folderReady()
+                    val stage =
+                        if (toFolder)
+                            File(booksRoot(), ".librillo/.import-${UUID.randomUUID()}.part").also {
+                                it.parentFile!!.mkdirs()
+                            }
+                        else File(root, ".import-${UUID.randomUUID()}")
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(stage).use { output ->
+                                Epub.copyBounded(input, output)
+                                output.fd.sync()
+                            }
+                        } ?: error(context.getString(R.string.data6_file_unopenable))
+                        addLocked(stage, name, toFolder)
+                    } finally {
+                        stage.delete()
+                    }
                 }
             }
         }
@@ -114,7 +118,7 @@ class LibraryRepository(
                     "Not an Inbox file"
                 }
                 if (file.length() > Epub.MAX_FILE) throw TooLargeBook()
-                addLocked(file, file.name, toFolder = true)
+                spaceChecked { addLocked(file, file.name, toFolder = true) }
             }
         }
 
@@ -231,15 +235,25 @@ class LibraryRepository(
      * [lock] held.
      */
     internal suspend fun addInPlace(file: File, hash: String): Book? =
+        placeInFolder(file, hash).first
+
+    /**
+     * As [addInPlace], with why a file was not added: [InboxReason.ALREADY_IN_LIBRARY],
+     * [InboxReason.NOT_A_BOOK] or [InboxReason.UNREADABLE]. Exactly one of the pair is null. Call
+     * with [lock] held.
+     */
+    internal suspend fun placeInFolder(file: File, hash: String): Pair<Book?, InboxReason?> =
         withContext(Dispatchers.IO) {
             require(inBooksFolder(file) && file.isFile) { "Not a file in the Books folder" }
-            if (dao.duplicate(hash) != null) return@withContext null
-            val format = detectFormat(file, file.name) ?: return@withContext null
+            if (dao.duplicate(hash) != null)
+                return@withContext null to InboxReason.ALREADY_IN_LIBRARY
+            val format =
+                detectFormat(file, file.name) ?: return@withContext null to InboxReason.NOT_A_BOOK
             val (m, coverBytes) =
                 try {
                     readMetadata(file, format, file.name)
                 } catch (_: Exception) {
-                    return@withContext null
+                    return@withContext null to InboxReason.UNREADABLE
                 }
             val id = UUID.randomUUID().toString()
             val dir = File(root, id)
@@ -263,7 +277,7 @@ class LibraryRepository(
                         )
                         .withMetadata(m)
                 dao.insert(book)
-                book
+                book to null
             } catch (e: Exception) {
                 dir.deleteRecursively()
                 throw e
@@ -334,6 +348,9 @@ class LibraryRepository(
      * book is gone. Call with [lock] held.
      */
     internal suspend fun reviseLocked(bookId: String, file: File, name: String): Book? =
+        withContext(Dispatchers.IO) { spaceChecked { revise(bookId, file, name) } }
+
+    private suspend fun revise(bookId: String, file: File, name: String): Book? =
         withContext(Dispatchers.IO) {
             val book = dao.book(bookId) ?: return@withContext null
             if (!file.isFile || file.length() > Epub.MAX_FILE) return@withContext null
@@ -400,6 +417,7 @@ class LibraryRepository(
                     if (kept != null) runCatching { moveNoClobber(kept, current) }
                     throw e
                 }
+                pruneAfterRevision(bookId)
                 revised
             }
         }
@@ -421,7 +439,7 @@ class LibraryRepository(
                                 it.bookId in plan.bookIds && it.state != "COMPLETE"
                             }
                         ) {
-                            "Cancel or finish the pending Kindle sync before removing its queued books"
+                            context.getString(R.string.data6_sync_pending)
                         }
                     }
                     val now = System.currentTimeMillis()
@@ -506,7 +524,9 @@ class LibraryRepository(
     suspend fun detach(bookId: String) {
         val book = lock.withLock {
             database.withTransaction {
-                require(dao.removedEntry(bookId) == null) { "Restore this book first" }
+                require(dao.removedEntry(bookId) == null) {
+                    context.getString(R.string.msg_library_restore_first)
+                }
                 var linked = false
                 dao.allWishes()
                     .filter { it.linkedBookId == bookId }
@@ -562,7 +582,7 @@ class LibraryRepository(
         database.withTransaction {
             if (shelfId != null)
                 require(dao.allShelves().any { it.id == shelfId && it.ruleField == "Manual" }) {
-                    "Choose a manual list"
+                    context.getString(R.string.data6_choose_manual_list)
                 }
             if (status != null) require(status in phoneStatuses)
             val linked =
@@ -600,12 +620,14 @@ class LibraryRepository(
                         metadata.authors.size <= 100 &&
                         metadata.authors.all { it.length <= 1000 }
                 ) {
-                    "Enter a title and valid authors"
+                    context.getString(R.string.data6_title_invalid)
                 }
                 val key = id ?: UUID.randomUUID().toString()
-                require(dao.removedEntry(key) == null) { "Restore this book first" }
+                require(dao.removedEntry(key) == null) {
+                    context.getString(R.string.msg_library_restore_first)
+                }
                 val old =
-                    id?.let { dao.wish(it) ?: error("Book no longer exists") }
+                    id?.let { dao.wish(it) ?: error(context.getString(R.string.data6_wish_gone)) }
                         ?: WishBook(key, "manual:$key", metadata.title, encode(metadata.authors))
                 var coverPath = old.coverPath
                 var stagedCover: File? = null
@@ -614,7 +636,7 @@ class LibraryRepository(
                         val bytes = java.io.ByteArrayOutputStream()
                         context.contentResolver.openInputStream(cover)?.use {
                             Epub.copyBounded(it, bytes, 10L * 1024 * 1024)
-                        } ?: error("Cannot open cover")
+                        } ?: error(context.getString(R.string.data6_cover_unopenable))
                         val data = bytes.toByteArray()
                         val bounds =
                             android.graphics.BitmapFactory.Options().apply {
@@ -626,7 +648,7 @@ class LibraryRepository(
                                 bounds.outHeight in 1..12000 &&
                                 bounds.outWidth.toLong() * bounds.outHeight <= 40000000
                         ) {
-                            "Cover is invalid or too large"
+                            context.getString(R.string.data6_cover_invalid)
                         }
                         val folder = File(root, key).apply { mkdirs() }
                         stagedCover =
@@ -654,10 +676,11 @@ class LibraryRepository(
             lock.withLock {
                 database.withTransaction {
                     require(dao.removedEntry(wishId) == null && dao.removedEntry(bookId) == null) {
-                        "Restore removed books before attaching"
+                        context.getString(R.string.data6_attach_restore_first)
                     }
-                    val wish = dao.wish(wishId) ?: error("Catalogue book no longer exists")
-                    val book = dao.book(bookId) ?: error("EPUB no longer exists")
+                    val wish =
+                        dao.wish(wishId) ?: error(context.getString(R.string.data6_wish_gone))
+                    val book = dao.book(bookId) ?: error(context.getString(R.string.msg_book_gone))
                     requireAttachment(wish, book, dao.allWishes())
                     dao.updateWish(wish.copy(linkedBookId = book.id))
                     dao.allWishMemberships()
@@ -670,58 +693,40 @@ class LibraryRepository(
 
     suspend fun edit(id: String, metadata: Metadata, coverUri: Uri?): Book =
         withContext(Dispatchers.IO) {
-            lock.withLock {
-                val old = dao.book(id) ?: error("Book no longer exists")
-                if (old.format != BookFormats.EPUB)
-                    return@withLock editRecord(old, metadata, coverUri)
-                if (inBooksFolder(File(old.currentPath)))
-                    return@withLock editInFolder(old, metadata, coverUri)
-                val dir = File(root, id)
-                val revision = UUID.randomUUID().toString()
-                val temp = File(dir, ".$revision.part")
-                val dest = File(dir, "$revision.epub")
-                val bytes = coverUri?.let { uri ->
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        java.io
-                            .ByteArrayOutputStream()
-                            .also { Epub.copyBounded(input, it, 10L * 1024 * 1024) }
-                            .toByteArray()
-                    } ?: error("Cannot open cover")
-                }
-                val mime = coverUri?.let { context.contentResolver.getType(it) } ?: "image/jpeg"
-                if (bytes != null) {
-                    val options =
-                        android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                    require(
-                        options.outWidth in 1..12000 &&
-                            options.outHeight in 1..12000 &&
-                            options.outWidth.toLong() * options.outHeight <= 40_000_000
-                    ) {
-                        "Cover is not a supported image or is too large"
-                    }
-                }
-                try {
-                    Epub.edit(File(old.currentPath), temp, metadata, bytes, mime)
-                    check(temp.renameTo(dest)) { "Cannot commit EPUB revision" }
-                    val cover =
-                        bytes?.let {
-                            File(dir, "cover-$revision").also { it.writeBytes(bytes) }.absolutePath
-                        } ?: old.coverPath
-                    val book =
-                        old.withMetadata(metadata)
-                            .copy(
-                                currentPath = dest.absolutePath,
-                                currentHash = Epub.sha256(dest),
-                                coverPath = cover,
-                            )
-                    dao.update(book)
-                    book
-                } finally {
-                    temp.delete()
-                }
-            }
+            lock.withLock { spaceChecked { editLocked(id, metadata, coverUri) } }
         }
+
+    /** [edit] with [lock] held. */
+    private suspend fun editLocked(id: String, metadata: Metadata, coverUri: Uri?): Book {
+        val old = dao.book(id) ?: error(context.getString(R.string.msg_book_gone))
+        if (old.format != BookFormats.EPUB) return editRecord(old, metadata, coverUri)
+        if (inBooksFolder(File(old.currentPath))) return editInFolder(old, metadata, coverUri)
+        val dir = File(root, id)
+        val revision = UUID.randomUUID().toString()
+        val temp = File(dir, ".$revision.part")
+        val dest = File(dir, "$revision.epub")
+        val (bytes, mime) = coverBytes(coverUri)
+        try {
+            Epub.edit(File(old.currentPath), temp, metadata, bytes, mime)
+            check(temp.renameTo(dest)) { context.getString(R.string.data6_save_failed) }
+            val cover =
+                bytes?.let {
+                    File(dir, "cover-$revision").also { it.writeBytes(bytes) }.absolutePath
+                } ?: old.coverPath
+            val book =
+                old.withMetadata(metadata)
+                    .copy(
+                        currentPath = dest.absolutePath,
+                        currentHash = Epub.sha256(dest),
+                        coverPath = cover,
+                    )
+            dao.update(book)
+            pruneAfterRevision(id)
+            return book
+        } finally {
+            temp.delete()
+        }
+    }
 
     /**
      * An edit to a book in the Books folder: the new file is written next to the old one, the old
@@ -732,9 +737,8 @@ class LibraryRepository(
     private suspend fun editInFolder(old: Book, metadata: Metadata, coverUri: Uri?): Book {
         val books = booksRoot()
         val current = File(old.currentPath)
-        require(current.isFile && Epub.sha256(current) == old.currentHash) {
-            "This book's file changed outside Librillo. Open the Books folder to check it."
-        }
+        if (!current.isFile || Epub.sha256(current) != old.currentHash)
+            throw FileChangedOutside(context.getString(R.string.data6_file_changed_outside))
         val (bytes, mime) = coverBytes(coverUri)
         val revision = UUID.randomUUID().toString()
         val temp = File(current.parentFile, ".$revision.part")
@@ -747,11 +751,13 @@ class LibraryRepository(
             val path = freePath(books, metadata.authors, metadata.title, mine = current)
             val dest = File(books, path)
             kept.parentFile!!.mkdirs()
-            check(!kept.exists() && current.renameTo(kept)) { "Cannot keep the previous file" }
+            check(!kept.exists() && current.renameTo(kept)) {
+                context.getString(R.string.data6_save_failed)
+            }
             dest.parentFile!!.mkdirs()
             if (!temp.renameTo(dest)) {
                 kept.renameTo(current)
-                error("Cannot commit EPUB revision")
+                error(context.getString(R.string.data6_save_failed))
             }
             if (dest.parentFile != current.parentFile) removeEmptyFolder(current)
             val cover =
@@ -771,6 +777,7 @@ class LibraryRepository(
                         coverPath = cover,
                     )
             dao.update(book)
+            pruneAfterRevision(old.id)
             return book
         } finally {
             temp.delete()
@@ -796,9 +803,8 @@ class LibraryRepository(
         var renamed: File? = null
         if (inBooksFolder(current)) {
             val books = booksRoot()
-            require(current.isFile && Epub.sha256(current) == old.currentHash) {
-                "This book's file changed outside Librillo. Open the Books folder to check it."
-            }
+            if (!current.isFile || Epub.sha256(current) != old.currentHash)
+                throw FileChangedOutside(context.getString(R.string.data6_file_changed_outside))
             val dest =
                 File(
                     books,
@@ -812,7 +818,9 @@ class LibraryRepository(
                 )
             if (dest.canonicalFile != current.canonicalFile) {
                 dest.parentFile!!.mkdirs()
-                check(!dest.exists() && current.renameTo(dest)) { "Cannot rename the book's file" }
+                check(!dest.exists() && current.renameTo(dest)) {
+                    context.getString(R.string.data6_save_failed)
+                }
                 renamed = dest
                 path = dest.absolutePath
             }
@@ -850,7 +858,7 @@ class LibraryRepository(
                     .ByteArrayOutputStream()
                     .also { Epub.copyBounded(input, it, 10L * 1024 * 1024) }
                     .toByteArray()
-            } ?: error("Cannot open cover")
+            } ?: error(context.getString(R.string.data6_cover_unopenable))
         }
         if (bytes != null) {
             val options =
@@ -861,11 +869,36 @@ class LibraryRepository(
                     options.outHeight in 1..12000 &&
                     options.outWidth.toLong() * options.outHeight <= 40_000_000
             ) {
-                "Cover is not a supported image or is too large"
+                context.getString(R.string.data6_cover_invalid)
             }
         }
         val mime = coverUri?.let { context.contentResolver.getType(it) } ?: "image/jpeg"
         return bytes to mime
+    }
+
+    /**
+     * Runs [block]; the system's "no space left" error comes out of it as [StorageFull], with a
+     * plain message. Whatever [block] undoes on failure is undone first.
+     */
+    internal inline fun <T> spaceChecked(block: () -> T): T =
+        try {
+            block()
+        } catch (e: Exception) {
+            if (e is StorageFull || e is CancellationException || !isStorageFull(e)) throw e
+            throw StorageFull(context.getString(R.string.data6_storage_full), e)
+        }
+
+    /**
+     * Removes the book's oldest previous revisions once a new one is in place (M6), keeping a few.
+     * Never fails or cancels the change that made the revision: errors only mean less is removed.
+     * Call with [lock] held.
+     */
+    private suspend fun pruneAfterRevision(bookId: String) {
+        withContext(NonCancellable) {
+            try {
+                RevisionPruner(this@LibraryRepository).pruneLocked(bookId)
+            } catch (_: Exception) {}
+        }
     }
 
     /**

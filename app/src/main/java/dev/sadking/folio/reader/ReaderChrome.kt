@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.SkipPrevious
 import androidx.compose.material.icons.outlined.TabletAndroid
@@ -74,6 +75,7 @@ internal const val READER_TOP_BAR_TAG = "reader-top-bar"
 internal const val READER_BOTTOM_BAR_TAG = "reader-bottom-bar"
 internal const val READER_SLIDER_TAG = "reader-slider"
 internal const val READER_PAGE_LABEL_TAG = "reader-page-label"
+internal const val READER_TIME_LEFT_TAG = "reader-time-left"
 internal const val READER_TEXT_SHEET_TAG = "reader-text-sheet"
 internal const val READER_CONTENTS_SHEET_TAG = "reader-contents-sheet"
 internal const val READER_DEVICES_SHEET_TAG = "reader-devices-sheet"
@@ -96,9 +98,11 @@ internal enum class ReaderPanel {
     CONTENTS,
     TEXT,
     DEVICES,
+    /** Search in the book. */
+    SEARCH,
 }
 
-/** The top glass bar: Back, the title on one line, and the three sheets. */
+/** The top glass bar: Back, the title on one line, Search, Listen and the three sheets. */
 @Composable
 internal fun ReaderTopBar(
     hazeState: HazeState?,
@@ -132,6 +136,9 @@ internal fun ReaderTopBar(
                 style = MaterialTheme.typography.titleMedium,
             )
             // Icons only: each has Material's tooltip, its name on a long press.
+            BarAction(Icons.Outlined.Search, R.string.rd6_search, enabled) {
+                onPanel(ReaderPanel.SEARCH)
+            }
             if (onListen != null)
                 BarAction(Icons.Outlined.Headphones, R.string.reader_listen, enabled, onListen)
             BarAction(
@@ -182,6 +189,8 @@ internal fun ReaderBottomBar(
     onNext: () -> Unit,
     onBookmark: () -> Unit,
     modifier: Modifier = Modifier,
+    /** "12 min left in chapter · 4 h 10 min in book", under the page label; null hides it. */
+    timeLeft: String? = null,
 ) {
     val state = remember { SliderState(fraction) }
     LaunchedEffect(fraction) { if (!state.isDragging) state.value = fraction }
@@ -236,13 +245,26 @@ internal fun ReaderBottomBar(
                     stringResource(R.string.reader_previous_page),
                 )
             }
-            Text(
-                pageLabelText(shown),
-                Modifier.weight(1f).testTag(READER_PAGE_LABEL_TAG),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    pageLabelText(shown),
+                    Modifier.testTag(READER_PAGE_LABEL_TAG),
+                    textAlign = TextAlign.Center,
+                    // Two lines at large text sizes, so the percentage is never cut off.
+                    maxLines = 2,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                // While scrubbing, the label names another page: the time left would not match.
+                if (timeLeft != null && !scrubbing)
+                    Text(
+                        timeLeft,
+                        Modifier.testTag(READER_TIME_LEFT_TAG),
+                        textAlign = TextAlign.Center,
+                        maxLines = 3,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+            }
             IconButton(onClick = onBookmark) {
                 Icon(Icons.Outlined.BookmarkAdd, stringResource(R.string.reader_bookmark))
             }
@@ -303,6 +325,9 @@ internal data class ReaderTextState(
     val margins: Double = 1.0,
     val publisherStyles: Boolean = false,
     val bookOnly: Boolean = false,
+    val twoPages: Boolean = true,
+    /** The window is wide enough for two pages and the book is paginated. */
+    val showTwoPages: Boolean = false,
 )
 
 /** What the Text sheet changes. Each applies at once. */
@@ -316,6 +341,8 @@ internal class ReaderTextActions(
     val onScroll: (Boolean) -> Unit,
     /** Null where there is no book, as in Settings: the switch is then left out. */
     val onBookOnly: ((Boolean) -> Unit)?,
+    /** "Two pages side by side"; null leaves the switch out. */
+    val onTwoPages: ((Boolean) -> Unit)? = null,
 )
 
 /**
@@ -340,6 +367,7 @@ internal fun ReaderTextSheet(
         Column(Modifier.padding(horizontal = FolioSpace.section)) {
             Text(
                 stringResource(R.string.appearance_title),
+                Modifier.semantics { heading() },
                 style = MaterialTheme.typography.titleLarge,
             )
             if (subtitle != null)
@@ -403,6 +431,9 @@ internal fun ReaderTextSheet(
                 state.scroll,
                 actions.onScroll,
             )
+            actions.onTwoPages
+                ?.takeIf { state.showTwoPages }
+                ?.let { SheetSwitch(stringResource(R.string.rd6_two_pages), state.twoPages, it) }
             actions.onBookOnly?.let {
                 SheetSwitch(stringResource(R.string.appearance_book_only), state.bookOnly, it)
             }
@@ -534,9 +565,17 @@ private fun ThemeSwatches(selected: String, onTheme: (String) -> Unit) {
                                 else Color.Black,
                         )
                 }
+                // Capped at 150 % so a word never breaks in two in a narrow pane (a tablet's
+                // settings pane) at very large text.
                 Text(
                     stringResource(swatch.label),
-                    style = MaterialTheme.typography.labelLarge,
+                    style =
+                        dev.sadking.folio.ui.cappedTextStyle(
+                            MaterialTheme.typography.labelLarge,
+                            1.5f,
+                        ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     color =
                         if (chosen) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurface,
@@ -775,7 +814,7 @@ internal fun ReaderDevicesSheet(rows: List<DeviceRow>, busy: Boolean, onJump: (D
     ) {
         Text(
             stringResource(R.string.devices_title),
-            Modifier.padding(horizontal = FolioSpace.section),
+            Modifier.padding(horizontal = FolioSpace.section).semantics { heading() },
             style = MaterialTheme.typography.titleLarge,
         )
         if (rows.isEmpty()) SheetNote(stringResource(R.string.devices_none))
@@ -1031,7 +1070,11 @@ internal fun ListenOptionsSheet(
             .testTag(READER_LISTEN_SHEET_TAG),
         verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
     ) {
-        Text(stringResource(R.string.listen_title), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.listen_title),
+            Modifier.semantics { heading() },
+            style = MaterialTheme.typography.titleLarge,
+        )
         Text(stringResource(R.string.listen_sleep), style = MaterialTheme.typography.titleMedium)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),

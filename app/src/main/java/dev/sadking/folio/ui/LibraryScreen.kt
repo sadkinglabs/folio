@@ -270,13 +270,13 @@ fun LibraryScreen(
                 Tab(
                     selected = tab == LibraryTab.LIBRARY,
                     onClick = { tabName = LibraryTab.LIBRARY.name },
-                    text = { Text(stringResource(R.string.library_tab_library), maxLines = 1) },
+                    text = { Text(stringResource(R.string.library_tab_library), maxLines = 2) },
                     modifier = Modifier.testTag(LIBRARY_TAB_LIBRARY_TAG),
                 )
                 Tab(
                     selected = tab == LibraryTab.WANT_TO_READ,
                     onClick = { tabName = LibraryTab.WANT_TO_READ.name },
-                    text = { Text(stringResource(R.string.library_tab_wanted), maxLines = 1) },
+                    text = { Text(stringResource(R.string.library_tab_wanted), maxLines = 2) },
                     modifier = Modifier.testTag(LIBRARY_TAB_WANTED_TAG),
                 )
             }
@@ -498,58 +498,80 @@ private fun LibraryHeader(
     viewToggle: @Composable () -> Unit,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
-    Row(
-        Modifier.fillMaxWidth().padding(start = FolioSpace.page, end = FolioSpace.gap, top = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Title and count take all the spare width, so the title only shortens when it must.
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                title,
-                style =
-                    if (large) MaterialTheme.typography.headlineSmall
-                    else MaterialTheme.typography.headlineMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            if (count != null) {
-                Spacer(Modifier.width(FolioSpace.small))
-                val label = pluralStringResource(R.plurals.library_book_count, count, count)
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.semantics { contentDescription = label },
-                ) {
-                    Text(
-                        count.toString(),
-                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
+    // In a narrow pane (a tablet's list pane, or a folded phone's half at its hinge), the title
+    // gets a line of its own above the actions instead of shrinking to an ellipsis. A phone's
+    // full width never stacks at normal text.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = maxWidth < if (large) 380.dp else 320.dp
+        val titleRow: @Composable (Modifier) -> Unit = { modifier ->
+            Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style =
+                        if (large) MaterialTheme.typography.headlineSmall
+                        else MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false).semantics { heading() },
+                )
+                if (count != null) {
+                    Spacer(Modifier.width(FolioSpace.small))
+                    val label = pluralStringResource(R.plurals.library_book_count, count, count)
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.semantics { contentDescription = label },
+                    ) {
+                        Text(
+                            count.toString(),
+                            Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+        }
+        val actions: @Composable () -> Unit = {
+            val searchLabel =
+                stringResource(
+                    if (searching) R.string.library_close_search else R.string.library_search
+                )
+            Tooltipped(searchLabel) {
+                IconButton(onClick = onSearch, modifier = Modifier.testTag(LIBRARY_SEARCH_TAG)) {
+                    Icon(
+                        if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search,
+                        searchLabel,
                     )
                 }
             }
-        }
-        val searchLabel =
-            stringResource(
-                if (searching) R.string.library_close_search else R.string.library_search
-            )
-        Tooltipped(searchLabel) {
-            IconButton(onClick = onSearch, modifier = Modifier.testTag(LIBRARY_SEARCH_TAG)) {
-                Icon(
-                    if (searching) Icons.Outlined.SearchOff else Icons.Outlined.Search,
-                    searchLabel,
-                )
-            }
-        }
-        viewToggle()
-        if (onAdd != null) {
-            val add = stringResource(R.string.shell_add_books)
-            Tooltipped(add) {
-                FilledTonalIconButton(onClick = onAdd, enabled = !busy) {
-                    Icon(Icons.Outlined.Add, add)
+            viewToggle()
+            if (onAdd != null) {
+                val add = stringResource(R.string.shell_add_books)
+                Tooltipped(add) {
+                    FilledTonalIconButton(onClick = onAdd, enabled = !busy) {
+                        Icon(Icons.Outlined.Add, add)
+                    }
                 }
             }
         }
+        val padding = Modifier.padding(start = FolioSpace.page, end = FolioSpace.gap, top = 12.dp)
+        if (stacked)
+            Column(padding.fillMaxWidth()) {
+                titleRow(Modifier.fillMaxWidth())
+                Row(
+                    Modifier.align(Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    actions()
+                }
+            }
+        else
+            Row(padding.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                // Title and count take all the spare width, so the title only shortens when it
+                // must.
+                titleRow(Modifier.weight(1f))
+                actions()
+            }
     }
 }
 

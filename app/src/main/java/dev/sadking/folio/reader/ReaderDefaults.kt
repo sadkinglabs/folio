@@ -17,6 +17,7 @@ object ReaderDefaults {
                 prefs.getFloat("lineHeight", 1.5f).toDouble(),
                 prefs.getFloat("margins", 1.0f).toDouble(),
                 prefs.getBoolean("publisherStyles", false),
+                prefs.getBoolean("twoPages", true),
             )
             .bounded()
 
@@ -30,6 +31,7 @@ object ReaderDefaults {
             .putFloat("lineHeight", bounded.lineHeight.toFloat())
             .putFloat("margins", bounded.margins.toFloat())
             .putBoolean("publisherStyles", bounded.publisherStyles)
+            .putBoolean("twoPages", bounded.twoPages)
             .apply()
     }
 

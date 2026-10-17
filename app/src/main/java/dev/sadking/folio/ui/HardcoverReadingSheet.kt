@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -417,7 +419,9 @@ internal fun HardcoverReadingContent(
                 TonalTile(
                     stringResource(R.string.hardcover_connect),
                     Icons.Outlined.Key,
-                    Modifier.fillMaxWidth().testTag(HARDCOVER_CONNECT_TILE_TAG),
+                    Modifier.fillMaxWidth().testTag(HARDCOVER_CONNECT_TILE_TAG).semantics {
+                        role = Role.Button
+                    },
                     enabled = !busy,
                     onClick = onConnect,
                 )

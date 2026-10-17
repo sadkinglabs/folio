@@ -1,6 +1,5 @@
 package dev.sadking.folio.data
 
-import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.Locale
 
@@ -15,12 +14,6 @@ object BookDiscovery {
             .joinToString(" ")
             .replace(Regex("\\s+"), " ")
             .take(300)
-
-    fun archiveSearch(title: String, authors: List<String>): String {
-        val q = (listOf(title) + authors).filter { it.isNotBlank() }.joinToString(" ").take(600)
-        require(q.isNotBlank())
-        return "https://annas-archive.pk/search?q=" + URLEncoder.encode(q, "UTF-8")
-    }
 
     private fun normalized(text: String): String =
         Normalizer.normalize(text, Normalizer.Form.NFKD)

@@ -1,6 +1,7 @@
 package dev.sadking.folio.data
 
 import androidx.room.withTransaction
+import dev.sadking.folio.R
 import dev.sadking.folio.core.BookPaths
 import dev.sadking.folio.core.Epub
 import java.io.File
@@ -12,8 +13,15 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** What one run of [BooksFolderMove] did. [failed] holds the titles of books that stayed put. */
-data class MoveResult(val moved: Int, val failed: List<String>)
+/**
+ * What one run of [BooksFolderMove] did. [failed] holds the titles of books that stayed put, and
+ * [reasons] why each stayed, in plain words, by title.
+ */
+data class MoveResult(
+    val moved: Int,
+    val failed: List<String>,
+    val reasons: Map<String, String> = emptyMap(),
+)
 
 /**
  * Moves books from Librillo's private storage into the Books folder (M8 slice 2): the current file
@@ -50,6 +58,7 @@ class BooksFolderMove(private val repo: LibraryRepository) {
             val books = candidates()
             var moved = 0
             val failed = mutableListOf<String>()
+            val reasons = linkedMapOf<String, String>()
             books.forEachIndexed { index, book ->
                 currentCoroutineContext().ensureActive()
                 progress(index, books.size)
@@ -58,13 +67,24 @@ class BooksFolderMove(private val repo: LibraryRepository) {
                     if (repo.lock.withLock { moveOne(book.id) }) moved++
                 } catch (cancel: CancellationException) {
                     throw cancel
-                } catch (_: Exception) {
+                } catch (e: Exception) {
                     failed += book.title
+                    reasons[book.title] = reason(e)
                 }
             }
             progress(books.size, books.size)
-            MoveResult(moved, failed)
+            MoveResult(moved, failed, reasons)
         }
+
+    /** Why a book stayed in private storage, in plain words. */
+    private fun reason(e: Exception): String =
+        repo.context.getString(
+            when {
+                isStorageFull(e) -> R.string.data6_move_reason_space
+                e is FileChangedOutside -> R.string.data6_move_reason_changed
+                else -> R.string.data6_move_reason_failed
+            }
+        )
 
     /** False when the book no longer needs moving. */
     private suspend fun moveOne(id: String): Boolean {
@@ -73,9 +93,7 @@ class BooksFolderMove(private val repo: LibraryRepository) {
         if (!repo.isPrivate(current) || dao.removedEntry(id) != null) return false
         val books = repo.booksRoot().apply { mkdirs() }
         check(books.isDirectory) { "Books folder unavailable" }
-        require(current.isFile && Epub.sha256(current) == book.currentHash) {
-            "File changed or missing"
-        }
+        if (!current.isFile || Epub.sha256(current) != book.currentHash) throw changed()
         // An identical file from an interrupted run sits at the plain path; reuse it.
         val authors = book.metadata().authors
         val plain = File(books, BookPaths.path(authors, book.title, extension = book.format))
@@ -102,12 +120,15 @@ class BooksFolderMove(private val repo: LibraryRepository) {
         return true
     }
 
+    private fun changed() =
+        FileChangedOutside(repo.context.getString(R.string.data6_file_changed_outside))
+
     /**
      * Copies [source] to [dest] under a hidden name, flushes it, checks it against [hash] and then
      * gives it its name. An identical file already at [dest] is kept as it is.
      */
     private fun place(source: File, hash: String, dest: File): File {
-        require(source.isFile && Epub.sha256(source) == hash) { "File changed or missing" }
+        if (!source.isFile || Epub.sha256(source) != hash) throw changed()
         if (dest.isFile && Epub.sha256(dest) == hash) return dest
         require(!dest.exists()) { "Destination taken" }
         dest.parentFile!!.mkdirs()

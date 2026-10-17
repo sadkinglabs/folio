@@ -48,6 +48,16 @@ internal const val HIGHLIGHT_NOTE_DIALOG_TAG = "reader-note-dialog"
 internal const val SELECTION_HIGHLIGHT = 0x5f01
 internal const val SELECTION_NOTE = 0x5f02
 internal const val SELECTION_COPY = 0x5f03
+internal const val SELECTION_DEFINE = 0x5f04
+
+/** The selection menu in order, as item id and label: Highlight, Add note, Define, Copy. */
+internal val SELECTION_MENU =
+    listOf(
+        SELECTION_HIGHLIGHT to R.string.reader_highlight_action,
+        SELECTION_NOTE to R.string.reader_highlight_note_action,
+        SELECTION_DEFINE to R.string.rd6_define_action,
+        SELECTION_COPY to R.string.reader_highlight_copy_action,
+    )
 
 /** Highlight colours: amber for a highlight, blue for one with a note. Readium tints them. */
 internal const val HIGHLIGHT_TINT = 0xFFF9A825.toInt()

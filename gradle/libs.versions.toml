@@ -54,6 +54,9 @@ activity = { module = "androidx.activity:activity-compose", version.ref = "activ
 lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-vm-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
+# Fold posture for tablet and foldable layouts. Already shipped through Compose; declared to read the
+# hinge (Apache-2.0).
+androidx-window = { module = "androidx.window:window", version = "1.5.0" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }

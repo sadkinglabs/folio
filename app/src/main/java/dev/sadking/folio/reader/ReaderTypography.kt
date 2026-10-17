@@ -13,6 +13,11 @@ data class ReaderTypography(
     val lineHeight: Double = 1.5,
     val margins: Double = 1.0,
     val publisherStyles: Boolean = false,
+    /**
+     * Two pages side by side where the window is wide enough (Readium's automatic column count);
+     * off keeps one column. Paginated EPUBs only.
+     */
+    val twoPages: Boolean = true,
 ) {
     fun toJson(): String =
         JSONObject()
@@ -22,6 +27,7 @@ data class ReaderTypography(
             .put("lineHeight", lineHeight)
             .put("margins", margins)
             .put("publisherStyles", publisherStyles)
+            .put("twoPages", twoPages)
             .toString()
 
     /** Keeps every value inside the ranges the reader offers. */
@@ -44,6 +50,7 @@ data class ReaderTypography(
                             json.optDouble("lineHeight", fallback.lineHeight),
                             json.optDouble("margins", fallback.margins),
                             json.optBoolean("publisherStyles", fallback.publisherStyles),
+                            json.optBoolean("twoPages", fallback.twoPages),
                         )
                         .bounded()
                 }

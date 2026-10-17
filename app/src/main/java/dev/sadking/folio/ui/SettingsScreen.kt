@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderSpecial
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material3.*
@@ -48,6 +50,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -86,6 +89,9 @@ internal const val SETTINGS_BACKUP_TAG = "settings-backup"
 internal const val SETTINGS_IMPORTS_TAG = "settings-imports"
 internal const val SETTINGS_SSH_TAG = "settings-ssh"
 internal const val SETTINGS_FOLDER_TAG = "settings-folder"
+internal const val SETTINGS_BOOK_SOURCES_TAG = "settings-book-sources"
+internal const val SETTINGS_LICENCES_TAG = "settings-licences"
+internal const val SETTINGS_PANE_TAG = "settings-pane"
 internal const val SETTINGS_BOOKS_FOLDER_TAG = "settings-books-folder"
 internal const val BOOKS_FOLDER_ALLOW_TAG = "books-folder-allow"
 internal const val BOOKS_FOLDER_MOVE_TAG = "books-folder-move"
@@ -137,6 +143,8 @@ internal fun SettingsTab(
     onForgetFolder: () -> Unit,
     busy: Boolean,
     onMoveBooks: () -> Unit = {},
+    /** Opens Book sources in Librillo's browser. */
+    onBookSources: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as FolioApplication
@@ -221,6 +229,7 @@ internal fun SettingsTab(
         busy = busy,
         onMoveBooks = onMoveBooks,
         onShareCrashReport = crashReport?.let { report -> { shareCrashReport(context, report) } },
+        onBookSources = onBookSources,
     )
 }
 
@@ -275,234 +284,321 @@ internal fun SettingsScreen(
     busy: Boolean = false,
     /** Shares the last crash report; null when there is none. */
     onShareCrashReport: (() -> Unit)? = null,
+    onBookSources: () -> Unit = {},
+    /** The setting open at first: a [SettingsPane] name. Previews use it. */
+    initialPane: String? = null,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     val paired = sshHost.isNotBlank()
-    var showText by rememberSaveable { mutableStateOf(false) }
-    var showReadingTime by rememberSaveable { mutableStateOf(false) }
-    var showBackup by rememberSaveable { mutableStateOf(false) }
-    var showFolder by rememberSaveable { mutableStateOf(false) }
-    var showBooksFolder by rememberSaveable { mutableStateOf(false) }
+    // What a row opened: a sheet on a phone, the right pane beside the groups on a tablet. One
+    // value, so a fold or a rotation moves it from one to the other.
+    var paneName by rememberSaveable { mutableStateOf(initialPane) }
+    val pane = paneName?.let { name -> SettingsPane.entries.firstOrNull { it.name == name } }
+    fun open(value: SettingsPane) {
+        paneName = value.name
+    }
+    fun close() {
+        paneName = null
+    }
+    val window = LocalFolioWindow.current
+    val twoPane = window.twoPane
+    // In two panes the chosen row stays marked.
+    fun chosen(value: SettingsPane) = twoPane && pane == value
     val booksFolder = rememberBooksFolder(busy)
-    Column(
-        Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = LocalContentBottomPadding.current + FolioSpace.section)
-            .testTag(SETTINGS_TAG),
-        verticalArrangement = Arrangement.spacedBy(FolioSpace.section),
-    ) {
-        Text(
-            stringResource(R.string.settings_title),
-            style =
-                if (large) MaterialTheme.typography.headlineSmall
-                else MaterialTheme.typography.headlineMedium,
-            modifier =
-                Modifier.padding(start = FolioSpace.page, end = FolioSpace.page, top = 12.dp),
-        )
-        SettingsGroup(stringResource(R.string.settings_appearance)) {
-            ThemeRow(appearance, onTheme)
-            SettingsSwitchRow(
-                Icons.Outlined.Wallpaper,
-                stringResource(R.string.settings_wallpaper_colours),
-                dynamic,
-                onDynamic,
-                Modifier.testTag(SETTINGS_WALLPAPER_TAG),
+    val groups: @Composable (Modifier) -> Unit = { modifier ->
+        Column(
+            modifier
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = LocalContentBottomPadding.current + FolioSpace.section)
+                .testTag(SETTINGS_TAG),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.section),
+        ) {
+            Text(
+                stringResource(R.string.settings_title),
+                style =
+                    if (large) MaterialTheme.typography.headlineSmall
+                    else MaterialTheme.typography.headlineMedium,
+                modifier =
+                    Modifier.padding(start = FolioSpace.page, end = FolioSpace.page, top = 12.dp)
+                        .semantics { heading() },
             )
-        }
-        SettingsGroup(stringResource(R.string.settings_reading)) {
-            SettingsRow(
-                Icons.Outlined.TextFields,
-                stringResource(R.string.settings_text),
-                stringResource(
-                    R.string.settings_text_summary,
-                    reading.typography.fontSize.toInt(),
-                    stringResource(
-                        if (reading.typography.serif) R.string.appearance_serif
-                        else R.string.appearance_sans
-                    ),
-                ),
-                Modifier.testTag(SETTINGS_TEXT_TAG),
-                onClick = { showText = true },
-            )
-            SettingsSwitchRow(
-                Icons.Outlined.VolumeUp,
-                stringResource(R.string.appearance_volume_keys),
-                reading.volumeKeys,
-                { onReading(reading.copy(volumeKeys = it)) },
-                Modifier.testTag(SETTINGS_VOLUME_TAG),
-            )
-            // Reading time came from the old plugin over SSH; what was fetched stays readable.
-            if (statistics != null)
-                SettingsRow(
-                    Icons.Outlined.Timer,
-                    stringResource(R.string.reading_time_title),
-                    readingTimeSummary(statistics),
-                    Modifier.testTag(SETTINGS_READING_TIME_TAG),
-                    onClick = { showReadingTime = true },
+            SettingsGroup(stringResource(R.string.settings_appearance)) {
+                ThemeRow(appearance, onTheme)
+                SettingsSwitchRow(
+                    Icons.Outlined.Wallpaper,
+                    stringResource(R.string.settings_wallpaper_colours),
+                    dynamic,
+                    onDynamic,
+                    Modifier.testTag(SETTINGS_WALLPAPER_TAG),
                 )
-        }
-        HardcoverSettings(
-            hardcoverUsername,
-            hardcoverStatus,
-            now,
-            onHardcover = onHardcover,
-            onImportHardcover = onImportHardcover,
-            onSync = onHardcoverSync,
-            onSyncNow = onHardcoverSyncNow,
-            onDecisions = onDecisions,
-            finishedToSend = finishedToSend,
-            finishedSent = finishedSent,
-            onSendFinished = onSendFinished,
-            busy = busy,
-        )
-        SettingsGroup(stringResource(R.string.settings_library)) {
-            SettingsRow(
-                Icons.Outlined.FolderSpecial,
-                stringResource(R.string.settings_books_folder),
-                booksFolder.shown +
-                    " · " +
-                    when {
-                        !booksFolder.hasAccess -> stringResource(R.string.books_folder_state_access)
-                        booksFolder.pending > 0 ->
-                            pluralStringResource(
-                                R.plurals.books_folder_state_pending,
-                                booksFolder.pending,
-                                booksFolder.pending,
-                            )
-                        else -> stringResource(R.string.books_folder_state_in_use)
-                    },
-                Modifier.testTag(SETTINGS_BOOKS_FOLDER_TAG),
-                onClick = { showBooksFolder = true },
-            )
-            SettingsRow(
-                Icons.Outlined.Storage,
-                stringResource(R.string.settings_storage),
-                pluralStringResource(R.plurals.settings_storage_entries, recordCount, recordCount) +
-                    " · " +
-                    pluralStringResource(R.plurals.settings_storage_files, count, count),
-            )
-            SettingsRow(
-                Icons.Outlined.DeleteOutline,
-                stringResource(R.string.settings_recently_removed),
-                if (removedCount == 0) stringResource(R.string.settings_removed_none)
-                else
-                    pluralStringResource(
-                        R.plurals.settings_removed_count,
-                        removedCount,
-                        removedCount,
+            }
+            SettingsGroup(stringResource(R.string.settings_reading)) {
+                SettingsRow(
+                    Icons.Outlined.TextFields,
+                    stringResource(R.string.settings_text),
+                    stringResource(
+                        R.string.settings_text_summary,
+                        reading.typography.fontSize.toInt(),
+                        stringResource(
+                            if (reading.typography.serif) R.string.appearance_serif
+                            else R.string.appearance_sans
+                        ),
                     ),
-                Modifier.testTag(SETTINGS_REMOVED_TAG),
-                onClick = onRemoved,
-                enabled = !busy,
+                    Modifier.testTag(SETTINGS_TEXT_TAG),
+                    onClick = { open(SettingsPane.TEXT) },
+                    selected = chosen(SettingsPane.TEXT),
+                )
+                SettingsSwitchRow(
+                    Icons.Outlined.VolumeUp,
+                    stringResource(R.string.appearance_volume_keys),
+                    reading.volumeKeys,
+                    { onReading(reading.copy(volumeKeys = it)) },
+                    Modifier.testTag(SETTINGS_VOLUME_TAG),
+                )
+                // Reading time came from the old plugin over SSH; what was fetched stays readable.
+                if (statistics != null)
+                    SettingsRow(
+                        Icons.Outlined.Timer,
+                        stringResource(R.string.reading_time_title),
+                        readingTimeSummary(statistics),
+                        Modifier.testTag(SETTINGS_READING_TIME_TAG),
+                        onClick = { open(SettingsPane.READING_TIME) },
+                        selected = chosen(SettingsPane.READING_TIME),
+                    )
+            }
+            HardcoverSettings(
+                hardcoverUsername,
+                hardcoverStatus,
+                now,
+                onHardcover = onHardcover,
+                onImportHardcover = onImportHardcover,
+                onSync = onHardcoverSync,
+                onSyncNow = onHardcoverSyncNow,
+                onDecisions = onDecisions,
+                finishedToSend = finishedToSend,
+                finishedSent = finishedSent,
+                onSendFinished = onSendFinished,
+                busy = busy,
             )
-            SettingsRow(
-                Icons.Outlined.Save,
-                stringResource(R.string.settings_backup),
-                stringResource(R.string.settings_backup_value),
-                Modifier.testTag(SETTINGS_BACKUP_TAG),
-                onClick = { showBackup = true },
-                enabled = !busy,
-            )
-            SettingsRow(
-                Icons.Outlined.History,
-                stringResource(R.string.settings_last_import),
-                stringResource(R.string.settings_last_import_value),
-                Modifier.testTag(SETTINGS_IMPORTS_TAG),
-                onClick = onImports,
-                enabled = !busy,
-            )
-        }
-        SettingsGroup(stringResource(R.string.settings_advanced)) {
-            SettingsRow(
-                Icons.Outlined.Cable,
-                stringResource(R.string.settings_ssh),
-                if (paired) sshHost else stringResource(R.string.settings_ssh_not_set_up),
-                Modifier.testTag(SETTINGS_SSH_TAG),
-                onClick = onConnection,
-                enabled = !busy,
-            )
-            SettingsRow(
-                Icons.Outlined.FolderOpen,
-                stringResource(R.string.settings_folder),
-                phoneFolder.ifBlank { stringResource(R.string.settings_folder_none) },
-                Modifier.testTag(SETTINGS_FOLDER_TAG),
-                onClick = { showFolder = true },
-                enabled = !busy,
-            )
-        }
-        SettingsGroup(stringResource(R.string.settings_about)) {
-            SettingsRow(
-                Icons.Outlined.Info,
-                stringResource(
-                    R.string.settings_about_version,
-                    dev.sadking.folio.BuildConfig.VERSION_NAME,
-                ),
-                stringResource(R.string.settings_about_line),
-            )
-            SettingsRow(
-                Icons.Outlined.BugReport,
-                stringResource(R.string.crash_share_report),
-                stringResource(
-                    if (onShareCrashReport != null) R.string.crash_report_ready
-                    else R.string.crash_report_none
-                ),
-                onClick = onShareCrashReport,
-                enabled = onShareCrashReport != null,
-            )
+            SettingsGroup(stringResource(R.string.settings_library)) {
+                SettingsRow(
+                    Icons.Outlined.FolderSpecial,
+                    stringResource(R.string.settings_books_folder),
+                    booksFolder.shown +
+                        " · " +
+                        when {
+                            !booksFolder.hasAccess ->
+                                stringResource(R.string.books_folder_state_access)
+                            booksFolder.pending > 0 ->
+                                pluralStringResource(
+                                    R.plurals.books_folder_state_pending,
+                                    booksFolder.pending,
+                                    booksFolder.pending,
+                                )
+                            else -> stringResource(R.string.books_folder_state_in_use)
+                        },
+                    Modifier.testTag(SETTINGS_BOOKS_FOLDER_TAG),
+                    onClick = { open(SettingsPane.BOOKS_FOLDER) },
+                    selected = chosen(SettingsPane.BOOKS_FOLDER),
+                )
+                SettingsRow(
+                    Icons.Outlined.TravelExplore,
+                    stringResource(R.string.ad6_book_sources),
+                    stringResource(R.string.ad6_book_sources_value),
+                    Modifier.testTag(SETTINGS_BOOK_SOURCES_TAG),
+                    onClick = onBookSources,
+                )
+                SettingsRow(
+                    Icons.Outlined.Storage,
+                    stringResource(R.string.settings_storage),
+                    pluralStringResource(
+                        R.plurals.settings_storage_entries,
+                        recordCount,
+                        recordCount,
+                    ) +
+                        " · " +
+                        pluralStringResource(R.plurals.settings_storage_files, count, count),
+                )
+                SettingsRow(
+                    Icons.Outlined.DeleteOutline,
+                    stringResource(R.string.settings_recently_removed),
+                    if (removedCount == 0) stringResource(R.string.settings_removed_none)
+                    else
+                        pluralStringResource(
+                            R.plurals.settings_removed_count,
+                            removedCount,
+                            removedCount,
+                        ),
+                    Modifier.testTag(SETTINGS_REMOVED_TAG),
+                    onClick = onRemoved,
+                    enabled = !busy,
+                )
+                SettingsRow(
+                    Icons.Outlined.Save,
+                    stringResource(R.string.settings_backup),
+                    stringResource(R.string.settings_backup_value),
+                    Modifier.testTag(SETTINGS_BACKUP_TAG),
+                    onClick = { open(SettingsPane.BACKUP) },
+                    selected = chosen(SettingsPane.BACKUP),
+                    enabled = !busy,
+                )
+                SettingsRow(
+                    Icons.Outlined.History,
+                    stringResource(R.string.settings_last_import),
+                    stringResource(R.string.settings_last_import_value),
+                    Modifier.testTag(SETTINGS_IMPORTS_TAG),
+                    onClick = onImports,
+                    enabled = !busy,
+                )
+            }
+            SettingsGroup(stringResource(R.string.settings_advanced)) {
+                SettingsRow(
+                    Icons.Outlined.Cable,
+                    stringResource(R.string.settings_ssh),
+                    if (paired) sshHost else stringResource(R.string.settings_ssh_not_set_up),
+                    Modifier.testTag(SETTINGS_SSH_TAG),
+                    onClick = onConnection,
+                    enabled = !busy,
+                )
+                SettingsRow(
+                    Icons.Outlined.FolderOpen,
+                    stringResource(R.string.settings_folder),
+                    phoneFolder.ifBlank { stringResource(R.string.settings_folder_none) },
+                    Modifier.testTag(SETTINGS_FOLDER_TAG),
+                    onClick = { open(SettingsPane.PHONE_FOLDER) },
+                    selected = chosen(SettingsPane.PHONE_FOLDER),
+                    enabled = !busy,
+                )
+            }
+            SettingsGroup(stringResource(R.string.settings_about)) {
+                SettingsRow(
+                    Icons.Outlined.Info,
+                    stringResource(
+                        R.string.settings_about_version,
+                        dev.sadking.folio.BuildConfig.VERSION_NAME,
+                    ),
+                    stringResource(R.string.settings_about_line),
+                )
+                SettingsRow(
+                    Icons.Outlined.Gavel,
+                    stringResource(R.string.ad6_licences),
+                    stringResource(R.string.ad6_licences_value),
+                    Modifier.testTag(SETTINGS_LICENCES_TAG),
+                    onClick = { open(SettingsPane.LICENCES) },
+                    selected = chosen(SettingsPane.LICENCES),
+                )
+                SettingsRow(
+                    Icons.Outlined.BugReport,
+                    stringResource(R.string.crash_share_report),
+                    stringResource(
+                        if (onShareCrashReport != null) R.string.crash_report_ready
+                        else R.string.crash_report_none
+                    ),
+                    onClick = onShareCrashReport,
+                    enabled = onShareCrashReport != null,
+                )
+            }
         }
     }
-    if (showText) ReadingDefaultsSheet(reading, onReading) { showText = false }
-    if (showReadingTime) ReadingTimeSheet(statistics) { showReadingTime = false }
-    if (showBackup)
-        BackupSheet(
-            onExport = {
-                showBackup = false
-                onBackup()
-            },
-            onRestore = {
-                showBackup = false
-                onRestore()
-            },
-            busy = busy,
-        ) {
-            showBackup = false
+    // The chosen setting's content, the same in a sheet and in the right pane.
+    val content: @Composable (SettingsPane) -> Unit = { value ->
+        when (value) {
+            SettingsPane.TEXT -> ReadingDefaultsContent(reading, onReading)
+            SettingsPane.READING_TIME -> ReadingTimeContent(statistics)
+            SettingsPane.BACKUP ->
+                BackupContent(
+                    onExport = {
+                        close()
+                        onBackup()
+                    },
+                    onRestore = {
+                        close()
+                        onRestore()
+                    },
+                    busy = busy,
+                )
+            SettingsPane.BOOKS_FOLDER ->
+                BooksFolderContent(
+                    booksFolder.shown,
+                    booksFolder.hasAccess,
+                    onAllow = booksFolder.allow,
+                    onChange = booksFolder.change,
+                    refused = booksFolder.refused,
+                    pending = booksFolder.pending,
+                    canChange = booksFolder.inFolder == 0,
+                    inbox = booksFolder.inbox,
+                    lastScanAt = booksFolder.lastScan?.at,
+                    lastScanMessage = booksFolder.lastScan?.message.orEmpty(),
+                    busy = busy,
+                    onMove = {
+                        close()
+                        onMoveBooks()
+                    },
+                )
+            SettingsPane.PHONE_FOLDER ->
+                PhoneFolderContent(
+                    phoneFolder,
+                    onChoose = {
+                        close()
+                        onPhoneFolder()
+                    },
+                    onRefresh = onRefreshFolder,
+                    onForget = {
+                        close()
+                        onForgetFolder()
+                    },
+                    busy = busy,
+                )
+            SettingsPane.LICENCES -> LicencesContent()
         }
-    if (showBooksFolder)
-        SettingsSheet({ showBooksFolder = false }) {
-            BooksFolderContent(
-                booksFolder.shown,
-                booksFolder.hasAccess,
-                onAllow = booksFolder.allow,
-                onChange = booksFolder.change,
-                refused = booksFolder.refused,
-                pending = booksFolder.pending,
-                canChange = booksFolder.inFolder == 0,
-                inbox = booksFolder.inbox,
-                lastScanAt = booksFolder.lastScan?.at,
-                lastScanMessage = booksFolder.lastScan?.message.orEmpty(),
-                busy = busy,
-                onMove = {
-                    showBooksFolder = false
-                    onMoveBooks()
-                },
-            )
-        }
-    if (showFolder)
-        PhoneFolderSheet(
-            phoneFolder,
-            onChoose = {
-                showFolder = false
-                onPhoneFolder()
-            },
-            onRefresh = onRefreshFolder,
-            onForget = {
-                showFolder = false
-                onForgetFolder()
-            },
-            busy = busy,
-        ) {
-            showFolder = false
-        }
+    }
+    Panes(
+        twoPane = twoPane,
+        maxWidth = null,
+        primary = { groups(Modifier.fillMaxSize()) },
+        detail =
+            if (twoPane && pane != null)
+                ({
+                    Column(
+                        Modifier.fillMaxSize()
+                            .then(
+                                // The Text sheet scrolls itself; a scroll inside a scroll fails.
+                                if (pane == SettingsPane.TEXT) Modifier
+                                else Modifier.verticalScroll(rememberScrollState())
+                            )
+                            .padding(
+                                top = FolioSpace.section,
+                                bottom = LocalContentBottomPadding.current,
+                            )
+                            .testTag(SETTINGS_PANE_TAG)
+                    ) {
+                        content(pane)
+                    }
+                })
+            else null,
+        empty = { EmptyPane(stringResource(R.string.ad6_choose_setting)) },
+    )
+    if (!twoPane && pane != null)
+        if (pane == SettingsPane.TEXT)
+            // Not SettingsSheet: the Text sheet scrolls itself, and a scroll inside a scroll fails.
+            ModalBottomSheet(
+                onDismissRequest = ::close,
+                shape = FolioSpace.sheetShape,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                content(pane)
+            }
+        else SettingsSheet(::close) { content(pane) }
+}
+
+/** What a settings row opens: a sheet on a phone, the right pane on a tablet. */
+internal enum class SettingsPane {
+    TEXT,
+    READING_TIME,
+    BACKUP,
+    BOOKS_FOLDER,
+    PHONE_FOLDER,
+    LICENCES,
 }
 
 /**
@@ -747,12 +843,22 @@ private fun ThemeRow(appearance: String, onTheme: (String) -> Unit) {
             .padding(start = FolioSpace.item, end = FolioSpace.item, bottom = 12.dp)
             .testTag(SETTINGS_THEME_TAG)
     ) {
+        // At very large text the tick would push "System" out of a narrow pane; the filled
+        // background still shows (and TalkBack says) which one is chosen.
+        val large = LocalDensity.current.fontScale > 1.5f
         choices.forEachIndexed { index, (mode, label) ->
             SegmentedButton(
                 selected = appearance == mode,
                 onClick = { onTheme(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index, choices.size),
-                label = { Text(stringResource(label), maxLines = 1) },
+                icon = { if (!large) SegmentedButtonDefaults.Icon(appearance == mode) },
+                label = {
+                    Text(
+                        stringResource(label),
+                        maxLines = 1,
+                        style = cappedTextStyle(LocalTextStyle.current, 1.5f),
+                    )
+                },
             )
         }
     }
@@ -784,12 +890,16 @@ private fun SettingsSheet(onDismiss: () -> Unit, content: @Composable ColumnScop
 
 /** A title and one quiet line, the way every settings sheet opens. */
 @Composable
-private fun SheetHeading(title: String, line: String? = null) {
+internal fun SheetHeading(title: String, line: String? = null) {
     Column(
         Modifier.padding(horizontal = FolioSpace.section),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(
+            title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.semantics { heading() },
+        )
         if (line != null)
             Text(
                 line,

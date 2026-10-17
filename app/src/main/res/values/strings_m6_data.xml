@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M6 data hardening: plain messages for failures that were silent or written in code. -->
+<resources>
+    <string name="data6_storage_full">Your phone is out of space. Free some space and try again.</string>
+    <string name="data6_file_changed_outside">This book\'s file changed outside Librillo. Open the Books folder to check it.</string>
+
+    <!-- LibraryRepository -->
+    <string name="data6_wish_gone">This Want to Read entry is no longer in your library.</string>
+    <string name="data6_attach_restore_first">Restore these books from Recently removed first.</string>
+    <string name="data6_title_invalid">Enter a title. Very long titles and author lists can\'t be saved.</string>
+    <string name="data6_file_unopenable">Couldn\'t open that file. Choose it again.</string>
+    <string name="data6_cover_unopenable">Couldn\'t open that picture. Choose it again.</string>
+    <string name="data6_cover_invalid">That picture can\'t be used as a cover. Choose a smaller JPEG or PNG.</string>
+    <string name="data6_save_failed">Couldn\'t save the change to this book\'s file. Nothing was changed. Try again.</string>
+    <string name="data6_sync_pending">Wait for the e-reader sync to finish before removing these books.</string>
+    <string name="data6_choose_manual_list">Choose a list you add books to by hand.</string>
+
+    <!-- Moving books into the Books folder: why a book stayed. %1$s is its title, %2$s one of the reasons below. -->
+    <string name="data6_move_stayed_reason">%1$s (%2$s)</string>
+    <string name="data6_move_reason_changed">its file changed or is missing</string>
+    <string name="data6_move_reason_space">the phone is out of space</string>
+    <string name="data6_move_reason_failed">its file couldn\'t be copied</string>
+
+    <!-- Books folder check -->
+    <plurals name="data6_scan_not_accepted">
+        <item quantity="one">%1$d book\'s file was replaced by a file Librillo can\'t open. The book keeps its notes and progress.</item>
+        <item quantity="other">%1$d books\' files were replaced by files Librillo can\'t open. The books keep their notes and progress.</item>
+    </plurals>
+</resources>

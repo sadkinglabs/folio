@@ -27,10 +27,10 @@
     <string name="rd_tile_book_progress">%1$s, %2$s, %3$d%%</string>
 
     <!-- Redesign: Book page -->
-    <string name="rd_find_epub">Find EPUB</string>
+    <string name="rd_find_epub">Get this book</string>
     <string name="rd_action_attach">Attach</string>
     <string name="rd_action_read">Read</string>
-    <string name="rd_action_find">Find</string>
+    <string name="rd_action_find">Get this book</string>
     <string name="rd_action_select">Select</string>
     <!-- TalkBack and the Send tile for 1.5 s after a send is queued. -->
     <string name="rd_strip_phone">Phone</string>

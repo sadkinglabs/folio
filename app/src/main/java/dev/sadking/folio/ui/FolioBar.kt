@@ -120,7 +120,7 @@ internal fun FolioBar(
                         onClick = { onTab(i) },
                         icon = {
                             BadgedBox(
-                                badge = { if (i == FolioNav.DEVICE && deviceBadge) Badge() }
+                                badge = { if (i == FolioNav.DEVICE && deviceBadge) DeviceBadge() }
                             ) {
                                 Icon(if (tab == i) d.selectedIcon else d.icon, null)
                             }
@@ -143,6 +143,66 @@ internal fun FolioBar(
             onOptions = onOptions,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+    }
+}
+
+/** The Device tab's dot, read out with the tab's name. */
+@Composable
+private fun DeviceBadge() {
+    val needs = stringResource(R.string.m9sync_decisions_title)
+    Badge(Modifier.semantics { contentDescription = needs })
+}
+
+internal const val FOLIO_RAIL_TAG = "folio-rail"
+
+/**
+ * The bar's tablet form: the same four tabs down a navigation rail, with the Now Reading tile at
+ * the top. Used from 600 dp wide; a phone keeps [FolioBar].
+ */
+@Composable
+internal fun FolioRail(
+    tab: Int,
+    onTab: (Int) -> Unit,
+    current: CurrentBook?,
+    onContinue: () -> Unit,
+    onOptions: () -> Unit,
+    /** Something on the Device tab needs the owner: a dot on its icon. */
+    deviceBadge: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    NavigationRail(
+        modifier.fillMaxHeight().testTag(FOLIO_RAIL_TAG),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        header = {
+            NowReadingTile(
+                current,
+                onClick = if (current != null) onContinue else onOptions,
+                onOptions = onOptions,
+                modifier = Modifier.padding(top = FolioSpace.small, bottom = FolioSpace.item),
+            )
+        },
+        // The frame pads the sides; the rail keeps the status and navigation bars clear.
+        windowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Vertical),
+    ) {
+        tabs.forEachIndexed { i, d ->
+            NavigationRailItem(
+                selected = tab == i,
+                onClick = { onTab(i) },
+                icon = {
+                    BadgedBox(badge = { if (i == FolioNav.DEVICE && deviceBadge) DeviceBadge() }) {
+                        Icon(if (tab == i) d.selectedIcon else d.icon, null)
+                    }
+                },
+                label = {
+                    Text(
+                        stringResource(d.title),
+                        style = barLabelStyle(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+        }
     }
 }
 
