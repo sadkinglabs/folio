@@ -159,8 +159,9 @@ fun rememberFolioWindow(space: DpSize? = null): FolioWindow {
                 }
             }
         }
-    val widthDp = space?.width?.value?.toInt() ?: configuration.screenWidthDp
-    val heightDp = space?.height?.value?.toInt() ?: configuration.screenHeightDp
+    // Rounded, not truncated: a forced or scaled 840 dp window measures 839.99 dp.
+    val widthDp = space?.width?.value?.roundToInt() ?: configuration.screenWidthDp
+    val heightDp = space?.height?.value?.roundToInt() ?: configuration.screenHeightDp
     return remember(widthDp, heightDp, hinge) {
         folioWindow(
             widthDp,
