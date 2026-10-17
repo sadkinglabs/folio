@@ -71,9 +71,9 @@ class LibrarySearchTest {
         compose.runOnIdle { assertEquals("Dune", hardcover) }
 
         compose.onNode(field).performTextReplacement("orch")
-        compose
-            .onNode(hasContentDescription("The Orchard, Alex Rowan") and hasClickAction())
-            .performClick()
+        val orchard = hasContentDescription("The Orchard, Alex Rowan") and hasClickAction()
+        compose.waitUntilExactlyOneExists(orchard, 5_000)
+        compose.onNode(orchard).performClick()
         compose.onNode(field).performTextReplacement("")
         compose.onNodeWithText("Clear recent").assertIsDisplayed()
         compose.onNodeWithText("orch").assertIsDisplayed()
