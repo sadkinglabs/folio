@@ -932,8 +932,13 @@ interface StatsDao {
 
     @Upsert suspend fun upsertDigests(rows: List<KoreaderDigestRow>)
 
-    /** The digests of KOReader files that match a book (A1). */
-    @Query("SELECT digest FROM koreader_digests WHERE bookId IS NOT NULL")
+    /**
+     * The digests of KOReader files that match a book in the library (A1). A book in Recently
+     * removed doesn't count, and neither does a digest whose book is gone.
+     */
+    @Query(
+        "SELECT d.digest FROM koreader_digests d INNER JOIN books b ON b.id = d.bookId WHERE d.bookId NOT IN (SELECT id FROM removed_entries)"
+    )
     suspend fun knownDigests(): List<String>
 
     @Query("SELECT * FROM stats_book_names") suspend fun allBookNames(): List<StatsBookNameRow>

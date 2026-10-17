@@ -1059,8 +1059,35 @@ class RoomSyncLibraryTest {
     fun knownDigestsAreTheDigestsThatHaveABook() {
         assertEquals(emptyList<String>(), library.knownDigests())
         runBlocking {
+            db.library().insert(storedBook("book-1", "/books/one.epub", "hash-1"))
             db.stats().upsertDigests(listOf(KoreaderDigestRow(bookA, "book-1", "rev-1", clock)))
         }
         assertEquals(listOf(bookA), library.knownDigests())
+    }
+
+    @Test
+    fun aRemovedBooksDigestIsNotKnown() {
+        runBlocking {
+            db.library().insert(storedBook("book-1", "/books/one.epub", "hash-1"))
+            db.library().insert(storedBook("book-2", "/books/two.epub", "hash-2"))
+            db.stats()
+                .upsertDigests(
+                    listOf(
+                        KoreaderDigestRow(bookA, "book-1", "rev-1", clock),
+                        KoreaderDigestRow(bookB, "book-2", "rev-2", clock),
+                    )
+                )
+            db.library()
+                .markRemoved(RemovedEntry("book-1", "book-1", "Title book-1", "EPUB", clock))
+        }
+        assertEquals(listOf(bookB), library.knownDigests())
+    }
+
+    @Test
+    fun aDigestWhoseBookIsGoneIsNotKnown() {
+        runBlocking {
+            db.stats().upsertDigests(listOf(KoreaderDigestRow(bookA, "gone", "rev-1", clock)))
+        }
+        assertEquals(emptyList<String>(), library.knownDigests())
     }
 }

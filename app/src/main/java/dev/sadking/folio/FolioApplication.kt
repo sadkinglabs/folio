@@ -11,6 +11,8 @@ import dev.sadking.folio.sync.HardcoverSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 
 class FolioApplication : Application() {
     val database by lazy {
@@ -46,6 +48,13 @@ class FolioApplication : Application() {
         CrashReports.install(this)
         // Sync with Hardcover (M10): the periodic pull and the watcher that matches new books.
         HardcoverSync.get(this).start()
+        // Word counts and KOReader digests for the statistics (M12): after each change to the
+        // library.
+        background.launch {
+            database.library().books().debounce(2_000).collect {
+                StatsIndexer(database.library(), database.stats()).run()
+            }
+        }
         // Folio Link runs while Librillo is open and for 30 minutes after (M9). The process
         // lifecycle covers every activity, the reader included, and ignores rotation.
         ProcessLifecycleOwner.get()
