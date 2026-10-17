@@ -42,7 +42,7 @@ The older items (Get books from Librillo, Find Librillo on this network, Continu
 - **Status.** Reading, Finished and On hold, both ways.
 - **Highlights, notes and bookmarks.** Merged both ways. Nothing is ever deleted.
 - **Collections.** KOReader collections and Librillo lists match by name.
-- **Reading time.** After each sync, the totals from KOReader's reading statistics (time read in all and per day, for the last 366 days) go to the phone, which shows them in Settings → Reading time. No titles. The statistics database is only read. Without statistics, nothing is sent and the sync is not affected.
+- **Reading time.** After each sync, the totals from KOReader's reading statistics (time read in all and per day, for the last 366 days) go to the phone, which shows them in Settings → Reading time. The phone also gets the reading sessions: when you read, for how long, and how far in the book. The e-reader works them out and sends only those, and for a book the phone doesn't have, its title and author so the Stats tab can name it. No book text. The statistics database is only read, never written. Without statistics, nothing is sent and the sync is not affected.
 
 When both sides changed the same thing, nothing changes until you answer a question, on either device.
 

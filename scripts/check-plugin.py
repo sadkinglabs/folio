@@ -734,7 +734,7 @@ with tempfile.TemporaryDirectory(prefix='folio-stats-') as tmp:
     stats_request = nil
     d.open_statistics = function() return stats_db(py_db) end
     d.request = function(method, url, headers, body)
-      stats_request = { method = method, url = url, headers = headers, body = body }
+      stats_request = stats_request or { method = method, url = url, headers = headers, body = body }
       return 200, { ok = true }
     end
     stats_sent = Stats.send(cfg, d, Sync.headers(cfg))
@@ -806,6 +806,310 @@ with tempfile.TemporaryDirectory(prefix='folio-stats-') as tmp:
     assert(value.days[2].date == "2026-10-11" and value.days[2].seconds == 30)
     ''')
 print('Reading time: read only from a real statistics database (366 newest days, negative times left out, totals only), sent after a sync with the sign-in; no database, a damaged one, statistics off, or a phone that errs sends nothing and raises nothing.')
+
+
+# Reading sessions (stats.lua, version 2): the Lua port of KoreaderSessions.derive gives the same
+# sessions as the Kotlin reference for every shared case, and the database path (windows, the cut,
+# chunks of 500, the names of books the phone doesn't know) is checked on real SQLite files.
+import random
+shared=json.loads((root/'core/src/test/resources/stats/koreader-sessions.json').read_text())
+def lua_rows(events):
+    return lua.table_from([lua.table_from({'md5':e[0],'page':e[1],'start':e[2],'duration':e[3],'total':e[4]}) for e in events])
+def as_list(table): return [table[i] for i in range(1,len(table)+1)]
+def close_or_none(a,b): return (a is None and b is None) or (a is not None and b is not None and abs(a-b)<=1e-9)
+def assert_same_sessions(got,want,label):
+    assert len(got)==len(want), (label,len(got),len(want),got,want)
+    for g_,w in zip(got,want):
+        assert g_['book']==w['book'] and g_['start']==w['start'] and g_['seconds']==w['seconds'] and g_['pages']==w['pages'], (label,g_['book'],g_['start'],g_['seconds'],g_['pages'],w)
+        for key in ('from','to','read'):
+            assert close_or_none(g_[key],w[key]), (label,key,g_[key],w[key])
+for case in shared['cases']:
+    got=as_list(stats.derive(lua_rows(case['events']),lua_rows(case['before'])))
+    assert_same_sessions(got,case['sessions'],case['name'])
+# Rounding is floor(x * 1e6 + 0.5) / 1e6 after clamping, as in Kotlin (2/3 rounds up, 1/3 down).
+rounded=as_list(stats.derive(lua_rows([['0123456789abcdef0123456789abcdef',2,1700000000,60,3],['0123456789abcdef0123456789abcdef',3,1700000060,60,3]]),lua_rows([])))
+assert len(rounded)==1 and rounded[0]['from']==0.333333 and rounded[0]['to']==1.0 and rounded[0]['read']==0.666667, dict(rounded[0].items())
+assert stats.round6(2/3)==0.666667 and stats.round6(-1)==0 and stats.round6(7)==1 and stats.round6(0.0000005)==0.000001
+# The same rows fed one at a time to a Deriver, as the database reader does, give the same result.
+lua.execute(r'''
+function derive_streamed(events)
+  local deriver = Stats.Deriver.new({})
+  for _, row in ipairs(events) do deriver:add(row) end
+  return deriver:finish()
+end''')
+streamed=[{'md5':'0123456789abcdef0123456789abcdef','page':i+1,'start':1700000000+60*i,'duration':60,'total':100} for i in range(3)]
+assert_same_sessions(as_list(lua.eval('derive_streamed')(lua_rows([[r['md5'],r['page'],r['start'],r['duration'],r['total']] for r in streamed]))),
+    [{'book':'0123456789abcdef0123456789abcdef','start':1700000000,'seconds':180,'pages':3,'from':0.0,'to':0.03,'read':0.03}],'deriver')
+# Numbers from the database can be int64 or text; they go through tonumber.
+lua.execute(r'''
+do
+  local calls = 0
+  local db = {
+    exec = function(self, sql)
+      if sql:find("ORDER BY", 1, true) then
+        calls = calls + 1
+        if calls == 1 then return { { "0123456789ABCDEF0123456789ABCDEF" }, { "1" }, { "1700000000" }, { "60" }, { "100" } } end
+      end
+    end,
+    rowexec = function() return "1700000000" end,
+  }
+  local sessions = Stats.readSessions(db, 0, 1791000000)
+  assert(#sessions == 1 and sessions[1].book == "0123456789abcdef0123456789abcdef" and sessions[1].seconds == 60, #sessions)
+  assert(sessions[1].from == 0 and sessions[1].to == 0.01 and sessions[1].start == 1700000000)
+  assert(calls >= 2, "windows of 30 days up to now")
+end''')
+
+# A statistics file like KOReader's, with titles and authors for the names.
+def build_stats_db(path,books,rows):
+    c=sqlite3.connect(path)
+    c.execute('CREATE TABLE book (id INTEGER PRIMARY KEY, md5 TEXT, pages INTEGER, title TEXT, authors TEXT)')
+    c.execute('CREATE TABLE page_stat_data (id_book INTEGER, page INTEGER NOT NULL DEFAULT 0, start_time INTEGER NOT NULL DEFAULT 0, duration INTEGER NOT NULL DEFAULT 0, total_pages INTEGER NOT NULL DEFAULT 0, UNIQUE (id_book, page, start_time))')
+    c.executemany('INSERT INTO book VALUES (?,?,?,?,?)',books)
+    c.executemany('INSERT INTO page_stat_data (id_book,page,start_time,duration,total_pages) VALUES (?,?,?,?,?)',rows)
+    c.commit(); c.close()
+def events_of(books,rows):
+    by_id={b[0]:b for b in books}
+    out=[]
+    for book_id,page,start,duration,total in rows:
+        if duration>0 and by_id[book_id][1] is not None:
+            out.append([by_id[book_id][1],page,start,duration,total if total>0 else (by_id[book_id][2] or 0)])
+    return out
+lua.execute(r'''
+-- One send of sessions to a fake phone. opts: watermark, known, get_status, no_until, fail_at, get_error.
+function run_sessions(py, opts)
+  local K, P, d, cfg = fake(home)
+  local log = { gets = 0, posts = {}, order = {} }
+  d.open_statistics = function() return stats_db(py) end
+  d.request = function(method, url, headers, body)
+    assert(url == "http://phone:8765/folio/v2/statistics", url)
+    assert(headers["x-auth-user"] == "folio" and headers["x-auth-key"] == "k" and headers["x-folio-device"] == "dev1")
+    log.order[#log.order + 1] = method
+    if method == "GET" then
+      log.gets = log.gets + 1
+      assert(body == nil)
+      if opts.get_error then error("timeout") end
+      if opts.get_status ~= 200 then return opts.get_status end
+      local answer = { format = "folio-statistics", versions = { 1, 2 }, known = opts.known }
+      if not opts.no_until then answer["until"] = opts.watermark end
+      return 200, answer
+    end
+    log.posts[#log.posts + 1] = body
+    if opts.fail_at == #log.posts then return 403 end
+    return 200, { ok = true }
+  end
+  log.result = Stats.sendSessions(cfg, d, Sync.headers(cfg))
+  return log
+end''')
+DEFAULT_WINDOW=lua.eval('Stats.WINDOW')
+assert DEFAULT_WINDOW==30*86400 and lua.eval('Stats.PER_REQUEST')==500 and lua.eval('Stats.MAX_REQUESTS')==40
+assert lua.eval('Stats.MAX_PAGE_SECONDS')==120 and lua.eval('Stats.GAP_SECONDS')==300 and lua.eval('Stats.LOOKBACK')==86400
+def run_sessions(path,watermark=0,window=None,**opts):
+    py=StatsDb(path); g.py_session_db=py
+    given={'watermark':watermark,'get_status':opts.pop('get_status',200)}
+    if 'known' in opts: given['known']=lua.table_from(opts.pop('known'))
+    given.update(opts)
+    lua.execute('Stats.WINDOW=%d'%(window or DEFAULT_WINDOW))
+    try: log=lua.eval('run_sessions')(py,lua.table_from(given))
+    finally: lua.execute('Stats.WINDOW=%d'%DEFAULT_WINDOW)
+    return py,log
+def read_only(py):
+    first_words=[q.split(' ')[0] for q in py.sql]
+    assert 'query_only=ON' in py.sql[0] and first_words[0]=='PRAGMA' and first_words[1]=='BEGIN;' and first_words[-1]=='COMMIT;' and set(first_words[2:-1])=={'SELECT'}, py.sql
+    assert py.closed, 'closed after reading'
+def posts_of(log): return [log['posts'][i] for i in range(1,len(log['posts'])+1)]
+def sent_sessions(log):
+    out=[]
+    for post in posts_of(log): out+=[{k:v for k,v in s.items()} for s in as_list(post['sessions'])]
+    return out
+def as_wire(session): return {k:session.get(k) for k in ('book','start','seconds','pages','from','to','read')}
+
+with tempfile.TemporaryDirectory(prefix='folio-sessions-') as tmp:
+    NOW=1791000000
+    BASE=NOW-75*86400
+    MD5=['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','cccccccccccccccccccccccccccccccc','dddddddddddddddddddddddddddddddd']
+    books=[(1,MD5[0],0,'Dune','Frank Herbert'),(2,MD5[1],200,'Emma','Jane Austen'),(3,MD5[2],0,'Ulysses','James Joyce'),(4,MD5[3].upper(),0,'Kim','Rudyard Kipling')]
+    rnd=random.Random(7)
+    rows=[(1,1,BASE,60,100)]
+    # 70 days of reading: pauses of 0 to 400 seconds between pages, some long pages, some overlaps.
+    for day in range(70):
+        book_id=day%4+1
+        at=BASE+day*86400+3600*(8+day%5)
+        for page in range(1+day,1+day+rnd.randint(6,14)):
+            duration=rnd.choice([20,45,60,90,130,200,600])
+            rows.append((book_id,page,at,duration,0 if book_id==2 else 100+book_id))
+            at+=min(duration,120)+rnd.choice([0,5,30,120,299,300,301,400])-rnd.choice([0,0,0,15])
+    # A session across the first 30-day window's edge, and across a 1-day edge.
+    for i in range(6): rows.append((1,500+i,BASE+30*86400-200+i*100,100,100))
+    for i in range(6): rows.append((3,700+i,BASE+10*86400-250+i*100,100,300))
+    rows+=[(2,9,BASE+5*86400,0,100),(2,10,BASE+5*86400+10,-4,100),(9,3,BASE+5*86400,60,100)]  # unusable: no time, negative, no such book
+    rows=[r for r in rows if r[0]!=9]
+    path=tmp+'/statistics.sqlite3'
+    build_stats_db(path,books,rows)
+    original=Path(path).read_bytes()
+    events=events_of(books,rows)
+    full=[as_wire(dict(s.items())) for s in as_list(stats.derive(lua_rows(events),lua_rows([])))]
+    assert len(full)>100 and any(s['seconds']>=600 and s['pages']>=5 for s in full)
+    assert all(close_or_none(s['read'],s['read']) for s in full) and any(s['read'] is not None for s in full)
+
+    # The first sync (until 0) sends the whole history; the window size makes no difference.
+    py,default_run=run_sessions(path)
+    read_only(py)
+    sent_default=[as_wire(s) for s in sent_sessions(default_run)]
+    assert default_run['result']==True and default_run['gets']==1
+    assert_same_sessions(sent_default,full,'default windows')
+    py,small_run=run_sessions(path,window=86400)
+    read_only(py)
+    assert_same_sessions([as_wire(s) for s in sent_sessions(small_run)],sent_default,'windows of a day')
+    assert_same_sessions([as_wire(s) for s in sent_sessions(small_run)],full,'windows of a day against one pass')
+    assert [p['version'] for p in posts_of(default_run)]==[2] and posts_of(default_run)[0]['format']=='folio-statistics'
+    post=posts_of(default_run)[0]
+    assert post['exportedAt']==NOW and post['device']['id']=='dev1' and post['device']['name']=='Kindle'
+    assert [s['start'] for s in full]==sorted(s['start'] for s in full), 'sorted by start'
+
+    # With a watermark, only sessions from a day before it; a session across the cut is not sent.
+    crossing=next(s for s in full if s['seconds']>=500 and s['pages']>=5 and s['start']>BASE+3*86400)
+    cut=crossing['start']+300
+    rows_before_cut=[e for e in events if e[2]<cut]
+    assert any(e[0]==crossing['book'] and crossing['start']<=e[2]<cut for e in events) and any(e[0]==crossing['book'] and e[2]>=cut and e[2]<=crossing['start']+crossing['seconds']+300 for e in events)
+    for window in (None,86400):
+        py,cut_run=run_sessions(path,watermark=cut+86400,window=window)
+        read_only(py)
+        wanted=[s for s in full if s['start']>=cut]
+        assert_same_sessions([as_wire(s) for s in sent_sessions(cut_run)],wanted,'from the cut, window %s'%window)
+        assert crossing['start'] not in [s['start'] for s in sent_sessions(cut_run)] and all(s['start']>=cut for s in sent_sessions(cut_run))
+        # The part of the crossing session after the cut is not sent cut short.
+        assert not [s for s in sent_sessions(cut_run) if s['book']==crossing['book'] and cut<=s['start']<=crossing['start']+crossing['seconds']+300]
+    # A watermark small enough that the cut is 0 sends everything.
+    py,low=run_sessions(path,watermark=3600)
+    assert_same_sessions([as_wire(s) for s in sent_sessions(low)],full,'a watermark under a day')
+    assert Path(path).read_bytes()==original, 'the statistics database is never written'
+
+    # Nothing is sent when the phone has nothing to ask: no watermark, an error, or an old phone.
+    for label,opts in (('old phone',{'get_status':404}),('no until',{'no_until':True}),('error',{'get_error':True}),('refused',{'get_status':403})):
+        py,none=run_sessions(path,**opts)
+        assert none['result']==False and none['gets']==1 and len(posts_of(none))==0 and not py.sql, (label,py.sql)
+    # No sessions at all (never read): nothing is posted, and that counts as sent.
+    quiet=tmp+'/quiet.sqlite3'
+    build_stats_db(quiet,books,[])
+    py,nothing=run_sessions(quiet)
+    read_only(py)
+    assert nothing['result']==True and len(posts_of(nothing))==0
+    # An unreadable database: rolled back, closed, nothing sent.
+    Path(tmp+'/broken.sqlite3').write_bytes(b'not a database at all')
+    py,unreadable=run_sessions(tmp+'/broken.sqlite3')
+    assert unreadable['result']==False and len(posts_of(unreadable))==0 and py.closed
+
+    # 1,200 sessions go as 3 requests of 500, 500 and 200; the first refusal stops the sending.
+    many=tmp+'/many.sqlite3'
+    many_books=[(1,MD5[0],100,'Dune','Frank Herbert')]
+    many_rows=[(1,1+i%50,NOW-1200*1000+i*1000,60,0) for i in range(1200)]
+    build_stats_db(many,many_books,many_rows)
+    py,run=run_sessions(many)
+    read_only(py)
+    assert run['result']==True and [len(as_list(p['sessions'])) for p in posts_of(run)]==[500,500,200], [len(as_list(p['sessions'])) for p in posts_of(run)]
+    assert [s['start'] for s in sent_sessions(run)]==[NOW-1200*1000+i*1000 for i in range(1200)]
+    py,stopped=run_sessions(many,fail_at=2)
+    assert stopped['result']==False and len(posts_of(stopped))==2, 'a refusal on the second request stops the sending'
+    py,thrown=run_sessions(many,fail_at=1)
+    assert thrown['result']==False and len(posts_of(thrown))==1
+    # At most 40 requests a sync; the rest go next time.
+    huge=tmp+'/huge.sqlite3'
+    build_stats_db(huge,many_books,[(1,1+i%50,NOW-20100*1000+i*1000,60,0) for i in range(20100)])
+    py,capped=run_sessions(huge)
+    assert capped['result']==False and len(posts_of(capped))==40 and sum(len(as_list(p['sessions'])) for p in posts_of(capped))==20000
+    # ... and with the watermark that follows, the next sync sends the rest.
+    last=sent_sessions(capped)[-1]
+    py,rest=run_sessions(huge,watermark=last['start']+last['seconds'])
+    cut_rest=last['start']+last['seconds']-86400
+    assert [s['start'] for s in sent_sessions(rest)]==[t for t in (NOW-20100*1000+i*1000 for i in range(20100)) if t>=cut_rest] and rest['result']==True
+    assert sent_sessions(rest)[-1]['start']==NOW-1000 and len(sent_sessions(rest))<500, 'the one-day look-back resends the last day, then the rest'
+
+    # Names go only for books the phone doesn't know, and nothing else about a book is sent.
+    bad_bytes=b'Bad \xff\xfe bytes \xc3 and \xed\xa0\x80 ok'
+    named=tmp+'/named.sqlite3'
+    letters='abcdef012'
+    n_md5=[ch*32 for ch in letters]
+    n_books=[
+        (1,n_md5[0],100,'Known Book','Known Author'),
+        (2,n_md5[1],100,'Unknown Book','Ann Lee\nBob Ray\r\nCy Fox'),
+        (3,n_md5[2],100,'T\x01i\x07tle\x7f with\ttab\u0085 end','A\x00u\x1fthor'),
+        (4,n_md5[3],100,'é'*600,'é'*600),
+        (5,n_md5[4],100,'\U0001F4D6'*300,''),
+        (6,n_md5[5],100,bad_bytes,bad_bytes),
+        (7,n_md5[6],100,'',''),
+        (8,n_md5[7],100,None,None),
+        (9,n_md5[8],100,' \t\n \x01 ','Someone'),
+    ]
+    build_stats_db(named,n_books,[(i,1,NOW-100000+i*1000,60,0) for i in range(1,10)])
+    py,with_known=run_sessions(named,known=[n_md5[0].upper(),'0'*32])
+    read_only(py)
+    assert with_known['result']==True and len(posts_of(with_known))==1
+    sent_books={k:{kk:vv for kk,vv in v.items()} for k,v in posts_of(with_known)[0]['books'].items()}
+    assert sorted(sent_books)==sorted([n_md5[1],n_md5[2],n_md5[3],n_md5[4],n_md5[5]]), sorted(sent_books)
+    assert all(sorted(v)==['authors','title'] for v in sent_books.values())
+    assert sent_books[n_md5[1]]=={'title':'Unknown Book','authors':'Ann Lee, Bob Ray, Cy Fox'}
+    assert sent_books[n_md5[2]]=={'title':'Title withtab end','authors':'Author'}, sent_books[n_md5[2]]
+    assert sent_books[n_md5[3]]=={'title':'é'*512,'authors':'é'*512}
+    assert sent_books[n_md5[4]]=={'title':'\U0001F4D6'*256,'authors':''}, 'a character outside the BMP counts as two'
+    assert sent_books[n_md5[5]]['title']=='Bad  bytes  and  ok' and sent_books[n_md5[5]]['authors']=='Bad  bytes  and  ok', sent_books[n_md5[5]]
+    for entry in sent_books.values():
+        assert len(entry['title'].encode('utf-16-le'))//2<=512 and len(entry['authors'].encode('utf-16-le'))//2<=512
+        assert not any(ord(ch)<32 or 127<=ord(ch)<160 for ch in entry['title']+entry['authors'])
+    # A book whose title is empty, only spaces or only control characters gets no entry (the phone would refuse the request), but its sessions are sent.
+    for empty in (n_md5[6],n_md5[7],n_md5[8]):
+        assert empty not in sent_books and empty in [s['book'] for s in sent_sessions(with_known)], (empty,sorted(sent_books),[s['book'] for s in sent_sessions(with_known)])
+    assert len(sent_sessions(with_known))==9
+    body=posts_of(with_known)[0]
+    assert sorted(k for k in body.keys())==['books','device','exportedAt','format','sessions','version'], sorted(body.keys())
+    assert sorted(body['device'].keys())==['id','name']
+    for s in sent_sessions(with_known): assert set(s)<={'book','start','seconds','pages','from','to','read'}, s
+    # A phone that doesn't answer `known` (or answers it with something else) gets a name for every book it has one for.
+    py,without_known=run_sessions(named)
+    assert sorted(posts_of(without_known)[0]['books'].keys())==sorted(n_md5[:6])
+    py,odd_known=run_sessions(named,known=[1,True])
+    assert sorted(posts_of(odd_known)[0]['books'].keys())==sorted(n_md5[:6])
+    # A request holds names only for its own sessions; a book with no unknown digest has no `books`.
+    py,all_known=run_sessions(named,known=n_md5)
+    assert posts_of(all_known)[0]['books'] is None, 'no names to send, no key'
+    # A database without titles still gives its sessions.
+    plain=tmp+'/plain.sqlite3'
+    c=sqlite3.connect(plain)
+    c.execute('CREATE TABLE book (id INTEGER, md5 TEXT, pages INTEGER)')
+    c.execute('CREATE TABLE page_stat_data (id_book INTEGER, page INTEGER NOT NULL DEFAULT 0, start_time INTEGER NOT NULL DEFAULT 0, duration INTEGER NOT NULL DEFAULT 0, total_pages INTEGER NOT NULL DEFAULT 0, UNIQUE (id_book, page, start_time))')
+    c.execute("INSERT INTO book VALUES (1,'%s',100)"%MD5[0]); c.execute('INSERT INTO page_stat_data VALUES (1,1,%d,60,100)'%(NOW-5000)); c.commit(); c.close()
+    py,plain_run=run_sessions(plain)
+    assert plain_run['result']==True and len(sent_sessions(plain_run))==1 and posts_of(plain_run)[0]['books'] is None
+
+    # Through Stats.send: the totals first, then the watermark, then the sessions. An old phone gets the totals only.
+    g.py_make_db=lambda: StatsDb(path)
+    lua.execute(r'''
+    local K, P, d, cfg = fake(home)
+    local order = {}
+    d.open_statistics = function() return stats_db(py_make_db()) end
+    d.request = function(method, url, headers, body)
+      order[#order + 1] = method .. " " .. url:match("/folio/v2/.*$") .. (body and (" v" .. tostring(body.version)) or "")
+      if method == "GET" then return 200, { ["until"] = 0, known = {} } end
+      return 200, { ok = true }
+    end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == true)
+    assert(order[1] == "POST /folio/v2/statistics v1" and order[2] == "GET /folio/v2/statistics", order[1] .. "|" .. order[2])
+    assert(order[3] == "POST /folio/v2/statistics v2" and #order == 3, table.concat(order, ","))
+    -- A phone without version 2: the totals are sent, the GET answers 404, no session is posted.
+    local old = {}
+    d.open_statistics = function() return stats_db(py_make_db()) end
+    d.request = function(method, url, headers, body)
+      old[#old + 1] = method .. (body and (" v" .. tostring(body.version)) or "")
+      if method == "GET" then return 404 end
+      return 200, { ok = true }
+    end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == true, "the totals still count")
+    assert(table.concat(old, ",") == "POST v1,GET", table.concat(old, ","))
+    -- Sessions that fail never fail the totals.
+    d.request = function(method) if method == "GET" then error("timeout") end return 200, { ok = true } end
+    assert(Stats.send(cfg, d, Sync.headers(cfg)) == true)
+    ''')
+    assert Path(path).read_bytes()==original
+print('Reading sessions: the Lua matches the Kotlin reference on every shared case; read only from real files in windows (same result as one pass), from a day before the phone\'s watermark without a cut-short session, 500 a request, 40 requests at most, stopping at the first refusal; titles and authors only for books the phone does not know; an old phone gets the totals only.')
 
 
 # main.lua glue: a version 2 setup file applied at start, the menu, and the sync settings.
