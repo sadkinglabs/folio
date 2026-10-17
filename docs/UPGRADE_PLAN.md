@@ -670,6 +670,43 @@ Decided with the owner on 2026-10-16. Goal, in the owner's words: "I want seamle
 - **UI:** Settings → Hardcover has "Sync with Hardcover" (same setting as before), a status line and Sync now; Needs your decision has "Check these matches" and the status questions (with "for all" buttons); the Hardcover tile says Matched, Matching…, Check match, Not on Hardcover, Not found or Not matched.
 - **Verified:** JVM, Robolectric and recorded Hardcover answers only; screenshots checked in light, dark and 200% text. `MigrationTest` compiles but needs CI's emulator. Nothing has run against the real Hardcover API or on the phone; `HARDCOVER_SYNC.md` B9 lists the device checks.
 
+
+### M11: Reading tools
+Decided with the owner on 2026-10-17. It started from: "I can highlight a passage several times over and there's no option to delete the highlight."
+
+**What the owner gets**
+- **Highlights you can manage.**
+  - Tapping a highlight opens it with Delete, Colour and Edit note (or Add note).
+  - Selecting text that is already highlighted opens that highlight instead of adding a second one.
+  - Deleting offers Undo. A deleted highlight stays recoverable on the phone for 30 days.
+- **Deletion both ways (owner's choice).**
+  - Deleting a highlight on the phone removes it from the Kindle at the next sync. Deleting one on the Kindle removes it from the phone.
+  - The sync baseline's annotation ids tell "deleted there" from "never there", as for books.
+  - A highlight edited on one side and deleted on the other is kept: an edit beats a deletion.
+- **Colours.**
+  - Yellow, green, blue, pink, or an underline, picked from the selection menu or the highlight sheet.
+  - They map to KOReader's highlight colours and drawing styles, both ways.
+  - A note's text syncs too, and the newest edit wins.
+- **Highlights & notes in the reader.**
+  - A sheet listing the book's highlights, notes and bookmarks, with filter (all, highlights, notes, bookmarks), search and jump.
+  - Export the book's highlights to Markdown: share it, or save it to a folder (for Obsidian).
+- **Reading comfort.**
+  - Brightness and warmth in the reader, kept per app and not system-wide.
+  - Keep the screen on while reading.
+  - Tap zones (left/right or edges/centre, with left-handed swap) and page-turn animation on or off.
+- **Bookmarks.**
+  - One tap in the top bar bookmarks the page. The icon fills when the page is bookmarked; tapping it again removes the bookmark, with Undo.
+  - Bookmarks can be renamed.
+  - A small mark shows on bookmarked pages.
+
+**Order:**
+- A (highlight lifecycle and its sync, schema 13) and B (comfort and bookmarks, no schema change) are built in parallel.
+- C (Highlights & notes sheet and export) follows A.
+
+**Never:**
+- A highlight is never lost to a sync race: an unknown, missing or unreadable id is never a deletion.
+- A Kindle without the new plugin keeps the old rule (merge, never delete), so mixing versions loses nothing.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)
