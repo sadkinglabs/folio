@@ -737,6 +737,8 @@ Decided with the owner on 2026-10-17. In the owner's words: "a beautiful statist
 
 **Never:** no statistic deletes or changes a book, a position or an annotation. Nothing is logged with book text.
 
+**Design and build plan:** `docs/STATS_DESIGN.md` (data contract, rules, the core API and the phase-2 tasks). The look: `docs/STATS_UI.md`.
+
 ---
 
 ## 7. Device acceptance script (use for every milestone)

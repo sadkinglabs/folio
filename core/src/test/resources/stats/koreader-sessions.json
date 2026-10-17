@@ -1,0 +1,170 @@
+{
+  "about": "KOReader page events to sessions. Checked by KoreaderSessionsTest (Kotlin) and scripts/check-plugin.py (the plugin's Lua). Events are [book, page, start, duration, total]. docs/STATS_DESIGN.md (a3).",
+  "cases": [
+    {
+      "name": "one session",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000060, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 3, 1700000120, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 180, "pages": 3, "from": 0.0, "to": 0.03, "read": 0.03}
+      ]
+    },
+    {
+      "name": "a page left alone counts 2 minutes and ends the session",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 1800, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700001800, 30, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 120, "pages": 1, "from": 0.0, "to": 0.01, "read": 0.01},
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700001800, "seconds": 30, "pages": 1, "from": 0.01, "to": 0.02, "read": 0.01}
+      ]
+    },
+    {
+      "name": "a gap of exactly 300 seconds continues, 301 splits",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000360, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 3, 1700000721, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 120, "pages": 2, "from": 0.0, "to": 0.02, "read": 0.02},
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000721, "seconds": 60, "pages": 1, "from": 0.02, "to": 0.03, "read": 0.01}
+      ]
+    },
+    {
+      "name": "each book has its own sessions",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000060, 60, 100],
+        ["fedcba9876543210fedcba9876543210", 1, 1700000120, 60, 50],
+        ["fedcba9876543210fedcba9876543210", 2, 1700000180, 60, 50],
+        ["0123456789abcdef0123456789abcdef", 3, 1700000240, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 180, "pages": 3, "from": 0.0, "to": 0.03, "read": 0.03},
+        {"book": "fedcba9876543210fedcba9876543210", "start": 1700000120, "seconds": 120, "pages": 2, "from": 0.0, "to": 0.04, "read": 0.04}
+      ]
+    },
+    {
+      "name": "rows with the same start and page are one, the longest",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 40, 100],
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000060, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 120, "pages": 2, "from": 0.0, "to": 0.02, "read": 0.02}
+      ]
+    },
+    {
+      "name": "unusable rows are ignored and upper case is read as lower case",
+      "events": [
+        ["0123456789ABCDEF0123456789ABCDEF", 1, 1700000000, 60, 100],
+        ["not-a-fingerprint", 1, 1700000000, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 0, 1700000060, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000120, 0, 100],
+        ["0123456789abcdef0123456789abcdef", 3, 0, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 60, "pages": 1, "from": 0.0, "to": 0.01, "read": 0.01}
+      ]
+    },
+    {
+      "name": "a session that began before the cut is left out",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 6, 1700000010, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 7, 1700000070, 60, 100],
+        ["0123456789abcdef0123456789abcdef", 8, 1700001000, 60, 100]
+      ],
+      "before": [
+        ["0123456789abcdef0123456789abcdef", 5, 1699999900, 60, 100]
+      ],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700001000, "seconds": 60, "pages": 1, "from": 0.07, "to": 0.08, "read": 0.01}
+      ]
+    },
+    {
+      "name": "a row long before the cut changes nothing",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 6, 1700000000, 60, 100]
+      ],
+      "before": [
+        ["0123456789abcdef0123456789abcdef", 5, 1699999000, 60, 100]
+      ],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 60, "pages": 1, "from": 0.05, "to": 0.06, "read": 0.01}
+      ]
+    },
+    {
+      "name": "without a page count there is no progress",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 0],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000060, 60, 0]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 120, "pages": 2, "from": null, "to": null, "read": null}
+      ]
+    },
+    {
+      "name": "the page count changes within a session",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 10, 1700000000, 60, 200],
+        ["0123456789abcdef0123456789abcdef", 11, 1700000060, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 120, "pages": 2, "from": 0.045, "to": 0.11, "read": 0.015}
+      ]
+    },
+    {
+      "name": "a page seen twice counts once",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 30, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000030, 30, 100],
+        ["0123456789abcdef0123456789abcdef", 1, 1700000060, 30, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 90, "pages": 2, "from": 0.0, "to": 0.01, "read": 0.02}
+      ]
+    },
+    {
+      "name": "overlapping rows are not counted twice",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 100, 100],
+        ["0123456789abcdef0123456789abcdef", 2, 1700000050, 60, 100]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 110, "pages": 2, "from": 0.0, "to": 0.02, "read": 0.02}
+      ]
+    },
+    {
+      "name": "fractions are rounded to 6 decimals",
+      "events": [
+        ["0123456789abcdef0123456789abcdef", 1, 1700000000, 60, 3]
+      ],
+      "before": [],
+      "sessions": [
+        {"book": "0123456789abcdef0123456789abcdef", "start": 1700000000, "seconds": 60, "pages": 1, "from": 0.0, "to": 0.333333, "read": 0.333333}
+      ]
+    },
+    {
+      "name": "nothing in, nothing out",
+      "events": [],
+      "before": [],
+      "sessions": []
+    }
+  ]
+}
