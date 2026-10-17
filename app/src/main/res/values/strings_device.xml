@@ -88,6 +88,12 @@
     <string name="settings_about">About</string>
     <string name="settings_about_version">Librillo %1$s</string>
     <string name="settings_about_line">No account and no analytics.</string>
+    <string name="crash_notice">Librillo closed unexpectedly last time. Send the report?</string>
+    <string name="crash_share">Share</string>
+    <string name="crash_share_report">Share last crash report</string>
+    <string name="crash_report_ready">Code details only, no book text</string>
+    <string name="crash_report_none">No crash so far</string>
+    <string name="crash_report_subject">Librillo crash report</string>
     <string name="settings_forget_device">Forget e-reader</string>
     <string name="settings_forget_title">Forget this e-reader?</string>
     <string name="settings_forget_body">Its address and sign-in details are removed. Books stay where they are.</string>

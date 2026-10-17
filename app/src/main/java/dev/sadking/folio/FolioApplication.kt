@@ -37,6 +37,8 @@ class FolioApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash anywhere after this leaves a report the owner can send.
+        CrashReports.install(this)
         // Sync with Hardcover (M10): the periodic pull and the watcher that matches new books.
         HardcoverSync.get(this).start()
         // Folio Link runs while Librillo is open and for 30 minutes after (M9). The process

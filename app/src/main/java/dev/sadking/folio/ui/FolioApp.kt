@@ -40,7 +40,10 @@ import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 @Composable
 fun FolioApp(model: LibraryViewModel) {
@@ -246,6 +249,27 @@ fun FolioApp(model: LibraryViewModel) {
                     .sortedByDescending { it.addedAt }
                     .take(3)
             }
+        // Librillo closed unexpectedly last time: offer the report once.
+        val crashNotice = stringResource(R.string.crash_notice)
+        val crashShare = stringResource(R.string.crash_share)
+        LaunchedEffect(Unit) {
+            CrashReports.unseen.first { it }
+            val result =
+                snackbar.showSnackbar(
+                    crashNotice,
+                    actionLabel = crashShare,
+                    withDismissAction = true,
+                    duration = SnackbarDuration.Long,
+                )
+            CrashReports.markSeen(context)
+            if (result == SnackbarResult.ActionPerformed) {
+                val report =
+                    withContext(Dispatchers.IO) {
+                        runCatching { CrashReports.report(context) }.getOrNull()
+                    }
+                if (report != null) shareCrashReport(context, report)
+            }
+        }
         // A pick or an answer Hardcover sync refused says why.
         LaunchedEffect(devices) {
             devices.hardcoverNotices.collect { message ->

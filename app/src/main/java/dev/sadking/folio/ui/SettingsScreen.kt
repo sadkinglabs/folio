@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudDownload
@@ -51,6 +52,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import dev.sadking.folio.CrashReports
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BooksFolder
@@ -157,6 +159,15 @@ internal fun SettingsTab(
             )
         }
     var finishedSent by remember { mutableStateOf(false) }
+    // Read when Settings opens: the report is made in the background at app start.
+    val crashUnseen by CrashReports.unseen.collectAsState()
+    val crashReport by
+        androidx.compose.runtime.produceState<String?>(null, crashUnseen) {
+            value =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { CrashReports.report(context) }.getOrNull()
+                }
+        }
     val readerPrefs = remember { context.getSharedPreferences(ReaderDefaults.PREFERENCES, 0) }
     var reading by remember {
         mutableStateOf(
@@ -209,7 +220,18 @@ internal fun SettingsTab(
         onForgetFolder = onForgetFolder,
         busy = busy,
         onMoveBooks = onMoveBooks,
+        onShareCrashReport = crashReport?.let { report -> { shareCrashReport(context, report) } },
     )
+}
+
+/** Opens the share sheet with the crash report as plain text. */
+internal fun shareCrashReport(context: android.content.Context, report: String) {
+    try {
+        context.startActivity(
+            CrashReports.shareIntent(report, context.getString(R.string.crash_report_subject))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    } catch (_: android.content.ActivityNotFoundException) {}
 }
 
 /**
@@ -251,6 +273,8 @@ internal fun SettingsScreen(
     onForgetFolder: () -> Unit = {},
     onMoveBooks: () -> Unit = {},
     busy: Boolean = false,
+    /** Shares the last crash report; null when there is none. */
+    onShareCrashReport: (() -> Unit)? = null,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     val paired = sshHost.isNotBlank()
@@ -414,6 +438,16 @@ internal fun SettingsScreen(
                     dev.sadking.folio.BuildConfig.VERSION_NAME,
                 ),
                 stringResource(R.string.settings_about_line),
+            )
+            SettingsRow(
+                Icons.Outlined.BugReport,
+                stringResource(R.string.crash_share_report),
+                stringResource(
+                    if (onShareCrashReport != null) R.string.crash_report_ready
+                    else R.string.crash_report_none
+                ),
+                onClick = onShareCrashReport,
+                enabled = onShareCrashReport != null,
             )
         }
     }
