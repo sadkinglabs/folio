@@ -1,5 +1,6 @@
 package dev.sadking.folio.link
 
+import dev.sadking.folio.core.stats.KoreaderSessions
 import dev.sadking.folio.core.sync.Baseline
 import dev.sadking.folio.core.sync.KindleFile
 import dev.sadking.folio.core.sync.PhoneAction
@@ -196,6 +197,34 @@ class FakeSyncLibrary(private val folder: File) : SyncLibrary {
     override fun saveStatistics(ereaderId: String, statistics: ReadingStatistics) {
         require(!refuseStatistics)
         this.statistics[ereaderId] = statistics
+    }
+
+    /** Sessions kept from each e-reader, in the order they were sent. */
+    val sessions = HashMap<String, List<KoreaderSessions.WireSession>>()
+    /** The watermark each e-reader's sessions answer; 0 when none. */
+    val until = HashMap<String, Long>()
+    /** Refuses sessions the way the app does when they fail its checks. */
+    var refuseSessions = false
+    /** The digests the phone can match to a library book. */
+    var known = emptyList<String>()
+    /** Names kept for each e-reader, by digest. */
+    val names = HashMap<String, Map<String, Pair<String, String>>>()
+
+    override fun sessionsUntil(ereaderId: String) = until[ereaderId] ?: 0L
+
+    override fun saveSessions(
+        ereaderId: String,
+        sessions: List<KoreaderSessions.WireSession>,
+    ): Int {
+        require(!refuseSessions)
+        this.sessions[ereaderId] = this.sessions[ereaderId].orEmpty() + sessions
+        return sessions.size
+    }
+
+    override fun knownDigests() = known
+
+    override fun saveBookNames(ereaderId: String, names: Map<String, Pair<String, String>>) {
+        this.names[ereaderId] = names
     }
 }
 
@@ -1187,6 +1216,189 @@ class SyncRoutesTest {
         library.refuseStatistics = true
         assertEquals(403, postStatistics(statisticsBody()).status)
         assertTrue(library.statistics.isEmpty())
+    }
+
+    private val digest = "0123456789abcdef0123456789abcdef"
+
+    private fun sessionJson(
+        book: String = digest,
+        start: Long = 1_791_740_000L,
+        seconds: Long = 1260,
+    ): JSONObject =
+        JSONObject()
+            .put("book", book)
+            .put("start", start)
+            .put("seconds", seconds)
+            .put("pages", 14)
+            .put("from", 0.4012)
+            .put("to", 0.4421)
+            .put("read", 0.0409)
+
+    private fun sessionsBody(
+        sessions: JSONArray,
+        books: JSONObject? = null,
+        change: JSONObject.() -> Unit = {},
+    ) =
+        JSONObject()
+            .put("device", JSONObject().put("id", "kindle-1").put("name", "Kindle"))
+            .put("format", "folio-statistics")
+            .put("version", 2)
+            .put("exportedAt", 1_791_750_000)
+            .put("sessions", sessions)
+            .apply { if (books != null) put("books", books) }
+            .apply(change)
+            .toString()
+
+    private fun postSessions(body: String) = postStatistics(body) as LinkResponse.Text
+
+    private fun named(
+        digest: String = this.digest,
+        title: String = "Dune",
+        authors: String = "Frank Herbert",
+    ) = JSONObject().put(digest, JSONObject().put("title", title).put("authors", authors))
+
+    @Test
+    fun statisticsGetAnswersTheWatermarkAndTheKnownDigests() {
+        library.until["kindle-1"] = 1_791_750_000L
+        library.known = listOf(digest)
+        val response =
+            routes.handle(KosyncRequest("GET", "/folio/v2/statistics", kindle.headers))
+                as LinkResponse.Text
+        assertEquals(200, response.status)
+        val answer = JSONObject(response.body)
+        assertEquals("folio-statistics", answer.getString("format"))
+        assertEquals("[1,2]", answer.getJSONArray("versions").toString())
+        assertEquals(1_791_750_000L, answer.getLong("until"))
+        assertEquals("[\"$digest\"]", answer.getJSONArray("known").toString())
+        // Without the device header, or with a blank one, it is refused.
+        val noDevice = kindle.headers.filterKeys { it != "x-folio-device" }
+        assertEquals(
+            403,
+            routes.handle(KosyncRequest("GET", "/folio/v2/statistics", noDevice)).status,
+        )
+        assertEquals(
+            403,
+            routes
+                .handle(
+                    KosyncRequest(
+                        "GET",
+                        "/folio/v2/statistics",
+                        kindle.headers + ("x-folio-device" to " "),
+                    )
+                )
+                .status,
+        )
+    }
+
+    @Test
+    fun aVersionTwoBodyKeepsTheGoodSessionsAndSkipsTheBadOne() {
+        val body =
+            sessionsBody(
+                JSONArray()
+                    .put(sessionJson())
+                    .put(sessionJson(start = 1_791_741_000L))
+                    .put(sessionJson(book = "abc"))
+            )
+        val response = postSessions(body)
+        assertEquals(200, response.status)
+        val answer = JSONObject(response.body)
+        assertTrue(answer.getBoolean("ok"))
+        assertEquals(2, answer.getInt("kept"))
+        assertEquals(1, answer.getInt("skipped"))
+        assertEquals(
+            KoreaderSessions.WireSession(digest, 1_791_740_000L, 1260, 14, 0.4012, 0.4421, 0.0409),
+            library.sessions.getValue("kindle-1")[0],
+        )
+        assertEquals(2, library.sessions.getValue("kindle-1").size)
+        // Sessions are not a sync, so none is started.
+        assertTrue(library.started.isEmpty() && library.synced.isEmpty())
+    }
+
+    @Test
+    fun aMissingOrNullFractionIsUnknown() {
+        val missing = sessionJson(start = 1_791_741_000L).apply { remove("from") }
+        val nulled = sessionJson(start = 1_791_742_000L).put("read", JSONObject.NULL)
+        assertEquals(
+            200,
+            postSessions(sessionsBody(JSONArray().put(missing).put(nulled))).status,
+        )
+        val kept = library.sessions.getValue("kindle-1")
+        assertNull(kept[0].from)
+        assertEquals(0.0409, kept[0].read)
+        assertNull(kept[1].read)
+        assertEquals(0.4012, kept[1].from)
+    }
+
+    @Test
+    fun aVersionTwoBodyThatIsTooLargeOrMisshapenIsRefused() {
+        val many = JSONArray()
+        repeat(KoreaderSessions.MAX_PER_REQUEST + 1) { many.put(sessionJson()) }
+        listOf(
+                sessionsBody(many),
+                sessionsBody(JSONArray(), change = { put("sessions", sessionJson()) }),
+                sessionsBody(JSONArray(), change = { put("version", 3) }),
+                sessionsBody(JSONArray(), change = { put("exportedAt", 0) }),
+                sessionsBody(JSONArray().put(sessionJson().apply { remove("pages") })),
+                sessionsBody(JSONArray().put(sessionJson().put("seconds", "lots"))),
+            )
+            .forEach { assertEquals(it, 403, postStatistics(it).status) }
+        // The phone's own checks refuse the rest, and nothing is kept.
+        library.refuseSessions = true
+        assertEquals(403, postStatistics(sessionsBody(JSONArray().put(sessionJson()))).status)
+        assertTrue(library.sessions.isEmpty())
+    }
+
+    @Test
+    fun namesForBooksThePhoneCannotMatchAreKept() {
+        val books =
+            named().apply {
+                put(
+                    "fedcba9876543210fedcba9876543210",
+                    JSONObject().put("title", "Emma").put("authors", ""),
+                )
+            }
+        val response = postSessions(sessionsBody(JSONArray().put(sessionJson()), books = books))
+        assertEquals(200, response.status)
+        assertEquals(
+            mapOf(
+                digest to ("Dune" to "Frank Herbert"),
+                "fedcba9876543210fedcba9876543210" to ("Emma" to ""),
+            ),
+            library.names["kindle-1"],
+        )
+    }
+
+    @Test
+    fun aBodyWithoutBooksStillWorks() {
+        val response = postSessions(sessionsBody(JSONArray().put(sessionJson())))
+        assertEquals(200, response.status)
+        assertEquals(1, JSONObject(response.body).getInt("kept"))
+        assertNull(library.names["kindle-1"])
+    }
+
+    @Test
+    fun aBadNameRefusesTheWholeBodyAndNothingIsKept() {
+        listOf(
+                named(digest = "0123456789ABCDEF0123456789ABCDEF"),
+                named(digest = "abc"),
+                named(title = "x".repeat(SyncRoutes.MAX_NAME + 1)),
+                named(title = "Dune\u0007"),
+                named(authors = "Frank\nHerbert"),
+                named(title = ""),
+            )
+            .forEach {
+                val body = sessionsBody(JSONArray().put(sessionJson()), books = it)
+                assertEquals(it.toString(), 403, postStatistics(body).status)
+            }
+        assertTrue(library.sessions.isEmpty())
+        assertTrue(library.names.isEmpty())
+        // A refused session keeps no names either.
+        library.refuseSessions = true
+        assertEquals(
+            403,
+            postStatistics(sessionsBody(JSONArray().put(sessionJson()), books = named())).status,
+        )
+        assertTrue(library.names.isEmpty())
     }
 
     @Test

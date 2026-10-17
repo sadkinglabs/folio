@@ -1,5 +1,6 @@
 package dev.sadking.folio.link
 
+import dev.sadking.folio.core.stats.KoreaderSessions
 import dev.sadking.folio.core.sync.Baseline
 import dev.sadking.folio.core.sync.PhoneAction
 import dev.sadking.folio.core.sync.PhoneBook
@@ -137,4 +138,25 @@ interface SyncLibrary {
      * [IllegalArgumentException] when they fail the phone's checks; nothing is kept then.
      */
     fun saveStatistics(ereaderId: String, statistics: ReadingStatistics) {}
+
+    /**
+     * The latest `start + seconds` (epoch s) of the KOReader sessions kept from [ereaderId]; 0 when
+     * none.
+     */
+    fun sessionsUntil(ereaderId: String): Long = 0
+
+    /**
+     * Keeps [sessions] from [ereaderId] (a4) and returns how many were kept. Throws
+     * [IllegalArgumentException] to refuse all of them.
+     */
+    fun saveSessions(ereaderId: String, sessions: List<KoreaderSessions.WireSession>): Int = 0
+
+    /** Every KOReader digest (32 lowercase hex) the phone can match to a library book (A1). */
+    fun knownDigests(): List<String> = emptyList()
+
+    /**
+     * Keeps the names [ereaderId] sent for books the phone can't match (A1), by digest, as `digest
+     * -> (title, authors)`. The newest name for a digest wins.
+     */
+    fun saveBookNames(ereaderId: String, names: Map<String, Pair<String, String>>) {}
 }

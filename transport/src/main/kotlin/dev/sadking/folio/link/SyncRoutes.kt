@@ -1,5 +1,6 @@
 package dev.sadking.folio.link
 
+import dev.sadking.folio.core.stats.KoreaderSessions
 import dev.sadking.folio.core.sync.KindleAction
 import dev.sadking.folio.core.sync.KindleFile
 import dev.sadking.folio.core.sync.KindleResult
@@ -27,8 +28,9 @@ import org.json.JSONObject
  * 3. `POST /finish` reports each action's result. Only then does the phone take uploads, apply its
  *    own actions and record what both sides now agree on.
  *
- * 4. After a confirmed finish, `POST /statistics` may bring KOReader's reading time. It is not part
- *    of a session, and the sync never depends on it.
+ * 4. KOReader's reading time is not part of a session, and the sync never depends on it. `GET
+ *    /statistics` answers the watermark for the e-reader and the digests the phone can match. `POST
+ *    /statistics` brings totals (version 1) or reading sessions (version 2) after a finish.
  *
  * A session lasts [SESSION_MS] after its last request. Each device has at most one; a new `/sync`
  * replaces it.
@@ -79,6 +81,7 @@ class SyncRoutes(
             request.method == "PUT" && route == "/upload" ->
                 upload(request, query["session"].orEmpty(), query["path"].orEmpty(), upload)
             request.method == "POST" && route == "/finish" -> finish(request.body)
+            request.method == "GET" && route == "/statistics" -> statisticsUntil(request)
             request.method == "POST" && route == "/statistics" -> statistics(request.body)
             else -> notFound()
         }
@@ -375,17 +378,30 @@ class SyncRoutes(
     }
 
     /**
-     * KOReader's reading time from one e-reader: totals per day, no titles. The shape is checked
-     * here; the library applies the phone's own limits and refuses the rest (403).
+     * KOReader's statistics from one e-reader, by version (a4). Version 1 is totals per day, no
+     * titles. Version 2 is reading sessions and, for books the phone can't match, their names (A1).
+     * The shape is checked here; the library applies the phone's own limits and refuses the rest
+     * (403).
      */
     private fun statistics(text: String?): LinkResponse {
         val body = parse(text) ?: return invalid()
-        val device: String
+        try {
+            val device = body.getJSONObject("device").getString("id").trim()
+            if (body.getString("format") != STATISTICS_FORMAT) return invalid()
+            if (device.isEmpty() || device.length > MAX_ID) return invalid()
+            return when (body.getInt("version")) {
+                1 -> totals(device, body)
+                2 -> readingSessions(device, body)
+                else -> invalid()
+            }
+        } catch (_: JSONException) {
+            return invalid()
+        }
+    }
+
+    private fun totals(device: String, body: JSONObject): LinkResponse {
         val statistics: ReadingStatistics
         try {
-            device = body.getJSONObject("device").getString("id").trim()
-            if (body.getString("format") != STATISTICS_FORMAT || body.getInt("version") != 1)
-                return invalid()
             val days = body.getJSONArray("days")
             if (days.length() > MAX_DAYS) return invalid()
             statistics =
@@ -401,7 +417,6 @@ class SyncRoutes(
         } catch (_: JSONException) {
             return invalid()
         }
-        if (device.isEmpty() || device.length > MAX_ID) return invalid()
         try {
             library.saveStatistics(device, statistics)
         } catch (_: IllegalArgumentException) {
@@ -409,6 +424,91 @@ class SyncRoutes(
         }
         return json(JSONObject().put("ok", true))
     }
+
+    /**
+     * GET (a4, A1): the watermark for the e-reader named in `x-folio-device`, and the known
+     * digests.
+     */
+    private fun statisticsUntil(request: KosyncRequest): LinkResponse {
+        val device = request.header("x-folio-device").orEmpty().trim()
+        if (device.isEmpty() || device.length > MAX_ID) return invalid()
+        return json(
+            JSONObject()
+                .put("format", STATISTICS_FORMAT)
+                .put("versions", JSONArray(listOf(1, 2)))
+                .put("until", library.sessionsUntil(device))
+                .put("known", JSONArray(library.knownDigests()))
+        )
+    }
+
+    /** Version 2 (a4, A1): reading sessions, and the names of books the phone can't match. */
+    private fun readingSessions(device: String, body: JSONObject): LinkResponse {
+        val wire: List<KoreaderSessions.WireSession>
+        val names: Map<String, Pair<String, String>>
+        try {
+            if (body.getLong("exportedAt") <= 0) return invalid()
+            val items = body.getJSONArray("sessions")
+            if (items.length() > KoreaderSessions.MAX_PER_REQUEST) return invalid()
+            wire = (0 until items.length()).map { wireSession(items.getJSONObject(it)) }
+            names = bookNames(body) ?: return invalid()
+        } catch (_: JSONException) {
+            return invalid()
+        }
+        val accepted = wire.filter { KoreaderSessions.accepts(it, now() / 1000) }
+        return try {
+            val kept = library.saveSessions(device, accepted)
+            if (names.isNotEmpty()) library.saveBookNames(device, names)
+            json(
+                JSONObject()
+                    .put("ok", true)
+                    .put("kept", kept)
+                    .put("skipped", wire.size - accepted.size)
+                    .put("until", library.sessionsUntil(device))
+            )
+        } catch (_: IllegalArgumentException) {
+            invalid()
+        }
+    }
+
+    /** One version 2 session (a4). A missing or null `from`, `to` or `read` is unknown. */
+    private fun wireSession(item: JSONObject): KoreaderSessions.WireSession {
+        fun fraction(key: String): Double? =
+            if (!item.has(key) || item.isNull(key)) null else item.getDouble(key)
+        return KoreaderSessions.WireSession(
+            book = item.getString("book"),
+            start = item.getLong("start"),
+            seconds = item.getLong("seconds"),
+            pages = item.getInt("pages"),
+            from = fraction("from"),
+            to = fraction("to"),
+            read = fraction("read"),
+        )
+    }
+
+    /**
+     * The names in a version 2 body (A1), by digest: none when `books` is missing or null, and null
+     * when the body is invalid. Invalid is more than [KoreaderSessions.MAX_PER_REQUEST] entries, a
+     * digest that is not 32 lowercase hex characters, or a title or authors that are too long or
+     * have a control character. The title must not be empty; the authors may be.
+     */
+    private fun bookNames(body: JSONObject): Map<String, Pair<String, String>>? {
+        if (!body.has("books") || body.isNull("books")) return emptyMap()
+        val books = body.getJSONObject("books")
+        val digests = books.keys().asSequence().toList()
+        if (digests.size > KoreaderSessions.MAX_PER_REQUEST) return null
+        val names = HashMap<String, Pair<String, String>>()
+        for (digest in digests) {
+            if (!DIGEST.matches(digest)) return null
+            val name = books.getJSONObject(digest)
+            val title = name.getString("title")
+            val authors = name.getString("authors")
+            if (title.isEmpty() || !isPlain(title) || !isPlain(authors)) return null
+            names[digest] = title to authors
+        }
+        return names
+    }
+
+    private fun isPlain(text: String) = text.length <= MAX_NAME && text.none { it.isISOControl() }
 
     /** The session [id], if it is still current; using it keeps it alive. Call under [lock]. */
     private fun current(id: String): Session? {
@@ -472,6 +572,10 @@ class SyncRoutes(
         const val STATISTICS_FORMAT = "folio-statistics"
         /** The most days of reading time an e-reader sends: a year and a day, newest first. */
         const val MAX_DAYS = 366
+        /** The longest book title or authors kept from a version 2 body, in characters (A1). */
+        const val MAX_NAME = 512
+        /** A KOReader book's partial MD5, as a version 2 body names it (A1). */
+        private val DIGEST = Regex("[0-9a-f]{32}")
 
         fun contentType(path: String): String =
             when (path.substringAfterLast('.', "").lowercase()) {

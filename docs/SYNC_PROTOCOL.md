@@ -7,7 +7,7 @@ Three parts:
 - **The server** (`transport`, `LinkRoutes`): the `/folio/v2` routes on the Link server. It runs the planner, hands out files, takes uploads, and records the result.
 - **The plugin** (`koreader/folio.koplugin`): sends the Kindle's manifest, runs the Kindle's actions in order, and reports each result.
 
-Reading positions are not part of this protocol. KOReader's Progress sync (kosync) already handles them. KOReader's reading time (its statistics) follows each confirmed sync on its own route, `POST /folio/v2/statistics`.
+Reading positions are not part of this protocol. KOReader's Progress sync (kosync) already handles them. KOReader's reading time (its statistics) has its own routes, `GET` and `POST /folio/v2/statistics`. Version 1 of the POST sends totals per day; version 2 sends reading sessions (docs/STATS_DESIGN.md, a4 and A1).
 
 ## What both sides keep in step
 
@@ -331,6 +331,38 @@ Only totals travel: no titles, no book ids, no pages. The plugin reads the datab
 
 **Checks.** `format` must be `folio-statistics` and `version` 1; `device.id` 1 to 128 characters; `seconds`, `exportedAt`, each day's `date` and `seconds` present; at most 366 days. Then `SyncLibrary.saveStatistics(ereaderId, statistics)` applies the phone's limits and throws `IllegalArgumentException` on anything else. Anything refused is 403 (`{"code":2003}`) and nothing is kept.
 
+#### GET /folio/v2/statistics: the watermark
+Header `x-folio-device: <device id>`. The phone answers:
+```json
+{"format": "folio-statistics", "versions": [1, 2], "until": 1791750000,
+ "known": ["0123456789abcdef0123456789abcdef"]}
+```
+- `until` is the watermark for that device (epoch seconds; 0 when none): the latest `start + seconds` of its kept sessions. The plugin re-reads from one day before it.
+- `known` lists every KOReader digest (32 lowercase hex characters) the phone can match to a library book. The plugin sends no names for those.
+- A missing or empty header, or one over 128 characters, is 403 (`{"code":2003}`). A phone without version 2 answers 404, and the plugin then sends version 1 only.
+
+#### POST /folio/v2/statistics, version 2: sessions
+```json
+{"device": {"id": "kindle-7f3a", "name": "Kindle Paperwhite"},
+ "format": "folio-statistics", "version": 2, "exportedAt": 1791750000,
+ "sessions": [{"book": "0123456789abcdef0123456789abcdef", "start": 1791740000, "seconds": 1260,
+               "pages": 14, "from": 0.4012, "to": 0.4421, "read": 0.0409}],
+ "books": {"0123456789abcdef0123456789abcdef": {"title": "Dune", "authors": "Frank Herbert"}}}
+```
+- `sessions`: at most 500 (`KoreaderSessions.MAX_PER_REQUEST`), sorted by start and sent in requests of 500, at most 40 a sync (`MAX_REQUESTS`). The rest go at the next sync.
+- `from`, `to` and `read` may be missing or null. Both mean unknown.
+- `books` is optional. It names each book the phone can't match (A1): digest → `{title, authors}`. At most 500 entries. Each digest is 32 lowercase hex characters. The title is 1 to 512 characters, the authors 0 to 512, with no control characters. Names for known digests are never sent.
+- **Checks.** `format` must be `folio-statistics` and `version` 2; `device.id` 1 to 128 characters; `exportedAt` > 0; `sessions` an array of at most 500 objects with the right types; `books` as above. Anything else is 403 (`{"code":2003}`), and nothing is kept.
+- Then each session is checked on its own (`KoreaderSessions.accepts`). A session that fails is skipped; the rest are kept.
+- Answer: `{"ok": true, "kept": 498, "skipped": 2, "until": 1791750000}`.
+- Kept sessions are upserted by id. A stored session is replaced only by a longer or equal one. Nothing is ever deleted: a session missing from a later send is not a deletion. The phone keeps the newest name for each digest.
+
+| Plugin | Phone | What happens |
+|---|---|---|
+| old (v1) | new | v1 totals as today. |
+| new | old | GET is 404, so the plugin sends v1 only. |
+| new | new | v1 totals, then GET (`until`, `known`), then v2 sessions. |
+
 ### Sessions
 Once `/sync` has planned, the server calls `SyncLibrary.started(device, name, now)`, so the phone can say "Syncing…". A session lasts 30 minutes after its last request, so a long transfer can't expire half way. Each device has one at a time: a new `/sync` replaces the old one and deletes its uploads. At most 16 sessions exist; the oldest is dropped. An unknown or ended session is 410 (`{"code":2005}`) on every route that takes one. Planning and finishing run one at a time; uploads stream in parallel.
 
@@ -349,6 +381,10 @@ The server talks to the library through `SyncLibrary` (in `transport`), which th
 - `started(ereaderId, deviceName, at)`: a sync was planned.
 - `synced(ereaderId, deviceName, at)`: a sync finished.
 - `saveStatistics(ereaderId, statistics)`: keeps the e-reader's reading time (`ReadingStatistics`: `seconds`, `exportedAt`, `days`), replacing what it sent before. Throws `IllegalArgumentException` to refuse it.
+- `sessionsUntil(ereaderId)`: the watermark for that e-reader (`until`), 0 when none.
+- `saveSessions(ereaderId, sessions)`: keeps the e-reader's reading sessions and returns how many were kept. Throws `IllegalArgumentException` to refuse them all.
+- `knownDigests()`: every KOReader digest the phone can match to a library book (`known`).
+- `saveBookNames(ereaderId, names)`: keeps the names of books the phone can't match, by digest, newest wins.
 
 `receive` and `revise` get a temporary file the server deletes afterwards, so they copy or move it.
 
