@@ -966,8 +966,65 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Deletes a bookmark from the Highlights & notes list, offering Undo like the top bar. */
     fun deleteBookmark(id: String) {
-        viewModelScope.launch { bookmarkStore.delete(id) }
+        val mark = marks.firstOrNull { it.mark.id == id }?.mark ?: return
+        viewModelScope.launch {
+            try {
+                bookmarkStore.delete(id)
+                removedMarks = listOf(mark)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                message = app.getString(R.string.reader_bookmark_failed)
+            }
+        }
+    }
+
+    /** The Markdown export of this book's highlights and notes (M11 C). */
+    internal val notesExport = NotesExport(app, dao)
+
+    /** The remembered export folder's name ("" without one), or null when none is remembered. */
+    var notesFolder by mutableStateOf(notesExport.folderName())
+        private set
+
+    /** Keeps the folder picked for exports and saves this book's notes there. */
+    fun chooseNotesFolder(tree: android.net.Uri) {
+        viewModelScope.launch {
+            val name = withContext(Dispatchers.IO) { notesExport.remember(tree) }
+            if (name == null) {
+                message = app.getString(R.string.notes_export_folder_refused)
+                return@launch
+            }
+            notesFolder = name
+            saveNotes()
+        }
+    }
+
+    /**
+     * Saves this book's notes to the remembered folder, replacing its earlier export there, and
+     * says where they went. A folder Librillo can no longer reach is forgotten.
+     */
+    fun saveNotes() {
+        val id = book?.id ?: return
+        viewModelScope.launch {
+            val tree = notesExport.folder()
+            if (tree == null) {
+                notesExport.forget()
+                notesFolder = null
+                message = app.getString(R.string.notes_export_folder_lost)
+                return@launch
+            }
+            message =
+                try {
+                    val where = notesExport.save(tree, notesExport.file(id), id)
+                    app.getString(R.string.notes_export_saved, where)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    app.getString(R.string.notes_export_folder_failed)
+                }
+        }
     }
 
     fun completedIncoming() {

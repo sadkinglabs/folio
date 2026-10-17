@@ -232,8 +232,10 @@ class ReaderUiTest {
                 compose.onNodeWithContentDescription("Contents").performClick()
                 // The chapter title also shows in the bottom bar; check the contents entry itself.
                 compose.onNode(hasText("A quiet beginning") and hasClickAction()).assertIsSelected()
+                compose.onNodeWithText("Highlights & notes").performClick()
                 compose.onNodeWithText("Bookmarks · 1").performClick()
-                compose.onNodeWithContentDescription("Delete bookmark").assertExists()
+                compose.onNodeWithContentDescription("Options").performClick()
+                compose.onNodeWithText("Delete").assertExists()
             }
             val saved = runBlocking { app.database.library().phoneReading(id, hash) }
             assertNotNull(saved)

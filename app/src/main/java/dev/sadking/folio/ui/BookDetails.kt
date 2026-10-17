@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
@@ -66,6 +65,8 @@ import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.R
 import dev.sadking.folio.data.*
+import dev.sadking.folio.reader.ExportActions
+import dev.sadking.folio.reader.NotesExportButton
 import dev.sadking.folio.reader.ReaderKind
 import dev.sadking.folio.reader.ReaderStart
 import dev.sadking.folio.reader.koreaderDigest
@@ -139,7 +140,8 @@ fun BookDetails(
     onLists: () -> Unit = {},
     onStatus: (String) -> Unit = {},
     onLookup: () -> Unit = {},
-    onExport: () -> Unit = {},
+    /** Export of the book's highlights and notes as Markdown: share, or save to a folder. */
+    notesExport: ExportActions = ExportActions(),
     onNext: (Book) -> Unit = {},
     /** Content under the status strip; a record puts its Hardcover offer here. */
     extra: @Composable ColumnScope.() -> Unit = {},
@@ -325,7 +327,7 @@ fun BookDetails(
             if (nextInSeries != null) NextInSeries(book, nextInSeries) { onNext(nextInSeries) }
             DetailsSection(book, busy, onLookup)
             if (hasEpub) {
-                NotesSection(annotations, busy, onExport)
+                NotesSection(annotations, busy, notesExport)
                 if (deletedAnnotations.isNotEmpty())
                     DeletedHighlightsSection(deletedAnnotations, busy, onRestoreAnnotation)
             }
@@ -982,7 +984,11 @@ private fun DetailsSection(book: Book, busy: Boolean, onLookup: () -> Unit) {
 }
 
 @Composable
-private fun NotesSection(annotations: List<BookAnnotation>, busy: Boolean, onExport: () -> Unit) {
+private fun NotesSection(
+    annotations: List<BookAnnotation>,
+    busy: Boolean,
+    export: ExportActions,
+) {
     ExpandableSection(
         stringResource(R.string.library_book_notes),
         pluralStringResource(
@@ -998,11 +1004,7 @@ private fun NotesSection(annotations: List<BookAnnotation>, busy: Boolean, onExp
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            TextButton(onClick = onExport, enabled = !busy, contentPadding = PaddingValues(0.dp)) {
-                Icon(Icons.Outlined.FileDownload, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(FolioSpace.small))
-                Text(stringResource(R.string.shell_action_export_notes))
-            }
+            NotesExportButton(export, enabled = !busy)
             annotations.take(100).forEach { note ->
                 Text(
                     note.chapter.ifBlank {

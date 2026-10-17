@@ -717,28 +717,74 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+    /** Writes the book's highlights and notes as Markdown to a file made in the save dialog. */
     fun exportHighlights(book: Book, uri: Uri) =
         run(msg(R.string.msg_library_exporting_highlights)) {
-            val values =
-                SyncAnnotations.live(dao.allAnnotations().filter { it.bookId == book.id })
-                    .sortedBy { it.date }
-                    .map {
-                        ReaderAnnotation(
-                            it.id,
-                            it.text,
-                            it.note,
-                            it.chapter,
-                            it.date,
-                            it.position,
-                            it.endPosition,
-                            it.kind,
-                        )
-                    }
-            val text = KoReaderData.markdown(book.title, book.authorLabel, values)
-            app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) }
-                ?: error(msg(R.string.msg_write_failed))
+            notesExport.write(uri, notesExport.file(book.id))
             msg(R.string.msg_library_highlights_exported)
         }
+
+    /** The Markdown export of a book's highlights and notes (M11 C). */
+    val notesExport = NotesExport(app, dao)
+
+    /** The remembered export folder's name ("" without one), or null when none is remembered. */
+    val notesFolder = MutableStateFlow(notesExport.folderName())
+
+    /** Reads the remembered folder again: the reader may have picked one meanwhile. */
+    fun refreshNotesFolder() {
+        notesFolder.value = notesExport.folderName()
+    }
+
+    /** Shares the book's notes as a Markdown file through the share sheet. */
+    fun shareNotes(book: Book) =
+        run(msg(R.string.notes_export_preparing)) {
+            val chooser =
+                notesExport
+                    .shareIntent(notesExport.file(book.id), book.title)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            withContext(Dispatchers.Main) {
+                try {
+                    app.startActivity(chooser)
+                } catch (_: android.content.ActivityNotFoundException) {
+                    error(msg(R.string.msg_library_no_app))
+                }
+            }
+            msg(R.string.msg_library_choose_app)
+        }
+
+    /** Keeps the folder picked for exports and saves the book's notes there. */
+    fun chooseNotesFolder(tree: Uri, book: Book) =
+        run(msg(R.string.notes_export_saving)) {
+            val name =
+                notesExport.remember(tree) ?: error(msg(R.string.notes_export_folder_refused))
+            notesFolder.value = name
+            saveNotesNow(book)
+        }
+
+    /**
+     * Saves the book's notes to the remembered folder, replacing its earlier export there, and says
+     * where they went.
+     */
+    fun saveNotes(book: Book) = run(msg(R.string.notes_export_saving)) { saveNotesNow(book) }
+
+    private suspend fun saveNotesNow(book: Book): String {
+        val tree =
+            notesExport.folder()
+                ?: run {
+                    notesExport.forget()
+                    notesFolder.value = null
+                    error(msg(R.string.notes_export_folder_lost))
+                }
+        val where =
+            try {
+                notesExport.save(tree, notesExport.file(book.id), book.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                error(msg(R.string.notes_export_folder_failed))
+            }
+        return msg(R.string.notes_export_saved, where)
+    }
 
     private companion object {
         const val REFRESH_INTERVAL_MS = 30_000L

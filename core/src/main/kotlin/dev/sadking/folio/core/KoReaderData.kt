@@ -225,20 +225,4 @@ object KoReaderData {
 
     fun digest(bytes: ByteArray) =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-
-    fun markdown(title: String, authors: String, annotations: List<ReaderAnnotation>): String {
-        fun plain(s: String) = s.replace("\r", "").replace(Regex("[\\[\\]#*_`<>]"), "")
-        return buildString {
-            append("# ${plain(title)}\n\n${plain(authors)}\n\n")
-            annotations.forEach { a ->
-                append(
-                    "## ${plain(a.chapter).ifBlank { if(a.kind=="bookmark") "Bookmark" else "Highlight" }}\n\n"
-                )
-                a.text.lines().forEach { append("> ${plain(it)}\n") }
-                if (a.note.isNotBlank()) append("\n${plain(a.note)}\n")
-                if (a.date.isNotBlank()) append("\n${plain(a.date)}\n")
-                append("\n")
-            }
-        }
-    }
 }

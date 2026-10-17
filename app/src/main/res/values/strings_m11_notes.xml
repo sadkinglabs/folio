@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M11 part C: the Highlights & notes list in the reader, and the Markdown export. -->
+    <string name="contents_notes_tab">Highlights &amp; notes</string>
+    <string name="notes_filter_all">All</string>
+    <string name="notes_filter_highlights">Highlights</string>
+    <string name="notes_filter_notes">Notes</string>
+    <string name="notes_filter_bookmarks">Bookmarks</string>
+    <string name="notes_filter_count">%1$s · %2$d</string>
+    <string name="notes_search">Search highlights and notes</string>
+    <string name="notes_search_clear">Clear search</string>
+    <string name="notes_empty">Nothing here yet. Select text to highlight it or add a note. The ribbon button bookmarks a page.</string>
+    <string name="notes_empty_highlights">No highlights yet. Select text and choose Highlight.</string>
+    <string name="notes_empty_notes">No notes yet. Select text and choose Add note.</string>
+    <string name="notes_no_match">Nothing matches your search.</string>
+    <string name="notes_options">Options</string>
+    <string name="notes_bookmark">Bookmark</string>
+    <string name="notes_rename">Rename</string>
+    <string name="notes_jump_failed">This highlight can\'t be found in the book. It stays in the list.</string>
+
+    <string name="notes_export">Export</string>
+    <string name="notes_export_share">Share as Markdown</string>
+    <string name="notes_export_save_to">Save to %1$s</string>
+    <string name="notes_export_save_chosen">Save to your folder</string>
+    <string name="notes_export_save_folder">Save to a folder…</string>
+    <string name="notes_export_change_folder">Choose another folder…</string>
+    <string name="notes_export_preparing">Preparing the notes…</string>
+    <string name="notes_export_saving">Saving the notes…</string>
+    <string name="notes_export_saved">Saved to %1$s</string>
+    <string name="notes_export_failed">Couldn\'t export the notes. Try again.</string>
+    <string name="notes_export_folder_failed">Couldn\'t save to that folder. Choose it again or pick another.</string>
+    <string name="notes_export_folder_lost">Librillo can no longer reach that folder. Choose it again.</string>
+    <string name="notes_export_folder_refused">Android didn\'t let Librillo keep that folder. Pick another.</string>
+    <!-- Words inside the exported Markdown file. -->
+    <string name="notes_export_no_chapter">Other highlights</string>
+    <string name="notes_export_bookmarks">Bookmarks</string>
+    <string name="notes_export_empty">No highlights or notes yet.</string>
+</resources>

@@ -127,17 +127,16 @@ class ReaderComfortUiTest {
                 ReaderContentsSheet(
                     emptyList(),
                     -1,
-                    marks,
+                    noteItems(emptyList(), marks.map(::placed), emptyList()),
                     {},
-                    { opened += it.id },
-                    {},
-                    onRename = { asked += it.id },
+                    NotesActions(onOpen = { opened += it.id }, onRename = { asked += it.id }),
                     initialTab = 1,
                 )
             }
         }
         compose.onNodeWithText("Chapter one · 4%").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Rename bookmark").performClick()
+        compose.onNodeWithContentDescription("Options").performClick()
+        compose.onNodeWithText("Rename").performClick()
         assertEquals(listOf("b1"), asked)
         // Rename does not also open the bookmark.
         assertTrue(opened.isEmpty())

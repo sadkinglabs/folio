@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.unit.DpSize
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -42,6 +43,7 @@ import dev.sadking.folio.R
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
+import dev.sadking.folio.reader.ExportActions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -339,6 +341,17 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                             .firstOrNull { it.id == exportBookId }
                             ?.let { model.exportHighlights(it, uri) }
                 }
+            val notesFolder by model.notesFolder.collectAsState()
+            LifecycleResumeEffect(Unit) {
+                model.refreshNotesFolder()
+                onPauseOrDispose {}
+            }
+            val notesFolderPicker =
+                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree
+                    ->
+                    val book = books.firstOrNull { it.id == exportBookId }
+                    if (tree != null && book != null) model.chooseNotesFolder(tree, book)
+                }
             val phoneFolderPicker =
                 rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri
                     ->
@@ -604,7 +617,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                                     enabled = !op.busy,
                                                 ) {
                                                     exportBookId = book.id
-                                                    markdownPicker.launch("Librillo-${book.id}.md")
+                                                    markdownPicker.launch(notesFileName(book))
                                                 }
                                         }
                                     },
@@ -744,10 +757,21 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                 model.clearLookup()
                                 showLookup = true
                             },
-                            onExport = {
-                                exportBookId = book.id
-                                markdownPicker.launch("Librillo-${book.id}.md")
-                            },
+                            notesExport =
+                                ExportActions(
+                                    folder = notesFolder,
+                                    onShare = { model.shareNotes(book) },
+                                    onSave = {
+                                        if (notesFolder == null) {
+                                            exportBookId = book.id
+                                            notesFolderPicker.launch(null)
+                                        } else model.saveNotes(book)
+                                    },
+                                    onChooseFolder = {
+                                        exportBookId = book.id
+                                        notesFolderPicker.launch(model.notesExport.folder())
+                                    },
+                                ),
                             onNext = { nav.open(Route.Book(it.id)) },
                         )
                 } else if (catalogue != null) {
@@ -1475,7 +1499,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                             BookAction.STATUS -> statusEntryId = actionBook.id
                             BookAction.EXPORT_NOTES -> {
                                 exportBookId = actionBook.id
-                                markdownPicker.launch("Librillo-${actionBook.id}.md")
+                                markdownPicker.launch(notesFileName(actionBook))
                             }
                             BookAction.ATTACH -> {
                                 attachWishId = actionBook.id

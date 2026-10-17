@@ -83,24 +83,6 @@ class ReadingDataTest {
     }
 
     @Test
-    fun markdownMultilineQuotesAndNotes() {
-        val a =
-            ReaderAnnotation(
-                "id",
-                "line one\nline two",
-                "my note",
-                "Chapter",
-                "2026-10-11",
-                "x",
-                "y",
-                "highlight",
-            )
-        val m = KoReaderData.markdown("Title", "Author", listOf(a))
-        assertTrue(m.contains("> line one\n> line two"))
-        assertTrue(m.contains("my note"))
-    }
-
-    @Test
     fun stableSidecarRead() {
         val remote = FakeDevice()
         remote.files["folder/book.sdr/metadata.epub.lua"] = fixture.toByteArray()

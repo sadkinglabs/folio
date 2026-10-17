@@ -22,8 +22,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -118,6 +120,12 @@ class ReaderActivity : FragmentActivity() {
     /** The search decorations last drawn on the page; read by the instrumented test. */
     internal var appliedSearch: List<Decoration> = emptyList()
         private set
+
+    /**
+     * Where each highlight was found on its page, by id, once its chapter has been shown: the list
+     * jumps straight there. Others are found from their KOReader pointer.
+     */
+    private var placedHighlights: Map<String, Locator> = emptyMap()
 
     /** The highlight or note the owner tapped, shown in its sheet; it closes once deleted. */
     private var shownHighlightId by mutableStateOf<String?>(null)
@@ -577,19 +585,20 @@ class ReaderActivity : FragmentActivity() {
 
     /**
      * Moves to the passage a KOReader pointer names, then saves it as the phone's place. Shared by
-     * the SSH handoff and Folio Link. On failure the page stays where it was.
+     * the SSH handoff, Folio Link and the Highlights & notes list. On failure the page stays where
+     * it was and [failed] (or a message about the e-reader's place) says so.
      */
-    private suspend fun resumeAt(pointer: String): Boolean {
+    private suspend fun resumeAt(pointer: String, failed: String? = null): Boolean {
         val nav =
             epubNavigator
                 ?: run {
-                    navigationError = getString(R.string.reader_m9_devices_epub_only)
+                    navigationError = failed ?: getString(R.string.reader_m9_devices_epub_only)
                     return false
                 }
         val publication = model.publication ?: return false
         val index = xpointerSpineIndex(pointer, model.spine.size)
         if (index == null) {
-            navigationError = getString(R.string.reader_kindle_unsupported)
+            navigationError = failed ?: getString(R.string.reader_kindle_unsupported)
             return false
         }
         // KOReader numbers every spine item; Readium's reading order may omit non-linear ones.
@@ -598,7 +607,7 @@ class ReaderActivity : FragmentActivity() {
                 resourcePath(it.url().toString()) == model.spine[index]
             }
         if (link == null) {
-            navigationError = getString(R.string.reader_kindle_not_in_reading_order)
+            navigationError = failed ?: getString(R.string.reader_kindle_not_in_reading_order)
             return false
         }
         positionNavigation = true
@@ -611,7 +620,7 @@ class ReaderActivity : FragmentActivity() {
                     link.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.XHTML,
                 )
             if (!nav.go(locator, animated = false)) {
-                navigationError = getString(R.string.reader_kindle_chapter_failed)
+                navigationError = failed ?: getString(R.string.reader_kindle_chapter_failed)
                 return false
             }
             // Wait until Readium shows the chapter before asking its page: a script sent while the
@@ -632,7 +641,7 @@ class ReaderActivity : FragmentActivity() {
             val resolved = serialized?.takeIf { it != "null" }?.let { JSONObject(it) }
             if (resolved == null) {
                 nav.go(previous, animated = false)
-                navigationError = getString(R.string.reader_kindle_anchor_failed)
+                navigationError = failed ?: getString(R.string.reader_kindle_anchor_failed)
                 return false
             }
             val target =
@@ -645,7 +654,7 @@ class ReaderActivity : FragmentActivity() {
                 )
             if (!nav.go(target, animated = false)) {
                 nav.go(previous, animated = false)
-                navigationError = getString(R.string.reader_kindle_passage_failed)
+                navigationError = failed ?: getString(R.string.reader_kindle_passage_failed)
                 return false
             }
             nav.evaluateJavascript("true")
@@ -724,6 +733,7 @@ class ReaderActivity : FragmentActivity() {
      */
     private suspend fun showHighlights(epub: EpubNavigatorFragment) {
         val placed = mutableMapOf<String, Locator>()
+        placedHighlights = placed
         val tried = mutableSetOf<String>()
         var applied = emptyList<Decoration>()
         combine(
@@ -844,6 +854,50 @@ class ReaderActivity : FragmentActivity() {
         navigator?.go(hit.locator, animated = false)
     }
 
+    /**
+     * Opens a row of Highlights & notes: the sheet closes and the page moves there. A highlight
+     * goes to where it is drawn when its chapter has been shown, else to its KOReader pointer, as
+     * an e-reader's place does; a phone bookmark to its stored place.
+     */
+    private fun openNote(item: NoteItem) {
+        model.speed.interrupt()
+        model.panel = null
+        item.mark?.let { mark ->
+            runCatching { Locator.fromJSON(JSONObject(mark.locator)) }
+                .getOrNull()
+                ?.let { navigator?.go(it, animated = false) }
+            return
+        }
+        val row = item.annotation ?: return
+        val placed = placedHighlights[row.id]
+        if (placed != null) {
+            navigator?.go(placed, animated = false)
+            return
+        }
+        lifecycleScope.launch { resumeAt(row.position, getString(R.string.notes_jump_failed)) }
+    }
+
+    /** Shares this book's notes as a Markdown file through the share sheet. */
+    private fun shareNotes() {
+        val book = model.book ?: return
+        lifecycleScope.launch {
+            val chooser =
+                try {
+                    model.notesExport.shareIntent(model.notesExport.file(book.id), book.title)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    navigationError = getString(R.string.notes_export_failed)
+                    return@launch
+                }
+            try {
+                startActivity(chooser)
+            } catch (_: android.content.ActivityNotFoundException) {
+                navigationError = getString(R.string.notes_export_failed)
+            }
+        }
+    }
+
     /** Closes the open sheet; closing the search also takes its highlight off the page. */
     private fun closePanel() {
         if (model.panel == ReaderPanel.SEARCH) model.shownHit = null
@@ -888,6 +942,13 @@ class ReaderActivity : FragmentActivity() {
         var panel by model::panel
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
+        // Undo and messages show over the Contents sheet while it is open, where the owner is.
+        val sheetSnackbar = remember { SnackbarHostState() }
+        val host = { if (model.panel == ReaderPanel.CONTENTS) sheetSnackbar else snackbar }
+        // Closing the sheet ends an offer shown on it, rather than leaving it for the next time.
+        LaunchedEffect(panel) {
+            if (panel != ReaderPanel.CONTENTS) sheetSnackbar.currentSnackbarData?.dismiss()
+        }
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
@@ -931,40 +992,34 @@ class ReaderActivity : FragmentActivity() {
         LaunchedEffect(brightness) {
             window.attributes = window.attributes.also { it.screenBrightness = brightness }
         }
-        val removedMarks = model.removedMarks
-        LaunchedEffect(removedMarks) {
-            if (removedMarks == null) return@LaunchedEffect
-            val result =
-                snackbar.showSnackbar(
-                    getString(R.string.reader_bookmark_removed),
-                    actionLabel = getString(R.string.action_undo),
-                    duration = SnackbarDuration.Short,
-                )
-            if (result == SnackbarResult.ActionPerformed) model.undoBookmarkRemoval()
-            else model.settleBookmarkRemoval()
-        }
+        UndoOffer(
+            model.removedMarks,
+            stringResource(R.string.reader_bookmark_removed),
+            stringResource(R.string.action_undo),
+            host,
+            SnackbarDuration.Short,
+            onUndo = { model.undoBookmarkRemoval() },
+            onSettled = model::settleBookmarkRemoval,
+        )
         BackHandler { if (panel != null) closePanel() else closeReader() }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
             if (text != null) {
-                snackbar.showSnackbar(text, duration = SnackbarDuration.Long)
+                host().showSnackbar(text, duration = SnackbarDuration.Long)
                 navigationError = null
                 model.dismissMessage()
             }
         }
         // Undo after a highlight is deleted.
-        val deleted = model.deletedHighlight
-        LaunchedEffect(deleted) {
-            if (deleted == null) return@LaunchedEffect
-            val result =
-                snackbar.showSnackbar(
-                    getString(R.string.reader_highlight_deleted),
-                    actionLabel = getString(R.string.reader_highlight_undo),
-                    duration = SnackbarDuration.Long,
-                )
-            if (result == SnackbarResult.ActionPerformed) model.restoreHighlight(deleted.id)
-            else model.forgetDeletedHighlight()
-        }
+        UndoOffer(
+            model.deletedHighlight,
+            stringResource(R.string.reader_highlight_deleted),
+            stringResource(R.string.reader_highlight_undo),
+            host,
+            SnackbarDuration.Long,
+            onUndo = { model.restoreHighlight(it.id) },
+            onSettled = model::forgetDeletedHighlight,
+        )
         val naturalProblem = listen.naturalProblem
         LaunchedEffect(naturalProblem) {
             when (naturalProblem) {
@@ -1271,7 +1326,7 @@ class ReaderActivity : FragmentActivity() {
                                     onChange = model::comfort,
                                 )
                             }
-                    ReaderPanel.CONTENTS -> ContentsPanel { panel = null }
+                    ReaderPanel.CONTENTS -> ContentsPanel(sheetSnackbar)
                     ReaderPanel.SEARCH ->
                         if (model.kind == ReaderKind.EPUB)
                             ReaderSearchSheet(
@@ -1441,8 +1496,12 @@ class ReaderActivity : FragmentActivity() {
         )
     }
 
+    /**
+     * The Contents sheet: the chapters, and Highlights & notes with its export. Undo and messages
+     * show in [snackbar], over the sheet.
+     */
     @Composable
-    private fun ContentsPanel(close: () -> Unit) {
+    private fun ContentsPanel(snackbar: SnackbarHostState) {
         val links = model.publication?.tableOfContents.orEmpty()
         val flat = remember(links) { flattenContents(links) }
         val entries =
@@ -1452,34 +1511,60 @@ class ReaderActivity : FragmentActivity() {
             remember(flat, currentPath) {
                 flat.indexOfLast { (link, _) -> resourcePath(link.url().toString()) == currentPath }
             }
-        val bookmarks = remember(model.marks) { model.marks.map { it.mark } }
+        val notes =
+            remember(model.highlights, model.marks, model.spine) {
+                noteItems(model.highlights, model.marks, model.spine)
+            }
         var renaming by rememberSaveable { mutableStateOf<String?>(null) }
-        ReaderContentsSheet(
-            entries,
-            current,
-            bookmarks,
-            onEntry = { index ->
-                model.speed.interrupt()
-                flat.getOrNull(index)?.let { (link, _) -> navigator?.go(link, animated = false) }
-                close()
-            },
-            onBookmark = {
-                model.speed.interrupt()
-                val loc = Locator.fromJSON(JSONObject(it.locator))
-                if (loc != null) navigator?.go(loc, animated = false)
-                close()
-            },
-            onDelete = { model.deleteBookmark(it.id) },
-            onRename = { renaming = it.id },
-        )
-        bookmarks
-            .firstOrNull { it.id == renaming }
-            ?.let { mark ->
+        val folderPicker =
+            rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+                if (tree != null) model.chooseNotesFolder(tree)
+            }
+        val pickFolder = { folderPicker.launch(model.notesExport.folder()) }
+        Box {
+            ReaderContentsSheet(
+                entries,
+                current,
+                notes,
+                onEntry = { index ->
+                    model.speed.interrupt()
+                    flat.getOrNull(index)?.let { (link, _) ->
+                        navigator?.go(link, animated = false)
+                    }
+                    model.panel = null
+                },
+                actions =
+                    NotesActions(
+                        onOpen = ::openNote,
+                        onColour = { row, colour -> model.recolourHighlight(row.id, colour) },
+                        onNote = { editingNoteId = it.id },
+                        onCopy = { copy(highlightCopyText(it)) },
+                        onDelete = { item ->
+                            if (item.mark != null) model.deleteBookmark(item.id)
+                            else model.deleteHighlight(item.id)
+                        },
+                        onRename = { renaming = it.id },
+                    ),
+                export =
+                    ExportActions(
+                        folder = model.notesFolder,
+                        onShare = ::shareNotes,
+                        onSave = {
+                            if (model.notesFolder == null) pickFolder() else model.saveNotes()
+                        },
+                        onChooseFolder = pickFolder,
+                    ),
+            )
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        }
+        model.marks
+            .firstOrNull { it.mark.id == renaming }
+            ?.let { placed ->
                 RenameBookmarkDialog(
-                    mark.title,
+                    placed.mark.title,
                     onSave = {
                         renaming = null
-                        model.renameBookmark(mark.id, it)
+                        model.renameBookmark(placed.mark.id, it)
                     },
                     onDismiss = { renaming = null },
                 )

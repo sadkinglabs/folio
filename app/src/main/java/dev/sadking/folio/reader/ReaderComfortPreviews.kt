@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.ui.FolioTheme
 
 /** Previews of M11's reading comfort and bookmarks, over the same stand-in page as the reader's. */
@@ -91,31 +90,6 @@ internal fun ReaderBookmarkedPaperPreview() {
                 BookmarkRibbon(false, Modifier.align(Alignment.TopEnd).padding(end = 20.dp))
             }
             WarmthOverlay(1f, Modifier.matchParentSize())
-        }
-    }
-}
-
-private val renamedBookmarks =
-    listOf(
-        PhoneBookmark("b1", "sample1", "", "{}", "Where Ada starts pruning", 0),
-        PhoneBookmark("b2", "sample1", "", "{}", "Chapter three · 31%", 0),
-    )
-
-/** The Bookmarks tab, each row with Rename and Delete. */
-@Preview(name = "Reader bookmarks · light", widthDp = 412, heightDp = 420)
-@Composable
-internal fun ReaderBookmarksPreview() {
-    FolioTheme(dynamic = false) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReaderContentsSheet(
-                emptyList(),
-                -1,
-                renamedBookmarks,
-                {},
-                {},
-                {},
-                initialTab = 1,
-            )
         }
     }
 }

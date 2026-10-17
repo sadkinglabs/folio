@@ -232,7 +232,11 @@ class ScreenshotTest {
     fun readerBookmarkedPaper() =
         shoot("reader-bookmarked-paper") { ReaderBookmarkedPaperPreview() }
 
-    @Test fun readerBookmarks() = shoot("reader-bookmarks") { ReaderBookmarksPreview() }
+    @Test fun readerBookmarks() = shoot("reader-bookmarks") { ReaderNotesBookmarksPreview() }
+
+    @Test fun readerNotes() = shoot("reader-notes") { ReaderNotesPreview() }
+
+    @Test fun readerNotesEmpty() = shoot("reader-notes-empty") { ReaderNotesEmptyPreview() }
 
     @Test fun readerHighlight() = shoot("reader-highlight") { ReaderHighlightPreview() }
 

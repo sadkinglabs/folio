@@ -33,9 +33,7 @@ import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Pause
@@ -68,7 +66,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
 import dev.sadking.folio.R
-import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.ui.*
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -715,90 +712,75 @@ internal fun SheetSwitch(
 internal data class ContentsEntry(val title: String?, val depth: Int)
 
 /**
- * The Contents sheet: a Contents tab with the current chapter in `primary` behind a dot, and a
- * Bookmarks tab whose rows swipe away to delete.
+ * The Contents sheet, with two tabs. Contents: the chapters, the current one in `primary` behind a
+ * dot. Highlights & notes ([ReaderNotesList]): everything the owner marked in the book, bookmarks
+ * included, with filter, search, jump and export. Bookmarks live there rather than in a tab of
+ * their own, so each mark is in one place and its chip counts it.
  */
 @Composable
 internal fun ReaderContentsSheet(
     entries: List<ContentsEntry>,
     current: Int,
-    bookmarks: List<PhoneBookmark>,
+    notes: List<NoteItem>,
     onEntry: (Int) -> Unit,
-    onBookmark: (PhoneBookmark) -> Unit,
-    onDelete: (PhoneBookmark) -> Unit,
-    /** Rename was tapped on a bookmark; the reader asks for the new name. */
-    onRename: (PhoneBookmark) -> Unit = {},
-    /** 0 opens on Contents, 1 on Bookmarks. */
+    actions: NotesActions = NotesActions(),
+    export: ExportActions = ExportActions(),
+    /** 0 opens on Contents, 1 on Highlights & notes. */
     initialTab: Int = 0,
+    /** The filter Highlights & notes opens with; for previews and tests. */
+    initialFilter: NotesFilter = NotesFilter.ALL,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     val contentsState =
         rememberLazyListState(initialFirstVisibleItemIndex = current.coerceAtLeast(0))
-    val bookmarksState = rememberLazyListState()
     val currentLabel = stringResource(R.string.contents_current)
     Column(Modifier.testTag(READER_CONTENTS_SHEET_TAG)) {
         PrimaryTabRow(tab, containerColor = Color.Transparent) {
             Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.contents_tab)) })
-            Tab(
-                tab == 1,
-                { tab = 1 },
-                text = { Text(stringResource(R.string.contents_bookmarks_tab, bookmarks.size)) },
-            )
+            Tab(tab == 1, { tab = 1 }, text = { Text(stringResource(R.string.contents_notes_tab)) })
+        }
+        if (tab == 1) {
+            ReaderNotesList(notes, actions, export, initialFilter)
+            return@Column
         }
         LazyColumn(
             Modifier.fillMaxWidth().heightIn(max = 520.dp),
-            state = if (tab == 0) contentsState else bookmarksState,
+            state = contentsState,
             contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
         ) {
-            if (tab == 0) {
-                if (entries.isEmpty()) item { SheetNote(stringResource(R.string.contents_empty)) }
-                items(entries.size) { index ->
-                    val entry = entries[index]
-                    val isCurrent = index == current
-                    val colour =
-                        if (isCurrent) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(role = Role.Button) { onEntry(index) }
-                            .semantics {
-                                selected = isCurrent
-                                if (isCurrent) stateDescription = currentLabel
-                            }
-                            .padding(
-                                start = FolioSpace.section + (entry.depth * 16).dp,
-                                end = FolioSpace.section,
-                                top = 12.dp,
-                                bottom = 12.dp,
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
-                    ) {
-                        Box(
-                            Modifier.size(8.dp)
-                                .background(
-                                    if (isCurrent) colour else Color.Transparent,
-                                    CircleShape,
-                                )
-                        )
-                        Text(
-                            entry.title ?: stringResource(R.string.contents_chapter_fallback),
-                            Modifier.weight(1f),
-                            color = colour,
-                            fontWeight = if (isCurrent) FontWeight.SemiBold else null,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                }
-            } else {
-                if (bookmarks.isEmpty())
-                    item { SheetNote(stringResource(R.string.bookmarks_empty)) }
-                items(bookmarks, key = { it.id }) { mark ->
-                    BookmarkRow(
-                        mark,
-                        { onBookmark(mark) },
-                        { onDelete(mark) },
-                        { onRename(mark) },
+            if (entries.isEmpty()) item { SheetNote(stringResource(R.string.contents_empty)) }
+            items(entries.size) { index ->
+                val entry = entries[index]
+                val isCurrent = index == current
+                val colour =
+                    if (isCurrent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(role = Role.Button) { onEntry(index) }
+                        .semantics {
+                            selected = isCurrent
+                            if (isCurrent) stateDescription = currentLabel
+                        }
+                        .padding(
+                            start = FolioSpace.section + (entry.depth * 16).dp,
+                            end = FolioSpace.section,
+                            top = 12.dp,
+                            bottom = 12.dp,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                ) {
+                    Box(
+                        Modifier.size(8.dp)
+                            .background(if (isCurrent) colour else Color.Transparent, CircleShape)
+                    )
+                    Text(
+                        entry.title ?: stringResource(R.string.contents_chapter_fallback),
+                        Modifier.weight(1f),
+                        color = colour,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else null,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
@@ -814,58 +796,6 @@ private fun SheetNote(text: String) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-/** A bookmark: tap to go there, the pencil to rename it, swipe left (or the trash) to delete it. */
-@Composable
-private fun BookmarkRow(
-    mark: PhoneBookmark,
-    onOpen: () -> Unit,
-    onDelete: () -> Unit,
-    onRename: () -> Unit,
-) {
-    val dismiss = rememberSwipeToDismissBoxState()
-    LaunchedEffect(dismiss.currentValue) {
-        if (dismiss.currentValue == SwipeToDismissBoxValue.EndToStart) onDelete()
-    }
-    SwipeToDismissBox(
-        dismiss,
-        backgroundContent = {
-            Box(
-                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    Icons.Outlined.DeleteOutline,
-                    null,
-                    Modifier.padding(horizontal = FolioSpace.section),
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            }
-        },
-        enableDismissFromStartToEnd = false,
-    ) {
-        Row(
-            Modifier.fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable(role = Role.Button, onClick = onOpen)
-                .padding(start = FolioSpace.section, end = FolioSpace.small),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                mark.title,
-                Modifier.weight(1f).padding(vertical = 12.dp),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            val rename = stringResource(R.string.bookmark_rename)
-            Tooltipped(rename) {
-                IconButton(onClick = onRename) { Icon(Icons.Outlined.Edit, rename) }
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Outlined.DeleteOutline, stringResource(R.string.bookmark_delete))
-            }
-        }
-    }
 }
 
 /**

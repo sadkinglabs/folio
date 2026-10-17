@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import dev.sadking.folio.core.dictionary.DictionaryEntry
 import dev.sadking.folio.core.dictionary.PartOfSpeech
 import dev.sadking.folio.core.dictionary.Sense
-import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.reader.dictionary.DefineSheet
 import dev.sadking.folio.reader.dictionary.DictionaryState
 import dev.sadking.folio.reader.narration.BenchmarkReport
@@ -137,18 +136,12 @@ private val sampleContents =
         ContentsEntry("Afterword", 0),
     )
 
-private val sampleBookmarks =
-    listOf(
-        PhoneBookmark("b1", "sample1", "", "{}", "Chapter one · 4%", 0),
-        PhoneBookmark("b2", "sample1", "", "{}", "Chapter three · 31%", 0),
-    )
-
 @Preview(name = "Reader contents · light", widthDp = 412, heightDp = 560)
 @Composable
 internal fun ReaderContentsPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            ReaderContentsSheet(sampleContents, 3, sampleBookmarks, {}, {}, {})
+            ReaderContentsSheet(sampleContents, 3, sampleNotes, {})
         }
     }
 }
