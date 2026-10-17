@@ -47,6 +47,7 @@ class LibrarySearchTest {
         assertEquals(5, withRecent(listOf("1", "2", "3", "4", "5"), "6").size)
     }
 
+    @OptIn(ExperimentalTestApi::class)
     @Test
     fun aSearchWithNoMatchOffersHardcoverAndOpeningAMatchKeepsTheSearch() {
         var hardcover = ""
@@ -64,6 +65,8 @@ class LibrarySearchTest {
         compose.onNodeWithTag(LIBRARY_SEARCH_TAG).performClick()
         val field = hasSetTextAction() and hasAnyAncestor(hasTestTag(LIBRARY_SEARCH_BAR_TAG))
         compose.onNode(field).performTextInput("Dune")
+        // The suggestion row settles a frame after typing on a busy machine: wait for it.
+        compose.waitUntilExactlyOneExists(hasText("Search Hardcover for “Dune”"), 5_000)
         compose.onNodeWithText("Search Hardcover for “Dune”").performClick()
         compose.runOnIdle { assertEquals("Dune", hardcover) }
 
