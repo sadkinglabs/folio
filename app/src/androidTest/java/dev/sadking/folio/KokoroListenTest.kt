@@ -186,48 +186,57 @@ class KokoroListenTest {
     }
 
     /**
-     * Volume up and down every 0.7 s for about 6 s, through the reader's window like the hardware
-     * keys, so the system volume panel stays out. Fails, with a timeline and the audio focus stack,
-     * if reading pauses or the sentence being read stops moving on.
+     * The owner's bug: while the system volume panel was out, the voice went on but the highlight
+     * on the page stayed on one sentence until the panel closed. Volume up and down every 0.7 s for
+     * about 6 s keeps the panel out (and the reader's window without focus). The sentence drawn on
+     * the page must keep up with the one being read: never more than 2.5 s behind. Fails with a
+     * timeline, the engine's per-sentence timings and the audio focus stack.
      */
     private fun volumeKeysKeepReading(scenario: ActivityScenario<ReaderActivity>) {
         val instrumentation =
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-        fun sample(): Pair<ListenState, String?> {
-            var state = ListenState.OFF
-            var spoken: String? = null
+        fun key(locator: org.readium.r2.shared.publication.Locator?) = locator?.let {
+            it.href.toString() + "#" + it.text.highlight.orEmpty().hashCode()
+        }
+        data class Sample(val state: ListenState, val spoken: String?, val drawn: String?)
+        fun sample(): Sample {
+            var result = Sample(ListenState.OFF, null, null)
             scenario.onActivity { activity ->
                 val listen = ViewModelProvider(activity)[ReaderViewModel::class.java].listen
-                state = listen.state
-                spoken = listen.utterance?.let { it.href.toString() + it.text.highlight.orEmpty() }
+                result = Sample(listen.state, key(listen.utterance), key(activity.appliedListen))
             }
-            return state to spoken
+            return result
         }
         // Wait for real playback first, so a slow start is not taken for the bug.
-        compose.waitUntil(120_000) { sample().first == ListenState.PLAYING }
+        compose.waitUntil(120_000) { sample().state == ListenState.PLAYING }
         val timeline = StringBuilder()
         val start = System.currentTimeMillis()
-        val sentences = mutableSetOf<String?>()
-        var paused = false
+        val spokenSeen = mutableSetOf<String?>()
+        var behindSince: Long? = null
+        var worstBehindMs = 0L
+        var nextKeyAt = 0L
         var press = 0
-        while (System.currentTimeMillis() - start < 6_000) {
-            val key =
-                if (press % 2 == 0) android.view.KeyEvent.KEYCODE_VOLUME_UP
-                else android.view.KeyEvent.KEYCODE_VOLUME_DOWN
-            instrumentation.sendKeyDownUpSync(key)
-            press++
-            Thread.sleep(700)
-            val (state, spoken) = sample()
-            sentences += spoken
-            if (state == ListenState.PAUSED) paused = true
+        while (System.currentTimeMillis() - start < 7_000) {
+            val now = System.currentTimeMillis() - start
+            if (now >= nextKeyAt && now < 6_000) {
+                instrumentation.sendKeyDownUpSync(
+                    if (press % 2 == 0) android.view.KeyEvent.KEYCODE_VOLUME_UP
+                    else android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+                )
+                press++
+                nextKeyAt = now + 700
+            }
+            val s = sample()
+            spokenSeen += s.spoken
+            if (s.spoken != null && s.spoken != s.drawn) {
+                val since = behindSince ?: now.also { behindSince = it }
+                worstBehindMs = maxOf(worstBehindMs, now - since)
+            } else behindSince = null
             timeline.append(
-                "${System.currentTimeMillis() - start}ms $state ${spoken?.takeLast(40)}\n"
+                "${now}ms ${s.state} spoken=${s.spoken?.takeLast(14)} drawn=${s.drawn?.takeLast(14)}\n"
             )
+            Thread.sleep(200)
         }
-        // Then a little longer without keys, to see whether it recovers on its own.
-        Thread.sleep(3_000)
-        val after = sample()
-        timeline.append("after keys: ${after.first} ${after.second?.takeLast(40)}\n")
         val boundaries =
             File(app.filesDir, "narration/sessions")
                 .listFiles()
@@ -237,16 +246,18 @@ class KokoroListenTest {
                 ?.readLines()
                 ?.takeLast(30)
                 ?.joinToString("\n") ?: "no boundaries.csv"
-        val report = "$timeline\nBoundaries (last 30):\n$boundaries\nAudio focus:\n${audioFocus()}"
+        val report =
+            "worst highlight lag ${worstBehindMs}ms, sentences read ${spokenSeen.size}\n" +
+                "$timeline\nBoundaries (last 30):\n$boundaries\nAudio focus:\n${audioFocus()}"
         android.util.Log.i("KokoroListenTest", report)
         // CI publishes files/qa to the ci-screenshots branch, so the timeline is readable even
-        // when the check passes. Timings and states only, no book text beyond the fixture's.
+        // when the check passes. States, hashes and timings only.
         runCatching {
             File(app.filesDir, "qa").apply { mkdirs() }.resolve("volume-keys.txt").writeText(report)
         }
-        check(!paused) { "Reading paused while the volume keys were pressed.\n$report" }
-        check(sentences.size >= 2) {
-            "The sentence being read did not move on while the volume keys were pressed.\n$report"
+        check(spokenSeen.size >= 2) { "Reading did not move on during the test.\n$report" }
+        check(worstBehindMs <= 2_500) {
+            "The highlight fell ${worstBehindMs}ms behind the voice with the volume panel out.\n$report"
         }
     }
 

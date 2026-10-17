@@ -110,6 +110,11 @@ class ReaderActivity : FragmentActivity() {
     private var listenTint = android.graphics.Color.YELLOW
     /** The highlight colour for the search match on the page. */
     private var searchTint = android.graphics.Color.YELLOW
+    /** The read-aloud sentence last drawn on the page; read by the instrumented test. */
+    @Volatile
+    internal var appliedListen: Locator? = null
+        private set
+
     /** The search decorations last drawn on the page; read by the instrumented test. */
     internal var appliedSearch: List<Decoration> = emptyList()
         private set
@@ -435,6 +440,7 @@ class ReaderActivity : FragmentActivity() {
                                 ),
                                 "listen",
                             )
+                            appliedListen = spoken
                         }
                     }
             }
