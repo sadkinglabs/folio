@@ -489,7 +489,8 @@ class SyncRoutes(
      * The names in a version 2 body (A1), by digest: none when `books` is missing or null, and null
      * when the body is invalid. Invalid is more than [KoreaderSessions.MAX_PER_REQUEST] entries, a
      * digest that is not 32 lowercase hex characters, or a title or authors that are too long or
-     * have a control character. The title must not be empty; the authors may be.
+     * have a control character. An entry with an empty title is skipped, not refused: one untitled
+     * book on the e-reader must not stop every session from arriving.
      */
     private fun bookNames(body: JSONObject): Map<String, Pair<String, String>>? {
         if (!body.has("books") || body.isNull("books")) return emptyMap()
@@ -502,8 +503,8 @@ class SyncRoutes(
             val name = books.getJSONObject(digest)
             val title = name.getString("title")
             val authors = name.getString("authors")
-            if (title.isEmpty() || !isPlain(title) || !isPlain(authors)) return null
-            names[digest] = title to authors
+            if (!isPlain(title) || !isPlain(authors)) return null
+            if (title.isNotBlank()) names[digest] = title to authors
         }
         return names
     }

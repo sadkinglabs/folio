@@ -1369,6 +1369,22 @@ class SyncRoutesTest {
     }
 
     @Test
+    fun anUntitledBookIsSkippedAndTheRestIsKept() {
+        // One untitled book on the e-reader must not stop its sessions or the other names.
+        val books =
+            named().apply {
+                put(
+                    "fedcba9876543210fedcba9876543210",
+                    JSONObject().put("title", " ").put("authors", ""),
+                )
+            }
+        val response = postSessions(sessionsBody(JSONArray().put(sessionJson()), books = books))
+        assertEquals(200, response.status)
+        assertEquals(1, JSONObject(response.body).getInt("kept"))
+        assertEquals(mapOf(digest to ("Dune" to "Frank Herbert")), library.names["kindle-1"])
+    }
+
+    @Test
     fun aBodyWithoutBooksStillWorks() {
         val response = postSessions(sessionsBody(JSONArray().put(sessionJson())))
         assertEquals(200, response.status)
@@ -1384,7 +1400,6 @@ class SyncRoutesTest {
                 named(title = "x".repeat(SyncRoutes.MAX_NAME + 1)),
                 named(title = "Dune\u0007"),
                 named(authors = "Frank\nHerbert"),
-                named(title = ""),
             )
             .forEach {
                 val body = sessionsBody(JSONArray().put(sessionJson()), books = it)

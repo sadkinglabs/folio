@@ -770,7 +770,7 @@ This amends D1, D2, D3, D4, D8 and D9. Workers on those tasks must apply it.
   - **POST version 2** may carry an optional `"books"` object: `{ "<digest>": {"title": "<text>", "authors": "<text>"} }`.
     - At most `KoreaderSessions.MAX_PER_REQUEST` entries.
     - Each digest is 32 lowercase hex characters.
-    - Title and authors are strings of at most 512 characters each, with no control characters; authors may be empty.
+    - Title and authors are strings of at most 512 characters each, with no control characters; authors may be empty. An entry with a blank title is skipped, not refused, and the plugin never sends one.
     - Anything else gives `invalid()`.
     - Valid names go to `SyncLibrary.saveBookNames(ereaderId, names: Map<String, Pair<String, String>>)`, which defaults to a no-op.
   - **Tests:** GET answers `known`; names are saved; a bad digest, an over-long title and a control character each give 403; a body without `books` still works.
