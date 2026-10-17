@@ -344,4 +344,46 @@ class HardcoverClientTest {
         assertNull(HardcoverClient.retryAfterMs("Wed, 21 Oct 2026 07:28:00 GMT"))
         assertEquals(3_600_000L, HardcoverClient.retryAfterMs("999999"))
     }
+
+    private fun libraryRow(finished: String) =
+        """{"id":101,"status_id":3,"edition_id":null,"updated_at":null,"book":{"id":1,"title":"Dune","slug":"dune","release_year":1965,"cached_contributors":[],"cached_image":null},"user_book_reads":[],"finished":[$finished]}"""
+
+    private fun libraryPage(finished: String) =
+        HardcoverClient { _, _ ->
+                data("""{"user_books":[${libraryRow(finished)}]}""")
+            }
+            .libraryPage("token", 7, 0)
+            .single()
+            .reads
+
+    @Test
+    fun aPageWithTwoFinishedReadsParsesBoth() {
+        val reads =
+            libraryPage(
+                """{"id":5,"started_at":"2026-01-02","finished_at":"2026-02-03"},""" +
+                    """{"id":6,"started_at":null,"finished_at":"2026-09-30"}"""
+            )
+        assertEquals(
+            listOf(
+                HardcoverRead(
+                    5,
+                    java.time.LocalDate.of(2026, 1, 2),
+                    java.time.LocalDate.of(2026, 2, 3),
+                ),
+                HardcoverRead(6, null, java.time.LocalDate.of(2026, 9, 30)),
+            ),
+            reads,
+        )
+    }
+
+    @Test
+    fun aReadWithABadDateIsDropped() {
+        val reads =
+            libraryPage(
+                """{"id":5,"started_at":null,"finished_at":"soon"},""" +
+                    """{"id":6,"started_at":"2026-13-01","finished_at":"2026-02-03"},""" +
+                    """{"id":7,"started_at":null,"finished_at":"2026-02-04"}"""
+            )
+        assertEquals(listOf(7), reads.map { it.id })
+    }
 }

@@ -533,7 +533,7 @@ fun hardcoverItemState(
 1. Not connected → done. Read the token. `account()` (1 request): account id and privacy; save the id when it changed; clear `problem`.
 2. Round (at most 3 per run):
    1. **Pull** when enabled and `pullRequested`: clear the flag first, then read every page (`libraryPage` until a page has fewer than 50 rows; ids must rise; stop at 200 pages). Set `lastPullAt`.
-   2. **Matching from the owner's library** (no requests): `HardcoverMatcher.fromLibrary(pulled)`.
+   2. **Matching from the owner's library** (no requests): `HardcoverMatcher.fromLibrary(pulled)`. Right after it, the pull's finished reads (up to 10 per book, from the same request) are upserted to `hardcover_reads`; nothing is deleted.
    3. **Status sync**: `HardcoverStatusSync.sync(api, pulled, createEntries = matcher.pending().isEmpty())`. Set `lastSyncAt`. A pulled library is used for exactly one `sync` call; after any interruption the next attempt pulls again.
    4. **Progress** (when enabled): the outbox positions, as today (`outboxStep`, `recordObservation`). After status sync, so a book that just became Currently Reading is ready for it.
    5. **Send Finished** (explicit finishes, enabled or not), as today.

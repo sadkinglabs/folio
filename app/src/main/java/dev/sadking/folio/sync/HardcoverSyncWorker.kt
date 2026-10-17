@@ -10,6 +10,8 @@ import dev.sadking.folio.data.HardcoverAccount
 import dev.sadking.folio.data.HardcoverClient
 import dev.sadking.folio.data.HardcoverHttpException
 import dev.sadking.folio.data.HardcoverMatch
+import dev.sadking.folio.data.HardcoverReadRow
+import dev.sadking.folio.data.StatsDao
 import dev.sadking.folio.device.HardcoverSettings
 import java.io.IOException
 import java.time.LocalDate
@@ -40,6 +42,7 @@ class ClientHardcoverApi(
                 it.book.coverUrl,
                 it.pages,
                 it.editionId,
+                it.reads,
             )
         }
 
@@ -94,6 +97,9 @@ internal interface HardcoverRunSteps {
     suspend fun pending(): Int
 
     suspend fun fromLibrary(library: List<RemoteUserBook>): Int
+
+    /** Keeps the pulled books' finished reads. Adds and updates only; nothing is deleted. */
+    suspend fun saveReads(library: List<RemoteUserBook>)
 
     suspend fun syncStatuses(
         api: HardcoverApi,
@@ -198,6 +204,7 @@ internal class HardcoverRun(
                 val library = pull(api)
                 state.lastPullAt = now()
                 steps.fromLibrary(library)
+                steps.saveReads(library)
                 steps.syncStatuses(api, library, createEntries = steps.pending() == 0)
                 state.lastSyncAt = now()
             } catch (e: Exception) {
@@ -274,6 +281,14 @@ internal class AppRunSteps(private val app: FolioApplication) : HardcoverRunStep
     override suspend fun fromLibrary(library: List<RemoteUserBook>): Int =
         matcher.fromLibrary(library)
 
+    override suspend fun saveReads(library: List<RemoteUserBook>) =
+        saveHardcoverReads(
+            app.database.stats(),
+            settings.accountId,
+            library,
+            System.currentTimeMillis(),
+        )
+
     override suspend fun syncStatuses(
         api: HardcoverApi,
         library: List<RemoteUserBook>,
@@ -291,6 +306,31 @@ internal class AppRunSteps(private val app: FolioApplication) : HardcoverRunStep
         deadline: Long,
         progress: (done: Int, total: Int) -> Unit,
     ): Int = matcher.matchBatch(api, deadline, progress)
+}
+
+/**
+ * Writes each pulled book's finished reads to `hardcover_reads` (docs/HARDCOVER_SYNC.md D7). Rows
+ * are upserted by account and read id; a read missing from a later pull stays where it is.
+ */
+internal suspend fun saveHardcoverReads(
+    stats: StatsDao,
+    accountId: Int,
+    library: List<RemoteUserBook>,
+    now: Long,
+) {
+    val rows = library.flatMap { book ->
+        book.reads.map {
+            HardcoverReadRow(
+                accountId,
+                it.id,
+                book.hardcoverId,
+                it.startedOn?.toString(),
+                it.finishedOn.toString(),
+                now,
+            )
+        }
+    }
+    if (rows.isNotEmpty()) stats.upsertReads(rows)
 }
 
 /** The one Hardcover queue ([HardcoverSync.WORK]). */

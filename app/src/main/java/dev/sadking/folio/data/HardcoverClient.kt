@@ -273,7 +273,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
         val rows =
             query(
                     token,
-                    "query(\$user:Int!,\$after:Int!) { user_books(where:{user_id:{_eq:\$user},id:{_gt:\$after}},order_by:{id:asc},limit:50) { id status_id edition_id updated_at book { id title slug release_year cached_contributors cached_image } user_book_reads(order_by:{id:desc},limit:1) { progress_pages edition_id } } }",
+                    "query(\$user:Int!,\$after:Int!) { user_books(where:{user_id:{_eq:\$user},id:{_gt:\$after}},order_by:{id:asc},limit:50) { id status_id edition_id updated_at book { id title slug release_year cached_contributors cached_image } user_book_reads(order_by:{id:desc},limit:1) { progress_pages edition_id } finished: user_book_reads(where:{finished_at:{_is_null:false}},order_by:{id:asc},limit:50) { id started_at finished_at } } }",
                     JSONObject().put("user", accountId).put("after", after),
                 )
                 .getJSONArray("user_books")
@@ -290,6 +290,7 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
                     if (read != null && !read.isNull("edition_id")) read.getInt("edition_id")
                     else if (row.isNull("edition_id")) null else row.getInt("edition_id"),
                     epochMillis(text(row, "updated_at")),
+                    finishedReads(row),
                 )
             }
         require(
@@ -300,7 +301,8 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
                     it.book.title.length <= 2000 &&
                     it.book.authors.size <= 100 &&
                     it.book.authors.all { a -> a.length <= 1000 } &&
-                    (it.pages == null || it.pages >= 0)
+                    (it.pages == null || it.pages >= 0) &&
+                    it.reads.all { r -> r.id > 0 }
             }
         ) {
             "Invalid Hardcover library response"
@@ -722,6 +724,19 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
     private fun text(o: JSONObject?, key: String): String =
         o?.optString(key)?.takeUnless { it == "null" }.orEmpty()
 
+    /**
+     * The first ten finished reads of a library row (docs/HARDCOVER_SYNC.md D7). A read whose
+     * finish or start date does not parse is dropped; a blank start date is simply unknown.
+     */
+    private fun finishedReads(row: JSONObject): List<HardcoverRead> =
+        (row.optJSONArray("finished") ?: JSONArray()).objects().take(10).mapNotNull { r ->
+            val finishedOn = isoDate(text(r, "finished_at")) ?: return@mapNotNull null
+            val started = text(r, "started_at")
+            val startedOn =
+                if (started.isBlank()) null else isoDate(started) ?: return@mapNotNull null
+            HardcoverRead(r.getInt("id"), startedOn, finishedOn)
+        }
+
     /** A book as Hardcover's `books` rows give it; [id] overrides the row's own id. */
     private fun bookMatch(o: JSONObject, id: Int = o.getInt("id")): HardcoverMatch =
         HardcoverMatch(
@@ -796,6 +811,9 @@ class HardcoverClient(private val fixture: ((String, JSONObject) -> JSONObject)?
                 }
             }
 
+        private fun isoDate(value: String): LocalDate? =
+            runCatching { LocalDate.parse(value) }.getOrNull()
+
         private fun epochMillis(value: String): Long? =
             value
                 .takeIf { it.isNotBlank() }
@@ -829,6 +847,9 @@ fun koreaderPercent(fraction: Double): Double {
     return fraction * 100.0
 }
 
+/** One finished read of a library book. [startedOn] null when Hardcover has no start date. */
+data class HardcoverRead(val id: Int, val startedOn: LocalDate?, val finishedOn: LocalDate)
+
 data class HardcoverLibraryBook(
     val userBookId: Int,
     val book: HardcoverMatch,
@@ -837,6 +858,8 @@ data class HardcoverLibraryBook(
     val editionId: Int?,
     /** When Hardcover last changed this entry, epoch milliseconds, or null. */
     val updatedAt: Long? = null,
+    /** The book's finished reads, oldest first (at most 10). */
+    val reads: List<HardcoverRead> = emptyList(),
 )
 
 data class HardcoverBookData(val id: Int, val metadata: Metadata, val coverUrl: String?)

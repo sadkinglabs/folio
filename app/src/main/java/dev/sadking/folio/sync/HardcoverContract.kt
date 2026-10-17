@@ -1,6 +1,7 @@
 package dev.sadking.folio.sync
 
 import dev.sadking.folio.core.hardcover.MatchCandidate
+import dev.sadking.folio.data.HardcoverRead
 import java.time.LocalDate
 
 // M10 contract: docs/HARDCOVER_SYNC.md, section B2. Identical in every workstream.
@@ -20,6 +21,10 @@ data class RemoteUserBook(
     /** Pages of the latest read, and its edition (else the entry's), as libraryPage reads them. */
     val pages: Int?,
     val editionId: Int?,
+    /**
+     * The finished reads of this book, as the pull reads them (at most 10). Never deleted locally.
+     */
+    val reads: List<HardcoverRead> = emptyList(),
 )
 
 /**

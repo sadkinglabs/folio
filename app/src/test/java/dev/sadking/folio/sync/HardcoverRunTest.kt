@@ -67,6 +67,7 @@ class HardcoverRunTest {
         var matchError: Exception? = null
         var matchTime = 0L
         var lastLibrary: List<RemoteUserBook>? = null
+        var lastReadsLibrary: List<RemoteUserBook>? = null
         var createEntries: Boolean? = null
 
         override suspend fun due(enabled: Boolean, pullRequested: Boolean) = due
@@ -82,6 +83,11 @@ class HardcoverRunTest {
         override suspend fun fromLibrary(library: List<RemoteUserBook>): Int {
             log += "library ${library.size}"
             return 0
+        }
+
+        override suspend fun saveReads(library: List<RemoteUserBook>) {
+            log += "reads ${library.size}"
+            lastReadsLibrary = library
         }
 
         override suspend fun syncStatuses(
@@ -145,6 +151,7 @@ class HardcoverRunTest {
                 "page 50",
                 "page 100",
                 "library 120",
+                "reads 120",
                 "statuses",
                 "progress",
                 "finishes",
@@ -153,6 +160,7 @@ class HardcoverRunTest {
             log,
         )
         assertEquals(120, steps.lastLibrary!!.size)
+        assertEquals(120, steps.lastReadsLibrary!!.size)
         assertFalse(state.pullRequested)
         assertTrue(state.lastPullAt > 0 && state.lastSyncAt > 0)
         assertEquals(true, steps.createEntries)
