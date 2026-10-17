@@ -185,11 +185,10 @@ class ReaderSearchTest {
                         .isNotEmpty()
                 }
                 assertEquals(1, model().searchResults.hits.size)
+                // Back to the focused window, the sheet, delivered and handled before going on: a
+                // system Back through accessibility can be swallowed on a busy emulator.
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                    .uiAutomation
-                    .performGlobalAction(
-                        android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
-                    )
+                    .sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 compose.waitUntil(30_000) { model().shownHit == null }
                 compose.waitUntil(30_000) {
                     runCatching { searchDecorations() == 0 }.getOrDefault(false)
