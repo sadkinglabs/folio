@@ -267,7 +267,7 @@ print('Migration 11→12 matches Room schema; device profiles default to shown a
 old.execute("INSERT INTO annotations VALUES ('n12','v9-book','link:kindle-11','A line','My note','One','2026-10-01 10:00:00','/body/p[1]','/body/p[2]','note')")
 v13=json.loads((schemas/'13.json').read_text())['database']
 assert v13['version']==13
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_12_13',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_12_13',1)[1].split('val MIGRATION_13_14',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==5,statements
 assert all(sql.startswith('ALTER TABLE') and 'ADD COLUMN' in sql for sql in statements),'additive only'
@@ -285,3 +285,36 @@ assert old.execute("SELECT count(*) FROM device_profiles").fetchone()==(2,)
 assert old.execute("SELECT status,statusAt FROM books WHERE id='v9-book'").fetchone()==('Finished',0)
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 12→13 matches Room schema; existing highlights keep their text, note and look, unedited and live; baselines are kept with unknown annotation states.')
+
+# Schema 14 (M12): reading statistics get five new tables (sessions, KOReader digests, word counts,
+# Hardcover read dates, and Kindle book names from A1). Nothing existing changes.
+v14=json.loads((schemas/'14.json').read_text())['database']
+assert v14['version']==14
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_13_14',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==11,statements
+assert all(sql.startswith(('CREATE TABLE IF NOT EXISTS','CREATE INDEX IF NOT EXISTS')) for sql in statements),'additive only'
+for sql in statements:old.execute(sql)
+expected14=sqlite3.connect(':memory:');schema(expected14,v14)
+for entity in v14['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected14.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected14.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected14.execute(f'PRAGMA index_list({name})')),name
+digest='0123456789abcdef0123456789abcdef'
+old.execute(f"INSERT INTO reading_sessions VALUES ('k1','KINDLE','ereader:kindle-1',NULL,'{digest}',1000,60,0.1,0.2,0.05,3,2000)")
+old.execute(f"INSERT INTO koreader_digests VALUES ('{digest}','book','h',2000)")
+old.execute("INSERT INTO book_words VALUES ('book','h',90000,2000)")
+old.execute("INSERT INTO hardcover_reads VALUES (1,10,42,'2026-01-01','2026-02-01',2000)")
+old.execute(f"INSERT INTO stats_book_names VALUES ('{digest}','Kindle title','Author',2000)")
+for sql in ["INSERT INTO reading_sessions VALUES ('k1','PHONE','phone:p',NULL,NULL,1000,60,NULL,NULL,NULL,NULL,2001)","INSERT INTO hardcover_reads VALUES (1,10,42,NULL,NULL,2001)"]:
+    try:
+        old.execute(sql)
+        raise AssertionError('Duplicate key accepted: '+sql)
+    except sqlite3.IntegrityError:pass
+assert old.execute("SELECT title,status FROM books WHERE id='v9-book'").fetchone()==('Kept','Finished')
+assert old.execute("SELECT text,note FROM annotations WHERE id='n12'").fetchone()==('A line','My note')
+assert old.execute("SELECT title FROM wishlist WHERE id='wish10'").fetchone()==('Kept entry',)
+assert old.execute('SELECT count(*) FROM sync_baseline').fetchone()==(1,)
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 13→14 matches Room schema; the five statistics tables take rows and keep one row per key, and existing books, highlights, baselines and catalogue data are kept.')

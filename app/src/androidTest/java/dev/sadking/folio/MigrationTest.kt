@@ -5,6 +5,8 @@ import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import dev.sadking.folio.core.stats.ReadingSession
+import dev.sadking.folio.core.stats.SessionSource
 import dev.sadking.folio.data.ALL_MIGRATIONS
 import dev.sadking.folio.data.DeviceProfile
 import dev.sadking.folio.data.HardcoverBaselineRow
@@ -14,10 +16,13 @@ import dev.sadking.folio.data.LibraryDatabase
 import dev.sadking.folio.data.MIGRATION_10_11
 import dev.sadking.folio.data.MIGRATION_11_12
 import dev.sadking.folio.data.MIGRATION_12_13
+import dev.sadking.folio.data.MIGRATION_13_14
 import dev.sadking.folio.data.MIGRATION_7_8
 import dev.sadking.folio.data.MIGRATION_8_9
 import dev.sadking.folio.data.MIGRATION_9_10
 import dev.sadking.folio.data.SyncBaseline
+import dev.sadking.folio.data.toRow
+import dev.sadking.folio.data.toSession
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -424,6 +429,89 @@ class MigrationTest {
             baselines.delete("book", "kindle")
             assertNull(baselines.get("book", "kindle"))
             assertEquals(1, baselines.forEreader("kobo").size)
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
+    fun schema14AddsStatisticsTablesAndKeepsEverything() {
+        val name = "statistics-tables.db"
+        helper.createDatabase(name, 13).use {
+            it.execSQL(
+                "INSERT INTO books (id, title, authors, description, publisher, language, identifiers, series, seriesIndex, tags, originalPath, currentPath, coverPath, originalHash, currentHash, addedAt, status, format, statusAt) VALUES ('book', 'Preserved title', '[]', '', '', '', '[]', '', '', '[]', 'A/P.epub', 'A/P.epub', NULL, 'h', 'h', 1, 'Reading', 'epub', 7)"
+            )
+            it.execSQL(
+                "INSERT INTO annotations (id, bookId, deviceId, text, note, chapter, date, position, endPosition, kind, color, drawer, editedAt, deletedAt) VALUES ('note', 'book', 'link:kindle-1', 'kept text', 'kept note', 'Ch 1', '2026-10-01 10:00:00', 'p0', 'p1', 'note', '', '', '', 0)"
+            )
+            it.execSQL("INSERT INTO device_statistics VALUES ('kindle-1', 3600, 1000, 1001, '[]')")
+            it.execSQL(
+                "INSERT INTO kosync_progress VALUES ('doc', 'kobo-1', 'Kobo', '/body/p', 0.5, 10, 10000)"
+            )
+        }
+        helper.runMigrationsAndValidate(name, 14, true, MIGRATION_13_14).use { db ->
+            listOf(
+                    "reading_sessions",
+                    "koreader_digests",
+                    "book_words",
+                    "hardcover_reads",
+                    "stats_book_names",
+                )
+                .forEach { table ->
+                    db.query("SELECT COUNT(*) FROM $table").use {
+                        assertTrue(it.moveToFirst())
+                        assertEquals("$table starts empty", 0, it.getInt(0))
+                    }
+                }
+            db.query("SELECT title FROM books").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("Preserved title", it.getString(0))
+            }
+            db.query("SELECT text, note FROM annotations").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("kept text", it.getString(0))
+                assertEquals("kept note", it.getString(1))
+            }
+            db.query("SELECT totalSeconds FROM device_statistics").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(3600L, it.getLong(0))
+            }
+            db.query("SELECT percentage FROM kosync_progress").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0.5, it.getDouble(0), 0.0)
+            }
+        }
+    }
+
+    @Test
+    fun roomOpensSchema14AndSavesSessions() = runBlocking {
+        val name = "statistics-dao.db"
+        helper.createDatabase(name, 13).close()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database =
+            Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+                .addMigrations(*ALL_MIGRATIONS)
+                .build()
+        try {
+            val session =
+                ReadingSession(
+                    id = "k1",
+                    source = SessionSource.KINDLE,
+                    deviceKey = "ereader:kindle-1",
+                    bookId = null,
+                    document = "0123456789abcdef0123456789abcdef",
+                    startMs = 1_800_000_000_000L,
+                    durationSec = 600,
+                    progressStart = 0.25,
+                    progressEnd = 0.5,
+                    progressRead = 0.125,
+                    pages = 7,
+                )
+            val stats = database.stats()
+            stats.upsertSessions(listOf(session.toRow(updatedAt = 1)))
+            assertEquals(session, stats.sessionsById(listOf("k1")).single().toSession())
+            assertEquals(1_800_000_600L, stats.kindleUntil("ereader:kindle-1"))
         } finally {
             database.close()
             context.deleteDatabase(name)

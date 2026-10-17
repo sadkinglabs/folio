@@ -19,6 +19,9 @@ object DeviceKeys {
      */
     fun ssh(id: String) = "ssh:$id"
 
+    /** This phone's own sessions, by its Progress sync device id. */
+    fun phone(id: String) = "phone:$id"
+
     fun isOld(key: String) = key.startsWith("ssh:")
 }
 

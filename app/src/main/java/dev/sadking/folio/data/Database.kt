@@ -429,6 +429,77 @@ data class HardcoverQuestionRow(
     val askedAt: Long,
 )
 
+/**
+ * One stretch of reading or listening (M12): the stored form of a `ReadingSession`. [source] is a
+ * `SessionSource` name. [bookId] is null for a KOReader session until its digest matches a book.
+ * [updatedAt] is when the row was last written, epoch milliseconds.
+ */
+@Entity(
+    tableName = "reading_sessions",
+    indices = [Index("startMs"), Index("bookId"), Index("document"), Index("deviceKey")],
+)
+data class ReadingSessionRow(
+    @PrimaryKey val id: String,
+    val source: String,
+    val deviceKey: String,
+    val bookId: String?,
+    val document: String?,
+    val startMs: Long,
+    val durationSec: Long,
+    val progressStart: Double?,
+    val progressEnd: Double?,
+    val progressRead: Double?,
+    val pages: Int?,
+    val updatedAt: Long,
+)
+
+/** Which library book a KOReader file digest (its MD5) belongs to, for the file revision seen. */
+@Entity(tableName = "koreader_digests", indices = [Index("bookId")])
+data class KoreaderDigestRow(
+    @PrimaryKey val digest: String,
+    val bookId: String,
+    val revisionHash: String,
+    val computedAt: Long,
+)
+
+/**
+ * A book's word count, for the file revision it was counted from. Null when the file can't be read.
+ */
+@Entity(tableName = "book_words")
+data class BookWordsRow(
+    @PrimaryKey val bookId: String,
+    val revisionHash: String,
+    val words: Long?,
+    val countedAt: Long,
+)
+
+/** One Hardcover read of a book, with its dates as `YYYY-MM-DD` (null when Hardcover has none). */
+@Entity(
+    tableName = "hardcover_reads",
+    primaryKeys = ["accountId", "readId"],
+    indices = [Index("hardcoverId")],
+)
+data class HardcoverReadRow(
+    val accountId: Int,
+    val readId: Int,
+    val hardcoverId: Int,
+    val startedOn: String?,
+    val finishedOn: String?,
+    val fetchedAt: Long,
+)
+
+/**
+ * The title and authors KOReader knows for a Kindle book the phone can't match (A1). The digest is
+ * the file's MD5. Newest wins.
+ */
+@Entity(tableName = "stats_book_names")
+data class StatsBookNameRow(
+    @PrimaryKey val digest: String,
+    val title: String,
+    val authors: String,
+    val updatedAt: Long,
+)
+
 @Dao
 interface LibraryDao {
     @Query(
@@ -838,6 +909,43 @@ interface HardcoverDao {
     suspend fun catalogKeyTaken(key: String): Boolean
 }
 
+@Dao
+interface StatsDao {
+    @Query("SELECT * FROM reading_sessions") fun sessions(): Flow<List<ReadingSessionRow>>
+
+    @Query("SELECT * FROM reading_sessions") suspend fun allSessions(): List<ReadingSessionRow>
+
+    @Query("SELECT * FROM reading_sessions WHERE id IN (:ids)")
+    suspend fun sessionsById(ids: List<String>): List<ReadingSessionRow>
+
+    @Upsert suspend fun upsertSessions(rows: List<ReadingSessionRow>)
+
+    @Query(
+        "SELECT MAX(startMs / 1000 + durationSec) FROM reading_sessions WHERE source = 'KINDLE' AND deviceKey = :deviceKey"
+    )
+    suspend fun kindleUntil(deviceKey: String): Long?
+
+    @Query("SELECT * FROM koreader_digests") fun digests(): Flow<List<KoreaderDigestRow>>
+
+    @Query("SELECT * FROM koreader_digests WHERE bookId = :bookId")
+    suspend fun digestsOf(bookId: String): List<KoreaderDigestRow>
+
+    @Upsert suspend fun upsertDigests(rows: List<KoreaderDigestRow>)
+
+    @Query("SELECT * FROM book_words") fun words(): Flow<List<BookWordsRow>>
+
+    @Query("SELECT * FROM book_words") suspend fun allWords(): List<BookWordsRow>
+
+    @Upsert suspend fun upsertWords(row: BookWordsRow)
+
+    @Query("SELECT * FROM hardcover_reads") fun reads(): Flow<List<HardcoverReadRow>>
+
+    @Upsert suspend fun upsertReads(rows: List<HardcoverReadRow>)
+
+    /** Every book, Recently removed included: a removed book's sessions still have a title. */
+    @Query("SELECT * FROM books") fun everyBook(): Flow<List<Book>>
+}
+
 @Database(
     entities =
         [
@@ -863,8 +971,13 @@ interface HardcoverDao {
             HardcoverMatchRow::class,
             HardcoverQuestionRow::class,
             DeviceProfile::class,
+            ReadingSessionRow::class,
+            KoreaderDigestRow::class,
+            BookWordsRow::class,
+            HardcoverReadRow::class,
+            StatsBookNameRow::class,
         ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -873,6 +986,8 @@ abstract class LibraryDatabase : RoomDatabase() {
     abstract fun syncBaselines(): SyncBaselineDao
 
     abstract fun hardcover(): HardcoverDao
+
+    abstract fun stats(): StatsDao
 }
 
 val MIGRATION_1_2 =
@@ -1042,6 +1157,50 @@ val MIGRATION_12_13 =
         }
     }
 
+/**
+ * Schema 14 (M12): reading statistics. Four tables for sessions, KOReader file digests, word counts
+ * and Hardcover read dates, and one for the names of Kindle books the phone can't match. Only new
+ * tables: every existing row stays as it was.
+ */
+val MIGRATION_13_14 =
+    object : androidx.room.migration.Migration(13, 14) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS reading_sessions (id TEXT NOT NULL, source TEXT NOT NULL, deviceKey TEXT NOT NULL, bookId TEXT, document TEXT, startMs INTEGER NOT NULL, durationSec INTEGER NOT NULL, progressStart REAL, progressEnd REAL, progressRead REAL, pages INTEGER, updatedAt INTEGER NOT NULL, PRIMARY KEY(id))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_sessions_startMs ON reading_sessions (startMs)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_sessions_bookId ON reading_sessions (bookId)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_sessions_document ON reading_sessions (document)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_sessions_deviceKey ON reading_sessions (deviceKey)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS koreader_digests (digest TEXT NOT NULL, bookId TEXT NOT NULL, revisionHash TEXT NOT NULL, computedAt INTEGER NOT NULL, PRIMARY KEY(digest))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_koreader_digests_bookId ON koreader_digests (bookId)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS book_words (bookId TEXT NOT NULL, revisionHash TEXT NOT NULL, words INTEGER, countedAt INTEGER NOT NULL, PRIMARY KEY(bookId))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS hardcover_reads (accountId INTEGER NOT NULL, readId INTEGER NOT NULL, hardcoverId INTEGER NOT NULL, startedOn TEXT, finishedOn TEXT, fetchedAt INTEGER NOT NULL, PRIMARY KEY(accountId, readId))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_hardcover_reads_hardcoverId ON hardcover_reads (hardcoverId)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS stats_book_names (digest TEXT NOT NULL, title TEXT NOT NULL, authors TEXT NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(digest))"
+            )
+        }
+    }
+
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
@@ -1057,4 +1216,5 @@ val ALL_MIGRATIONS =
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
+        MIGRATION_13_14,
     )

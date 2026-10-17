@@ -8,6 +8,9 @@ import androidx.room.Room
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceSettings
 import dev.sadking.folio.sync.HardcoverSync
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class FolioApplication : Application() {
     val database by lazy {
@@ -27,6 +30,8 @@ class FolioApplication : Application() {
     }
     val deviceSettings by lazy { DeviceSettings(this) }
     val hardcoverOutbox by lazy { dev.sadking.folio.sync.HardcoverOutbox(this) }
+    /** App-wide work that must outlive a screen (statistics writes and indexing). */
+    val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val link by lazy { dev.sadking.folio.link.FolioLink(this, database.library()) }
     val operations by lazy {
         OperationRunner(
