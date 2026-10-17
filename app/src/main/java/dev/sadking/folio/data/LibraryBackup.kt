@@ -2,6 +2,9 @@ package dev.sadking.folio.data
 
 import androidx.room.withTransaction
 import dev.sadking.folio.core.*
+import dev.sadking.folio.core.stats.MAX_SESSION_SECONDS
+import dev.sadking.folio.core.stats.ReadingSession
+import dev.sadking.folio.core.stats.SessionSource
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.sync.withLock
@@ -13,6 +16,7 @@ import org.json.*
  */
 class LibraryBackup(private val repo: LibraryRepository) {
     private val dao = repo.dao
+    private val stats = repo.database.stats()
 
     suspend fun export(destination: File) =
         repo.lock.withLock {
@@ -176,6 +180,16 @@ class LibraryBackup(private val repo: LibraryRepository) {
                         .put(
                             "deviceProfiles",
                             JSONArray(dao.allDeviceProfiles().map { deviceProfileJson(it) }),
+                        )
+                        // Added with the statistics (D8, A1); older backups have none of these.
+                        .put(
+                            "readingSessions",
+                            JSONArray(stats.allSessions().map { readingSessionJson(it) }),
+                        )
+                        .put("bookWords", JSONArray(stats.allWords().map { bookWordsJson(it) }))
+                        .put(
+                            "statsBookNames",
+                            JSONArray(stats.allBookNames().map { statsBookNameJson(it) }),
                         )
                         .toString()
                         .toByteArray()
@@ -442,6 +456,38 @@ class LibraryBackup(private val repo: LibraryRepository) {
                         ?.objects()
                         ?.mapNotNull { runCatching { parseDeviceProfile(it) }.getOrNull() }
                         .orEmpty()
+                // Statistics (D8, A1): optional, and a row this version cannot read is skipped.
+                // A session that appears twice keeps its longer copy.
+                val sessions =
+                    root
+                        .optJSONArray("readingSessions")
+                        ?.objects()
+                        ?.mapNotNull { o ->
+                            runCatching { parseReadingSession(o, mappings) }.getOrNull()
+                        }
+                        ?.groupBy { it.id }
+                        ?.values
+                        ?.map { rows -> rows.maxBy { it.durationSec } }
+                        .orEmpty()
+                val bookWords =
+                    root
+                        .optJSONArray("bookWords")
+                        ?.objects()
+                        ?.mapNotNull { o ->
+                            runCatching { parseBookWords(o, mappings) }.getOrNull()
+                        }
+                        .orEmpty()
+                val bookNames =
+                    root
+                        .optJSONArray("statsBookNames")
+                        ?.objects()
+                        ?.mapNotNull { o ->
+                            runCatching { parseStatsBookName(o) }.getOrNull()
+                        }
+                        ?.groupBy { it.digest }
+                        ?.values
+                        ?.map { rows -> rows.maxBy { it.updatedAt } }
+                        .orEmpty()
                 var added = 0
                 repo.database.withTransaction {
                     books.forEach { b ->
@@ -553,6 +599,21 @@ class LibraryBackup(private val repo: LibraryRepository) {
                         )
                             dao.saveDeviceProfile(profile)
                     }
+                    // Sessions are kept by length: a stored session is never shrunk.
+                    stats.keepSessions(sessions, System.currentTimeMillis())
+                    // Word counts only for a revision the restored book has, and only where the
+                    // book has no count yet.
+                    val counted = stats.allWords().map { it.bookId }.toSet()
+                    for (row in bookWords.distinctBy { it.bookId }) {
+                        if (row.bookId in counted) continue
+                        if (dao.book(row.bookId)?.currentHash == row.revisionHash)
+                            stats.upsertWords(row)
+                    }
+                    // The newer name wins, per digest.
+                    val currentNames = stats.allBookNames().associateBy { it.digest }
+                    bookNames
+                        .filter { (currentNames[it.digest]?.updatedAt ?: -1) < it.updatedAt }
+                        .let { stats.upsertBookNames(it) }
                 }
                 committed = true
                 "$added books restored · existing books retained · credentials excluded"
@@ -760,4 +821,96 @@ internal fun parseWish(value: JSONObject): WishBook {
         // Backups from before schema 11 have no status time: unknown.
         value.optLong("statusAt", 0).coerceAtLeast(0),
     )
+}
+
+internal fun readingSessionJson(r: ReadingSessionRow): JSONObject =
+    JSONObject()
+        .put("id", r.id)
+        .put("source", r.source)
+        .put("deviceKey", r.deviceKey)
+        .put("bookId", r.bookId ?: JSONObject.NULL)
+        .put("document", r.document ?: JSONObject.NULL)
+        .put("startMs", r.startMs)
+        .put("durationSec", r.durationSec)
+        .put("progressStart", r.progressStart ?: JSONObject.NULL)
+        .put("progressEnd", r.progressEnd ?: JSONObject.NULL)
+        .put("progressRead", r.progressRead ?: JSONObject.NULL)
+        .put("pages", r.pages ?: JSONObject.NULL)
+        .put("updatedAt", r.updatedAt)
+
+/**
+ * A session from a backup (D8). A book the backup doesn't list keeps its id, so its sessions stay
+ * with it. Throws on a row this version cannot read; the caller skips that row.
+ */
+internal fun parseReadingSession(o: JSONObject, mappings: Map<String, String>): ReadingSession {
+    val session =
+        ReadingSession(
+            id = o.getString("id").also { require(it.isNotBlank() && it.length <= 256) },
+            source =
+                SessionSource.entries.firstOrNull { it.name == o.getString("source") }
+                    ?: error("Unknown session source"),
+            deviceKey =
+                o.getString("deviceKey").also { require(it.isNotBlank() && it.length <= 300) },
+            bookId =
+                if (o.isNull("bookId")) null
+                else
+                    o.getString("bookId")
+                        .let { mappings[it] ?: it }
+                        .also {
+                            require(it.isNotBlank() && it.length <= 256)
+                        },
+            document =
+                if (o.isNull("document")) null
+                else o.getString("document").also { require(it.matches(Regex("[a-f0-9]{32}"))) },
+            startMs = o.getLong("startMs").also { require(it > 0) },
+            durationSec = o.getLong("durationSec").also { require(it in 1..MAX_SESSION_SECONDS) },
+            progressStart = o.fraction("progressStart"),
+            progressEnd = o.fraction("progressEnd"),
+            progressRead = o.fraction("progressRead"),
+            pages = if (o.isNull("pages")) null else o.getInt("pages").also { require(it >= 0) },
+        )
+    require(!session.bookId.isNullOrBlank() || !session.document.isNullOrBlank())
+    return session
+}
+
+private fun JSONObject.fraction(key: String): Double? =
+    if (isNull(key)) null else getDouble(key).also { require(it in 0.0..1.0) }
+
+internal fun bookWordsJson(r: BookWordsRow): JSONObject =
+    JSONObject()
+        .put("bookId", r.bookId)
+        .put("revisionHash", r.revisionHash)
+        .put("words", r.words ?: JSONObject.NULL)
+        .put("countedAt", r.countedAt)
+
+/** A word count from a backup, attached to the restored id of its book. */
+internal fun parseBookWords(o: JSONObject, mappings: Map<String, String>): BookWordsRow =
+    BookWordsRow(
+        bookId = mappings[o.getString("bookId")] ?: error("Unknown word count book"),
+        revisionHash = o.getString("revisionHash").also { require(it.length <= 128) },
+        words = if (o.isNull("words")) null else o.getLong("words").also { require(it >= 0) },
+        countedAt = o.getLong("countedAt"),
+    )
+
+internal fun statsBookNameJson(r: StatsBookNameRow): JSONObject =
+    JSONObject()
+        .put("digest", r.digest)
+        .put("title", r.title)
+        .put("authors", r.authors)
+        .put("updatedAt", r.updatedAt)
+
+/** A Kindle book's name from a backup (A1), with the limits the sync server applies. */
+internal fun parseStatsBookName(o: JSONObject): StatsBookNameRow {
+    val digest = o.getString("digest")
+    val title = o.getString("title")
+    val authors = o.getString("authors")
+    require(
+        digest.matches(Regex("[0-9a-f]{32}")) &&
+            title.isNotBlank() &&
+            title.length <= 512 &&
+            title.none { it.isISOControl() } &&
+            authors.length <= 512 &&
+            authors.none { it.isISOControl() }
+    )
+    return StatsBookNameRow(digest, title, authors, o.getLong("updatedAt"))
 }
