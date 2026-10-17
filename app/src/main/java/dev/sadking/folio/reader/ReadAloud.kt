@@ -185,8 +185,29 @@ internal class ReadAloud(
     /** A voice change that came while starting, applied once started. */
     private var restartWhenStarted = false
 
-    var state by mutableStateOf(ListenState.OFF)
-        private set
+    private var stateNow by mutableStateOf(ListenState.OFF)
+
+    /** Every change of state comes through here, so the session recorder sees each one. */
+    var state: ListenState
+        get() = stateNow
+        private set(value) {
+            val was = stateNow
+            stateNow = value
+            if (value == was) return
+            if (value == ListenState.PLAYING) {
+                reading?.let {
+                    sessions?.playing(
+                        it.bookId,
+                        utterance?.let { sentence -> sentence.locations.totalProgression },
+                    )
+                }
+            } else if (was == ListenState.PLAYING) {
+                sessions?.stopped()
+            }
+        }
+
+    /** Reading and listening sessions are recorded here; null when nothing records them. */
+    internal var sessions: SessionRecorder? = null
 
     var speed by mutableDoubleStateOf(settings.getFloat("listenSpeed", 1f).toDouble())
         private set
@@ -433,6 +454,7 @@ internal class ReadAloud(
             launch {
                 created.location.collect {
                     utterance = it.utteranceLocator
+                    sessions?.utterance(it.utteranceLocator.locations.totalProgression)
                     kokoro?.engine?.onLocation(it.utteranceLocator, it.utterance)
                     val chapter = sleepChapter
                     if (sleep == SleepTimer.CHAPTER && chapter != null && it.href != chapter) {

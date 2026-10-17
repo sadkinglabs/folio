@@ -321,11 +321,24 @@ class ReaderActivity : FragmentActivity() {
         return true
     }
 
+    override fun onResume() {
+        super.onResume()
+        showSession()
+    }
+
     override fun onPause() {
         // Time away from the page is not reading time.
         model.speed.interrupt()
+        model.sessions.hidden()
         model.saveOnPause()
         super.onPause()
+    }
+
+    /** Starts the reading session once the book is on screen. Does nothing before that. */
+    private fun showSession() {
+        val nav = navigator ?: return
+        val bookId = model.book?.id ?: return
+        model.sessions.shown(bookId, nav.currentLocator.value.locations.totalProgression)
     }
 
     /** Reads aloud from the first sentence on screen. */
@@ -563,6 +576,8 @@ class ReaderActivity : FragmentActivity() {
                     }
             }
         lifecycleScope.launch {
+            // The book is on screen now. Before it is resumed, onResume starts the session instead.
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) showSession()
             if (epub != null && model.automaticKindleResume) {
                 try {
                     if (resumeKindle()) {
@@ -592,6 +607,7 @@ class ReaderActivity : FragmentActivity() {
                 model.location(locator)
                 // One durable write per settled page: a further page turn cancels this one.
                 delay(SAVE_DEBOUNCE_MS)
+                model.sessions.page(locator.locations.totalProgression)
                 // A settled page is a reading-speed sample when it follows the last one closely.
                 locator.locations.position?.let { model.speed.observe(kind, it) }
                 try {
@@ -722,6 +738,7 @@ class ReaderActivity : FragmentActivity() {
         }
         positionNavigation = true
         model.speed.interrupt()
+        model.sessions.jumped()
         try {
             val previous = nav.currentLocator.value
             val locator =
@@ -1016,6 +1033,7 @@ class ReaderActivity : FragmentActivity() {
     /** Opens a search match: the page moves there and the match is highlighted. */
     private fun openHit(hit: SearchHit) {
         model.speed.interrupt()
+        model.sessions.jumped()
         model.shownHit = hit
         model.panel = null
         navigator?.go(hit.locator, animated = false)
@@ -1028,6 +1046,7 @@ class ReaderActivity : FragmentActivity() {
      */
     private fun openNote(item: NoteItem) {
         model.speed.interrupt()
+        model.sessions.jumped()
         model.panel = null
         item.mark?.let { mark ->
             runCatching { Locator.fromJSON(JSONObject(mark.locator)) }
@@ -1100,6 +1119,7 @@ class ReaderActivity : FragmentActivity() {
         val index = positionIndexAt(fraction, positions.locators.size)
         val target = positions.locators.getOrNull(index) ?: return
         model.speed.interrupt()
+        model.sessions.jumped()
         navigator?.go(target, animated = false)
     }
 
@@ -1718,6 +1738,7 @@ class ReaderActivity : FragmentActivity() {
                 notes,
                 onEntry = { index ->
                     model.speed.interrupt()
+                    model.sessions.jumped()
                     flat.getOrNull(index)?.let { (link, _) ->
                         navigator?.go(link, animated = false)
                     }

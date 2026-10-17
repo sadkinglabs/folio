@@ -60,8 +60,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val bookSettings = app.getSharedPreferences("reader-books", Application.MODE_PRIVATE)
     private val saveLock = Mutex()
 
+    /** The phone's reading and listening sessions, for the statistics. */
+    internal val sessions =
+        SessionRecorder(
+            app.database.stats(),
+            app.background,
+            DeviceKeys.phone(app.link.settings.phoneDeviceId),
+        )
+
     /** Read-aloud; lives with the model so a rotation does not stop it. */
-    internal val listen = ReadAloud(application, viewModelScope, settings)
+    internal val listen =
+        ReadAloud(application, viewModelScope, settings).also { it.sessions = sessions }
     var book by mutableStateOf<Book?>(null)
         private set
 
