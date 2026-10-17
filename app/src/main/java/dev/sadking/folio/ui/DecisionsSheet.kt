@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
 import dev.sadking.folio.core.sync.Question
 import dev.sadking.folio.data.Book
+import dev.sadking.folio.data.HardcoverHolder
+import dev.sadking.folio.data.MoveOffer
 import dev.sadking.folio.sync.EreaderSync
 import dev.sadking.folio.sync.MatchCandidateView
 import dev.sadking.folio.sync.MatchCheck
@@ -84,8 +86,11 @@ internal fun DecisionsSheet(
     onHardcoverAnswer: (StatusQuestion, Boolean) -> Unit,
     onAnswerAll: (Boolean) -> Unit,
     onDismiss: () -> Unit,
+    offer: MoveOffer? = null,
+    onMove: (MoveOffer) -> Unit = {},
+    onKeep: () -> Unit = {},
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -100,6 +105,9 @@ internal fun DecisionsSheet(
             onSearch,
             onHardcoverAnswer,
             onAnswerAll,
+            offer,
+            onMove,
+            onKeep,
         )
     }
 }
@@ -120,6 +128,9 @@ internal fun DecisionsContent(
     onSearch: (MatchCheck) -> Unit = {},
     onHardcoverAnswer: (StatusQuestion, Boolean) -> Unit = { _, _ -> },
     onAnswerAll: (Boolean) -> Unit = {},
+    offer: MoveOffer? = null,
+    onMove: (MoveOffer) -> Unit = {},
+    onKeep: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -152,7 +163,17 @@ internal fun DecisionsContent(
         }
         if (checks.isNotEmpty()) {
             SectionHeading(stringResource(R.string.hc10_checks_title))
-            checks.forEach { MatchCheckCard(it, onPick, onNotOnHardcover, onSearch) }
+            checks.forEach { check ->
+                MatchCheckCard(
+                    check,
+                    onPick,
+                    onNotOnHardcover,
+                    onSearch,
+                    offer?.takeIf { it.itemId == check.itemId },
+                    onMove,
+                    onKeep,
+                )
+            }
         }
         if (questions.isNotEmpty()) {
             SectionHeading(stringResource(R.string.hc10_questions_title))
@@ -235,8 +256,10 @@ private fun DecisionCard(decision: Decision, onAnswer: (Decision, String) -> Uni
 
 /**
  * A book Librillo could not match for sure: its title and author, then up to three Hardcover books
- * with cover, title, author and year, each with "This one". Under them: Not on Hardcover, which
- * Librillo remembers, and Search Hardcover for a book that is not among them.
+ * with cover, title, author and year, each with "This one". A Hardcover book already matched to
+ * another book says so ("Already matched to …"); picking it asks whether to move the match
+ * ([offer]). Under them: Not on Hardcover, which Librillo remembers, and Search Hardcover for a
+ * book that is not among them.
  */
 @Composable
 private fun MatchCheckCard(
@@ -244,6 +267,9 @@ private fun MatchCheckCard(
     onPick: (MatchCheck, MatchCandidateView) -> Unit,
     onNotOnHardcover: (MatchCheck) -> Unit,
     onSearch: (MatchCheck) -> Unit,
+    offer: MoveOffer?,
+    onMove: (MoveOffer) -> Unit,
+    onKeep: () -> Unit,
 ) {
     Surface(
         Modifier.fillMaxWidth(),
@@ -269,7 +295,11 @@ private fun MatchCheckCard(
                 style = MaterialTheme.typography.bodyLarge,
             )
             check.candidates.forEach { candidate ->
-                CandidateRow(check.itemId, candidate) { onPick(check, candidate) }
+                CandidateRow(check.itemId, candidate, check.held[candidate.hardcoverId]) {
+                    onPick(check, candidate)
+                }
+                if (offer?.hardcoverId == candidate.hardcoverId)
+                    MoveMatchPrompt(offer, enabled = true, onMove = onMove, onKeep = onKeep)
                 if (candidate != check.candidates.last()) HorizontalDivider()
             }
             FlowRow(
@@ -316,7 +346,12 @@ internal fun candidateLine(candidate: MatchCandidateView): String? {
  * author and year, and "This one". At large text the button goes under the words.
  */
 @Composable
-private fun CandidateRow(itemId: String, candidate: MatchCandidateView, onPick: () -> Unit) {
+private fun CandidateRow(
+    itemId: String,
+    candidate: MatchCandidateView,
+    held: HardcoverHolder?,
+    onPick: () -> Unit,
+) {
     val stacked = LocalDensity.current.fontScale > 1.5f
     val button: @Composable () -> Unit = {
         OutlinedButton(
@@ -355,6 +390,12 @@ private fun CandidateRow(itemId: String, candidate: MatchCandidateView, onPick: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (held != null)
+                Text(
+                    heldText(held),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
             if (stacked) button()
         }
         if (!stacked) button()

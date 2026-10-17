@@ -629,7 +629,7 @@ private fun FolderBrowserSheet(
     var newFolder by remember { mutableStateOf("") }
     val sameDevice = listing.config.copy(directory = config.directory) == config
     val path = "/mnt/us" + if (listing.relative.isEmpty()) "" else "/${listing.relative}"
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

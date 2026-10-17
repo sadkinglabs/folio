@@ -41,11 +41,42 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     private val syncState = SyncState.of(app)
     private val hardcover = HardcoverSync.get(app)
     val phoneFolder = MutableStateFlow(pairedFolder.label)
+    private val dao = app.database.library()
 
-    /** Every e-reader that has synced with this phone, most recent first. */
+    /**
+     * Every device that has synced or sent a position (sync e-readers, Progress sync reports, the
+     * old SSH positions), after the owner's names, merges and forgets.
+     */
+    val directory: StateFlow<DeviceRoster> =
+        combine(
+                syncState.ereaders,
+                dao.kosyncFlow(),
+                dao.everyReading(),
+                dao.deviceProfiles(),
+            ) { ereaders, reports, snapshots, profiles ->
+                DeviceRoster(
+                    deviceSightings(
+                        ereaders.values,
+                        reports,
+                        snapshots,
+                        app.link.settings.phoneDeviceId,
+                    ),
+                    profiles,
+                )
+            }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, DeviceRoster.EMPTY)
+
+    /**
+     * Every e-reader that has synced with this phone, most recent first, under the name Librillo
+     * shows for it.
+     */
     val ereaders: StateFlow<List<EreaderSync>> =
-        syncState.ereaders
-            .map { all -> all.values.sortedByDescending { maxOf(it.lastSync, it.syncingSince) } }
+        combine(syncState.ereaders, directory) { all, devices ->
+                all.values.map(devices::named).sortedByDescending {
+                    maxOf(it.lastSync, it.syncingSince)
+                }
+            }
             .stateIn(
                 viewModelScope,
                 SharingStarted.Eagerly,
@@ -53,6 +84,98 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                     maxOf(it.lastSync, it.syncingSince)
                 },
             )
+
+    /** The Device tab's sync cards: one per device, forgotten ones left out. */
+    val ereaderCards: StateFlow<List<EreaderSync>> =
+        combine(syncState.ereaders, directory) { all, devices ->
+                devices.syncCards(all.values.toList())
+            }
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                syncState.ereaders.value.values.sortedByDescending {
+                    maxOf(it.lastSync, it.syncingSince)
+                },
+            )
+
+    /** [key]'s device is called [name] everywhere; a blank name goes back to its own. */
+    fun renameDevice(key: String, name: String) =
+        changeDevice(key) { _, device, now ->
+            val profile = DeviceProfiles.rename(device, dao.deviceProfile(device.key), name, now)
+            profile to
+                if (profile.displayName.isEmpty())
+                    app.getString(R.string.dev_name_reset, device.name)
+                else app.getString(R.string.dev_renamed, profile.displayName)
+        }
+
+    /** "This is the same e-reader as …": [key]'s device shows as [into]'s from now on. */
+    fun mergeDevice(key: String, into: String) =
+        changeDevice(key) { devices, device, now ->
+            val profile =
+                DeviceProfiles.merge(devices, device, dao.deviceProfile(device.key), into, now)
+                    ?: error(app.getString(R.string.dev_same_already))
+            profile to
+                app.getString(
+                    R.string.dev_merged,
+                    deviceLabel(device),
+                    devices.device(into)?.let(::deviceLabel).orEmpty(),
+                )
+        }
+
+    /** "Show separately": [memberKey] is its own device again. */
+    fun separateDevice(memberKey: String) =
+        changeDevice(memberKey) { devices, _, now ->
+            val member = devices.all.flatMap { it.members }.firstOrNull { it.key == memberKey }
+            val label =
+                member?.name?.takeIf { it.isNotBlank() }
+                    ?: app.getString(
+                        if (member?.old == true) R.string.dev_old_name else R.string.dev_unnamed
+                    )
+            DeviceProfiles.separate(memberKey, dao.deviceProfile(memberKey), now) to
+                app.getString(R.string.dev_separated, label)
+        }
+
+    /**
+     * "Forget this device": hidden from Progress and the Device tab until it reports again. Its
+     * reports, positions and snapshots stay in the database, and in backups.
+     */
+    fun forgetEreader(key: String) =
+        changeDevice(key) { _, device, now ->
+            DeviceProfiles.forget(device, dao.deviceProfile(device.key), now) to
+                app.getString(R.string.dev_forgotten, deviceLabel(device))
+        }
+
+    /** A device's name for a message: the owner's or its own, else what the screens call it. */
+    private fun deviceLabel(device: KnownDevice) =
+        device.name.ifBlank {
+            app.getString(if (device.old) R.string.dev_old_name else R.string.dev_unnamed)
+        }
+
+    /**
+     * Saves the profile [change] makes for [key]'s device, says so on the app's message line, and
+     * offers Undo, which puts the profile back as it was.
+     */
+    private fun changeDevice(
+        key: String,
+        change: suspend (DeviceRoster, KnownDevice, Long) -> Pair<DeviceProfile, String>,
+    ) =
+        runner.launchUndoable(viewModelScope, app.getString(R.string.dev_saving)) {
+            val devices = directory.value
+            val device = devices.device(key) ?: error(app.getString(R.string.dev_gone))
+            val (profile, message) = change(devices, device, System.currentTimeMillis())
+            val before = dao.deviceProfile(profile.deviceKey)
+            dao.saveDeviceProfile(profile)
+            val undo: () -> Unit = {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val now = System.currentTimeMillis()
+                    dao.saveDeviceProfile(
+                        before?.copy(updatedAt = now)
+                            ?: DeviceProfile(profile.deviceKey, updatedAt = now)
+                    )
+                }
+            }
+            message to undo
+        }
 
     /** When Sync was last tapped; 0 if never. */
     val syncRequestedAt: StateFlow<Long> = syncState.syncRequestedAt
@@ -106,9 +229,48 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     /** Settings' Sync now, and after connecting an account. */
     fun syncHardcoverNow() = hardcover.syncNow()
 
-    /** "This one" in Check these matches. A refusal is said in the snackbar. */
+    /**
+     * A pick that waits for the owner: the Hardcover book is already matched to something else.
+     * Needs your decision shows it on the item's card with "Move the match here" and "Keep it
+     * there".
+     */
+    val matchOffer = MutableStateFlow<MoveOffer?>(null)
+
+    /**
+     * "This one" in Check these matches. A Hardcover book already matched elsewhere becomes
+     * [matchOffer]; any other refusal is said in a sentence ([hardcoverNotices]).
+     */
     fun pickMatch(check: MatchCheck, candidate: MatchCandidateView) = hardcoverAction {
-        hardcover.pick(check.itemId, candidate)
+        matchOffer.value = null
+        try {
+            hardcover.pick(check.itemId, candidate)
+        } catch (e: HardcoverLinkTaken) {
+            // The card says it, with what to do about it; no message on top of that.
+            matchOffer.value =
+                MoveOffer(
+                    check.itemId,
+                    candidate.hardcoverId,
+                    candidate.title,
+                    candidate.authors,
+                    e.holder,
+                )
+        }
+    }
+
+    /** "Move the match here": the offer's item takes the Hardcover book from its holder. */
+    fun moveMatch(offer: MoveOffer) = hardcoverAction {
+        matchOffer.value = null
+        hardcover.pick(
+            offer.itemId,
+            MatchCandidateView(offer.hardcoverId, offer.title, offer.authors, null, null),
+            move = true,
+        )
+        hardcoverNotices.tryEmit(app.getString(R.string.hc_link_moved, offer.holder.title))
+    }
+
+    /** "Keep it there": the match stays where it is; the item's card stays to check. */
+    fun keepMatch() {
+        matchOffer.value = null
     }
 
     /** "Not on Hardcover": never matched or asked again. */

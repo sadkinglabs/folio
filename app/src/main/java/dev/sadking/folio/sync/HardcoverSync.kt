@@ -114,8 +114,12 @@ class HardcoverSync private constructor(private val app: FolioApplication) {
      * UNSURE records whose item still exists, is not removed and is still unlinked; newest first.
      */
     val checks: Flow<List<MatchCheck>> by lazy {
-        combine(dao.books(), dao.wishes(), records) { books, wishes, records ->
-            matchChecks(books, wishes, records)
+        combine(dao.storedBooks(), dao.storedWishes(), dao.removed(), records) {
+            books,
+            wishes,
+            removed,
+            records ->
+            matchChecks(books, wishes, records, removed.map { it.id }.toSet())
         }
     }
 
@@ -237,12 +241,13 @@ class HardcoverSync private constructor(private val app: FolioApplication) {
 
     /**
      * "Check these matches": the owner picked [candidate]. Throws IllegalArgumentException with a
-     * sentence to show.
+     * sentence to show, and HardcoverLinkTaken when the book is already matched to something else
+     * and [move] is false (the same rules as the Hardcover sheet's Link).
      */
-    suspend fun pick(itemId: String, candidate: MatchCandidateView) {
+    suspend fun pick(itemId: String, candidate: MatchCandidateView, move: Boolean = false) {
         withContext(Dispatchers.IO) {
             HardcoverLinks(app.repository)
-                .link(itemId, candidate.hardcoverId, candidate.title, candidate.authors)
+                .link(itemId, candidate.hardcoverId, candidate.title, candidate.authors, move)
             deleteCandidateCovers(coverDir, itemId)
         }
         kick(pull = true)

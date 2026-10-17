@@ -12,6 +12,7 @@ import dev.sadking.folio.data.HardcoverLinks
 import dev.sadking.folio.data.LibraryRepository
 import dev.sadking.folio.data.WishBook
 import dev.sadking.folio.data.decode
+import dev.sadking.folio.data.hardcoverHolder
 import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +120,8 @@ internal constructor(
         var linked = 0
         progress(0, total)
         val search = items.filter { it.isbns.isEmpty() }.map { it.itemId }.toMutableSet()
+        // What the ISBN said for an item sent on to the title search.
+        val isbnSaid = mutableMapOf<String, MatchDecision>()
         for (group in isbnGroups(items.filter { it.isbns.isNotEmpty() })) {
             if (now() >= deadline) return linked
             val hits = failSoft {
@@ -135,8 +138,16 @@ internal constructor(
                                 .map { it.candidate }
                                 .distinctBy { it.hardcoverId },
                         )
-                if (decision == MatchDecision.NotFound) {
+                // The title search decides when the ISBN found nothing, found a book whose title
+                // only holds the item's (another book of the series, whose ISBN the EPUB carries
+                // by mistake), or found only books already matched to something else.
+                if (
+                    decision == MatchDecision.NotFound ||
+                        HardcoverMatching.needsSearch(query, decision) ||
+                        allHeldUnsure(query, decision)
+                ) {
                     search += query.itemId
+                    isbnSaid[query.itemId] = decision
                     continue
                 }
                 if (apply(query, decision)) linked++
@@ -146,18 +157,51 @@ internal constructor(
         for (query in items.filter { it.itemId in search }) {
             if (now() >= deadline) return linked
             val text = HardcoverMatching.searchText(query)
+            val results =
+                if (text.isBlank()) emptyList()
+                else failSoft { withContext(Dispatchers.IO) { api.search(text) } }
+            val isbn = isbnSaid[query.itemId]
             val decision =
-                if (text.isBlank()) MatchDecision.NotFound
-                else
-                    failSoft { withContext(Dispatchers.IO) { api.search(text) } }
-                        ?.let { HardcoverMatching.fromSearch(query, it) } ?: MatchDecision.NotFound
+                if (isbn is MatchDecision.Confident)
+                    HardcoverMatching.confirmIsbn(query, isbn, results)
+                else {
+                    val found =
+                        results?.let { HardcoverMatching.fromSearch(query, it) }
+                            ?: MatchDecision.NotFound
+                    // Nothing plausible by title: what the ISBN found is still worth a look.
+                    if (found == MatchDecision.NotFound) isbn ?: found else found
+                }
             if (apply(query, decision)) linked++
             progress(++done, total)
         }
         return linked
     }
 
-    /** Saves what matching concluded for [query]. True when it was linked. */
+    /** True for an unsure answer whose candidates are all already matched to something else. */
+    private suspend fun allHeldUnsure(query: MatchQuery, decision: MatchDecision): Boolean =
+        decision is MatchDecision.Unsure &&
+            allHeld(query.itemId, decision.candidates.map { it.hardcoverId })
+
+    /**
+     * True when every one of [hardcoverIds] is already matched to something other than [itemId].
+     */
+    private suspend fun allHeld(itemId: String, hardcoverIds: List<Int>): Boolean =
+        withContext(Dispatchers.IO) {
+            val wishes = dao.allStoredWishes()
+            val removed = dao.allRemoved().map { it.id }.toSet()
+            val books =
+                wishes
+                    .mapNotNull { w -> w.linkedBookId?.let { dao.book(it) } }
+                    .associateBy { it.id }
+            hardcoverIds.isNotEmpty() &&
+                hardcoverIds.all { hardcoverHolder(itemId, it, books, wishes, removed) != null }
+        }
+
+    /**
+     * Saves what matching concluded for [query]. True when it was linked. A sure match whose
+     * Hardcover book is already matched to something else is never linked over it: it waits in
+     * Check these matches, where the card says what holds it and offers to move the match.
+     */
     private suspend fun apply(query: MatchQuery, decision: MatchDecision): Boolean {
         // The owner may have linked, edited, removed or ruled out the item meanwhile.
         val fresh = current(query) ?: return false
@@ -396,14 +440,35 @@ fun matchItems(
         record.state != MatchRecordState.NOT_ON_HARDCOVER && record.metadataKey != query.key()
     }
 
-/** "Check these matches": unsure records of items that still exist and are still unlinked. */
+/**
+ * "Check these matches": unsure records of items that still exist, are not in Recently removed and
+ * are still unlinked. [books] and [wishes] are every stored one, Recently removed included, and
+ * [removed] the ids in Recently removed: a candidate already matched to something else says what
+ * holds it ([hardcoverHolder], the rule linking uses).
+ */
 internal fun matchChecks(
     books: List<Book>,
     wishes: List<WishBook>,
     records: Map<String, MatchRecord>,
-): List<MatchCheck> =
-    unlinkedItems(books, wishes, emptySet()).mapNotNull { query ->
+    removed: Set<String> = emptySet(),
+): List<MatchCheck> {
+    val byId = books.associateBy { it.id }
+    return unlinkedItems(books, wishes, removed).mapNotNull { query ->
         val record = records[query.itemId]
         if (record?.state != MatchRecordState.UNSURE || record.candidates.isEmpty()) null
-        else MatchCheck(query.itemId, query.title, query.authors, record.candidates)
+        else
+            MatchCheck(
+                query.itemId,
+                query.title,
+                query.authors,
+                record.candidates,
+                record.candidates
+                    .mapNotNull { c ->
+                        hardcoverHolder(query.itemId, c.hardcoverId, byId, wishes, removed)?.let {
+                            c.hardcoverId to it
+                        }
+                    }
+                    .toMap(),
+            )
     }
+}

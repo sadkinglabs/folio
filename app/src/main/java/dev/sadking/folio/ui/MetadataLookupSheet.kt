@@ -44,7 +44,7 @@ fun MetadataLookupSheet(
     onDismiss: () -> Unit,
     coverPreview: String? = null,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

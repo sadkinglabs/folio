@@ -43,7 +43,7 @@ internal fun HardcoverAccountSheet(
     val state by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val noBrowser = stringResource(R.string.hardcover_no_browser)
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

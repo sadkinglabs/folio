@@ -127,7 +127,7 @@ fun RemovedBooksSheet(
     onDismiss: () -> Unit,
 ) {
     var purge by remember { mutableStateOf<RemovedEntry?>(null) }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -221,7 +221,7 @@ fun BatchListsSheet(
     onCreate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -267,7 +267,7 @@ fun BatchListsSheet(
 /** "Status" for the selected books: one radio row per status, applied on tap. */
 @Composable
 fun BatchStatusSheet(count: Int, busy: Boolean, onStatus: (String) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -330,7 +330,7 @@ fun ImportResultsSheet(
     onOpen: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

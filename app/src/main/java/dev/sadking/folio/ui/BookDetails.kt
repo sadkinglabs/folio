@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Link
@@ -108,6 +109,8 @@ fun BookDetails(
     signals: BookSignals? = null,
     phoneReading: PhoneReading? = null,
     reading: ReadingSnapshot? = null,
+    /** Every old SSH position of the book, one per saved connection; [reading] by default. */
+    snapshots: List<ReadingSnapshot> = listOfNotNull(reading),
     hardcoverLinked: Boolean = signals?.hardcover != null,
     hardcoverPage: Int? = null,
     /** What the Hardcover tile says; null: Matched or Not matched, from [hardcoverLinked]. */
@@ -139,9 +142,26 @@ fun BookDetails(
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val reports = if (hasEpub) linkReports(book) else emptyList()
+    val devices = LocalDevices.current
     val entries =
-        remember(hasEpub, phoneReading, reading, reports, hardcoverLinked, hardcoverPage) {
-            progressEntries(hasEpub, phoneReading, reading, reports, hardcoverLinked, hardcoverPage)
+        remember(
+            hasEpub,
+            phoneReading,
+            snapshots,
+            reports,
+            hardcoverLinked,
+            hardcoverPage,
+            devices,
+        ) {
+            progressEntries(
+                hasEpub,
+                phoneReading,
+                snapshots.takeIf { hasEpub }.orEmpty(),
+                reports,
+                hardcoverLinked,
+                hardcoverPage,
+                devices,
+            )
         }
     var progressSheet by rememberSaveable(book.id) { mutableStateOf(false) }
     val missing = rememberFileMissing(book, hasEpub, fileMissing)
@@ -602,7 +622,10 @@ private fun statusTiles(
                 phone?.at?.let { relativeTime(it) },
                 STATUS_TILE_PHONE_TAG,
             )
-        val ereader = entries.firstOrNull { it.source == ProgressSource.EREADER }
+        // A device that syncs first; an old position from before sync only when there is no other.
+        val ereader =
+            entries.firstOrNull { it.source == ProgressSource.EREADER && !it.old }
+                ?: entries.firstOrNull { it.source == ProgressSource.EREADER }
         tiles +=
             StatusTile(
                 Icons.Outlined.TabletAndroid,
@@ -683,8 +706,9 @@ internal fun relativeTime(millis: Long): String =
         .toString()
 
 /**
- * Every position known for the book, one row per source, then the status on this phone as chips. An
- * e-reader that is ahead gets a note; nothing is merged and no source is rewritten.
+ * Every position known for the book, one row per device (as the owner named, merged or forgot them
+ * on the Device tab), then the status on this phone as chips. An e-reader that is ahead gets a
+ * note; an old position from before sync says so. No source is rewritten.
  */
 @Composable
 internal fun ProgressSheet(
@@ -695,107 +719,121 @@ internal fun ProgressSheet(
     onStatus: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Column(
-            Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp)
-                .testTag(PROGRESS_SHEET_TAG),
-            verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
-        ) {
-            Text(
-                stringResource(R.string.progress_title),
-                style = MaterialTheme.typography.titleLarge,
-                modifier =
-                    Modifier.padding(horizontal = FolioSpace.section).semantics { heading() },
-            )
-            val ahead = aheadOfPhone(entries)
-            entries.forEach { entry ->
-                val name =
-                    when (entry.source) {
-                        ProgressSource.PHONE -> stringResource(R.string.progress_phone)
-                        ProgressSource.EREADER ->
-                            entry.device ?: stringResource(R.string.progress_device)
-                        ProgressSource.HARDCOVER -> stringResource(R.string.progress_hardcover)
-                    }
-                ProgressRow(
-                    icon =
-                        when (entry.source) {
-                            ProgressSource.PHONE -> Icons.Outlined.Smartphone
-                            ProgressSource.EREADER -> Icons.Outlined.TabletAndroid
-                            ProgressSource.HARDCOVER -> Icons.Outlined.Link
-                        },
-                    name = name,
-                    value =
-                        when {
-                            entry.percent != null -> percentText(entry.percent)
-                            entry.page != null ->
-                                stringResource(R.string.rd_hardcover_page, entry.page)
-                            entry.source == ProgressSource.HARDCOVER ->
-                                stringResource(R.string.rd_hardcover_linked)
-                            else -> stringResource(R.string.progress_not_started)
-                        },
-                    detail = entry.at?.let { relativeTime(it) },
-                    progress = entry.percent,
-                )
-            }
-            // A book with no e-reader position yet: one row that says so.
-            if (hasEpub && entries.none { it.source == ProgressSource.EREADER })
-                ProgressRow(
-                    icon = Icons.Outlined.TabletAndroid,
-                    name = stringResource(R.string.progress_device),
-                    value = stringResource(R.string.m9sync_ereader_no_position),
-                    detail = null,
-                    progress = null,
-                )
-            if (ahead != null)
-                Surface(
-                    Modifier.padding(horizontal = FolioSpace.section).fillMaxWidth(),
-                    shape = FolioSpace.panelShape,
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
-                ) {
-                    Text(
-                        stringResource(
-                            R.string.rd_progress_ahead,
-                            ahead.device ?: stringResource(R.string.progress_device),
-                            ((ahead.percent ?: 0.0) * 100).toInt(),
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.padding(FolioSpace.gap),
-                    )
+        ProgressContent(book, hasEpub, entries, busy, onStatus)
+    }
+}
+
+/** The Progress sheet's content, so previews and tests can show it without a sheet window. */
+@Composable
+internal fun ProgressContent(
+    book: Book,
+    hasEpub: Boolean,
+    entries: List<ProgressEntry>,
+    busy: Boolean = false,
+    onStatus: (String) -> Unit = {},
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 32.dp)
+            .testTag(PROGRESS_SHEET_TAG),
+        verticalArrangement = Arrangement.spacedBy(FolioSpace.small),
+    ) {
+        Text(
+            stringResource(R.string.progress_title),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = FolioSpace.section).semantics { heading() },
+        )
+        val ahead = aheadOfPhone(entries)
+        entries.forEach { entry ->
+            val name =
+                when (entry.source) {
+                    ProgressSource.PHONE -> stringResource(R.string.progress_phone)
+                    ProgressSource.EREADER ->
+                        entry.device
+                            ?: stringResource(
+                                if (entry.old) R.string.dev_old_name else R.string.progress_device
+                            )
+                    ProgressSource.HARDCOVER -> stringResource(R.string.progress_hardcover)
                 }
-            Spacer(Modifier.height(FolioSpace.small))
-            Text(
-                stringResource(R.string.rd_status_on_phone).uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = FolioSpace.section),
-            )
-            FlowRow(
-                Modifier.padding(horizontal = FolioSpace.section),
-                horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
-            ) {
-                phoneStatuses.forEach { status ->
-                    FilterChip(
-                        selected = status == book.status,
-                        onClick = { onStatus(status) },
-                        enabled = !busy,
-                        label = { Text(libraryStatusLabel(status)) },
-                    )
-                }
-            }
-            Text(
-                stringResource(R.string.shell_status_body),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = FolioSpace.section),
+            ProgressRow(
+                icon =
+                    when {
+                        entry.source == ProgressSource.PHONE -> Icons.Outlined.Smartphone
+                        entry.old -> Icons.Outlined.History
+                        entry.source == ProgressSource.EREADER -> Icons.Outlined.TabletAndroid
+                        else -> Icons.Outlined.Link
+                    },
+                name = name,
+                value =
+                    when {
+                        entry.percent != null -> percentText(entry.percent)
+                        entry.page != null -> stringResource(R.string.rd_hardcover_page, entry.page)
+                        entry.source == ProgressSource.HARDCOVER ->
+                            stringResource(R.string.rd_hardcover_linked)
+                        else -> stringResource(R.string.progress_not_started)
+                    },
+                detail = entry.at?.let { relativeTime(it) },
+                progress = entry.percent,
             )
         }
+        // A book with no e-reader position yet: one row that says so.
+        if (hasEpub && entries.none { it.source == ProgressSource.EREADER })
+            ProgressRow(
+                icon = Icons.Outlined.TabletAndroid,
+                name = stringResource(R.string.progress_device),
+                value = stringResource(R.string.m9sync_ereader_no_position),
+                detail = null,
+                progress = null,
+            )
+        if (ahead != null)
+            Surface(
+                Modifier.padding(horizontal = FolioSpace.section).fillMaxWidth(),
+                shape = FolioSpace.panelShape,
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+            ) {
+                Text(
+                    stringResource(
+                        R.string.rd_progress_ahead,
+                        ahead.device ?: stringResource(R.string.progress_device),
+                        ((ahead.percent ?: 0.0) * 100).toInt(),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(FolioSpace.gap),
+                )
+            }
+        Spacer(Modifier.height(FolioSpace.small))
+        Text(
+            stringResource(R.string.rd_status_on_phone).uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = FolioSpace.section),
+        )
+        FlowRow(
+            Modifier.padding(horizontal = FolioSpace.section),
+            horizontalArrangement = Arrangement.spacedBy(FolioSpace.small),
+        ) {
+            phoneStatuses.forEach { status ->
+                FilterChip(
+                    selected = status == book.status,
+                    onClick = { onStatus(status) },
+                    enabled = !busy,
+                    label = { Text(libraryStatusLabel(status)) },
+                )
+            }
+        }
+        Text(
+            stringResource(R.string.shell_status_body),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = FolioSpace.section),
+        )
     }
 }
 
@@ -1053,11 +1091,13 @@ internal fun BookTopBar(
 }
 
 /**
- * Folio Link reports for this book's current file from other devices, newest first. KOReader keys
- * them by a fingerprint of the file, so another edition of the book does not match.
+ * Folio Link reports for this book's current file from other devices, newest first, one per device
+ * as the owner arranged them (named, merged, forgotten: [LocalDevices]). KOReader keys them by a
+ * fingerprint of the file, so another edition of the book does not match.
  */
 @Composable
 internal fun linkReports(book: Book): List<KosyncReport> {
+    val devices = LocalDevices.current
     val app = LocalContext.current.applicationContext as? FolioApplication ?: return emptyList()
     val document by
         produceState<String?>(null, book.currentPath) {
@@ -1073,7 +1113,9 @@ internal fun linkReports(book: Book): List<KosyncReport> {
             }
             .collectAsStateWithLifecycle(emptyList())
     val phone = remember { app.link.settings.phoneDeviceId }
-    return reports.filter { it.deviceId != phone }
+    return remember(reports, phone, devices) {
+        devices.reports(reports.filter { it.deviceId != phone })
+    }
 }
 
 /** One entry in the Read menu. */

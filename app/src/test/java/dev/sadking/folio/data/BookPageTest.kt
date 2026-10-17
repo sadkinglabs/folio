@@ -101,7 +101,7 @@ class BookPageTest {
             progressEntries(
                 hasEpub = true,
                 phone = phone(0.37, at = 5_000),
-                device = snapshot(0.41, at = 7_000),
+                snapshots = listOf(snapshot(0.41, at = 7_000)),
                 reports = listOf(report("Kindle", 0.5, 9), report("Kobo", 0.2, 3)),
                 hardcoverLinked = true,
                 hardcoverPage = 112,
@@ -123,16 +123,17 @@ class BookPageTest {
 
     @Test
     fun recordHasNoPhoneRowAndUnlinkedBookHasNoHardcoverRow() {
-        assertTrue(progressEntries(false, phone(0.5), null, emptyList(), false).isEmpty())
+        assertTrue(progressEntries(false, phone(0.5), emptyList(), emptyList(), false).isEmpty())
         assertEquals(
             listOf(ProgressSource.HARDCOVER),
-            progressEntries(false, phone(0.5), null, emptyList(), true).map { it.source },
+            progressEntries(false, phone(0.5), emptyList(), emptyList(), true).map { it.source },
         )
     }
 
     @Test
     fun outOfRangePercentagesAreShownAsUnknownNotClamped() {
-        val entries = progressEntries(true, phone(1.5), snapshot(Double.NaN, 1), emptyList(), false)
+        val entries =
+            progressEntries(true, phone(1.5), listOf(snapshot(Double.NaN, 1)), emptyList(), false)
         assertNull(entries[0].percent)
         assertNull(entries[1].percent)
     }
@@ -143,20 +144,22 @@ class BookPageTest {
             progressEntries(
                 true,
                 phone(0.37),
-                snapshot(0.372, 1),
+                listOf(snapshot(0.372, 1)),
                 listOf(report("Kindle", 0.41, 2), report("Kobo", 0.6, 3)),
                 false,
             )
         assertEquals("Kobo", aheadOfPhone(entries)?.device)
         assertNull(
-            aheadOfPhone(progressEntries(true, phone(0.5), snapshot(0.4, 1), emptyList(), false))
+            aheadOfPhone(
+                progressEntries(true, phone(0.5), listOf(snapshot(0.4, 1)), emptyList(), false)
+            )
         )
         // Without a phone place, any e-reader position counts as ahead.
         assertEquals(
             0.41,
             aheadOfPhone(
                     listOf(report("Kindle", 0.41, 2)).let {
-                        progressEntries(true, null, null, it, false)
+                        progressEntries(true, null, emptyList(), it, false)
                     }
                 )
                 ?.percent!!,

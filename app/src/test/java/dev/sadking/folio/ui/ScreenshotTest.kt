@@ -130,6 +130,21 @@ class ScreenshotTest {
 
     @Test fun deviceFirstRun() = shoot("device-first-run") { DeviceFirstRunPreview() }
 
+    @Test fun devices() = shoot("devices", tall = true) { DevicesPreview() }
+
+    @Test fun deviceSheet() = shoot("device-sheet", tall = true) { DeviceSheetPreview() }
+
+    @Test
+    fun deviceSheetOld() = shoot("device-sheet-old", tall = true) { OldPositionSheetPreview() }
+
+    @Test fun progressDevices() = shoot("progress-devices") { ProgressDevicesPreview() }
+
+    @Test fun progressMerged() = shoot("progress-merged") { ProgressMergedPreview() }
+
+    @Test fun decisionsHeld() = shoot("decisions-held", tall = true) { DecisionsHeldPreview() }
+
+    @Test fun hardcoverMove() = shoot("hardcover-move", tall = true) { HardcoverMovePreview() }
+
     @Test fun syncLine() = shoot("sync-line") { SyncLinePreview() }
 
     @Test fun decisions() = shoot("decisions", tall = true) { DecisionsPreview() }

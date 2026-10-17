@@ -70,6 +70,7 @@ fun HardcoverReadingSheet(
     val reading by model.hardcoverReading.collectAsStateWithLifecycle()
     val editions by model.hardcoverEditions.collectAsStateWithLifecycle()
     val matches by model.matches.collectAsStateWithLifecycle()
+    val moveOffer by model.moveOffer.collectAsStateWithLifecycle()
     val snackbar = rememberOperationSnackbar(model.notices)
     var account by remember { mutableStateOf(false) }
     var confirmStatus by remember { mutableStateOf(false) }
@@ -80,7 +81,7 @@ fun HardcoverReadingSheet(
     var finishing by remember { mutableStateOf(false) }
     var finishedOn by remember { mutableStateOf(LocalDate.now()) }
     val reports = linkReports(book)
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -114,6 +115,9 @@ fun HardcoverReadingSheet(
                     startedOn = LocalDate.now()
                     send = Triple(edition, page, estimated)
                 },
+                moveOffer = moveOffer,
+                onMove = model::moveLink,
+                onKeep = model::keepLink,
             )
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
         }
@@ -377,6 +381,10 @@ internal fun HardcoverReadingContent(
     onMarkReading: () -> Unit,
     onSend: (HardcoverEdition, Int, Boolean) -> Unit,
     onMarkFinished: () -> Unit = {},
+    /** Link found the Hardcover book matched elsewhere: the owner moves the match or keeps it. */
+    moveOffer: MoveOffer? = null,
+    onMove: (MoveOffer) -> Unit = {},
+    onKeep: () -> Unit = {},
 ) {
     val connected = username.isNotBlank()
     Column(
@@ -408,7 +416,9 @@ internal fun HardcoverReadingContent(
             if (reading != null) StatusPill(hardcoverStatusLabel(reading.status))
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (error != null)
+        // The move prompt says the same thing as the error, with what to do about it.
+        if (moveOffer != null) MoveMatchPrompt(moveOffer, enabled = !busy, onMove, onKeep)
+        else if (error != null)
             Text(
                 error,
                 style = MaterialTheme.typography.bodyMedium,

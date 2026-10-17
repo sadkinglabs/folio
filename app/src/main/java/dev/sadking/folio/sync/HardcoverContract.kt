@@ -87,12 +87,17 @@ data class MatchRecord(
     val checkedAt: Long,
 )
 
-/** One "Check these matches" card: the item as Librillo has it, and its candidates. */
+/**
+ * One "Check these matches" card: the item as Librillo has it, and its candidates. [held] maps the
+ * Hardcover id of a candidate that is already matched to something else to what holds it, so the
+ * card can say so before the owner picks it.
+ */
 data class MatchCheck(
     val itemId: String,
     val title: String,
     val authors: List<String>,
     val candidates: List<MatchCandidateView>,
+    val held: Map<Int, dev.sadking.folio.data.HardcoverHolder> = emptyMap(),
 )
 
 /** Both sides changed a book's status since they last agreed. */

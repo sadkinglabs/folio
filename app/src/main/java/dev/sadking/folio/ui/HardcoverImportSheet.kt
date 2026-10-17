@@ -51,7 +51,7 @@ fun HardcoverImportSheet(
     var matching by remember { mutableStateOf<HardcoverLibraryBook?>(null) }
     var confirm by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -303,7 +303,7 @@ private fun MatchEpubSheet(
     onDismiss: () -> Unit,
 ) {
     var query by remember(row.userBookId) { mutableStateOf(row.book.title) }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

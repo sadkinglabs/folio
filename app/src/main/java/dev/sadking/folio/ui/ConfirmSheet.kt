@@ -37,7 +37,7 @@ internal fun ConfirmSheet(
     confirmEnabled: Boolean = true,
     error: String? = null,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = { if (!busy) onDismiss() },
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

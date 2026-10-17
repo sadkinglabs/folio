@@ -312,4 +312,48 @@ class HardcoverMatcherTest {
         assertEquals(MatchRecordState.UNSURE, saved.state)
         assertEquals(listOf(9), saved.candidates.map { it.hardcoverId })
     }
+
+    private val simmons = listOf("Dan Simmons")
+
+    @Test
+    fun aSequelWithTheFirstBooksIsbnIsNotLinkedToTheFirstBook() = runBlocking {
+        // The EPUB of "The Fall of Hyperion" carries the ISBN of "Hyperion".
+        book("fall", "The Fall of Hyperion", simmons, isbns = listOf(isbn(5)))
+        api.hits[isbn(5)] = candidate(1, "Hyperion", "Dan Simmons")
+        api.results["fall of hyperion"] =
+            listOf(
+                candidate(1, "Hyperion", "Dan Simmons"),
+                candidate(2, "The Fall of Hyperion", "Dan Simmons"),
+            )
+        assertEquals(1, batch())
+        assertEquals("The title search finds the right book", 2, link("fall")!!.hardcoverId)
+    }
+
+    @Test
+    fun aSequelIsNeverLinkedToTheFirstBookEvenWhenNothingElseIsFound() = runBlocking {
+        book("fall", "The Fall of Hyperion", simmons, isbns = listOf(isbn(5)))
+        api.hits[isbn(5)] = candidate(1, "Hyperion", "Dan Simmons")
+        assertEquals(0, batch())
+        assertNull(link("fall"))
+        // Left to the owner, with the ISBN's book to look at.
+        val saved = record("fall")!!
+        assertEquals(MatchRecordState.UNSURE, saved.state)
+        assertEquals(listOf(1), saved.candidates.map { it.hardcoverId })
+    }
+
+    @Test
+    fun eachBookOfASeriesLinksToItsOwnHardcoverBook() = runBlocking {
+        book("hyperion", "Hyperion", simmons)
+        book("fall", "The Fall of Hyperion", simmons)
+        val both =
+            listOf(
+                candidate(1, "Hyperion", "Dan Simmons"),
+                candidate(2, "The Fall of Hyperion", "Dan Simmons"),
+            )
+        api.results["fall of hyperion"] = both
+        api.results["hyperion"] = both.reversed()
+        assertEquals(2, batch())
+        assertEquals(1, link("hyperion")!!.hardcoverId)
+        assertEquals(2, link("fall")!!.hardcoverId)
+    }
 }

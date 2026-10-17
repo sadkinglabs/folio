@@ -168,6 +168,15 @@ class LibraryBackup(private val repo: LibraryRepository) {
                             "annotations",
                             JSONArray(dao.allAnnotations().map { annotationJson(it) }),
                         )
+                        // Added in schema 12; older backups have neither and still restore.
+                        .put(
+                            "kosync",
+                            JSONArray(dao.everyKosyncReport().map { kosyncJson(it) }),
+                        )
+                        .put(
+                            "deviceProfiles",
+                            JSONArray(dao.allDeviceProfiles().map { deviceProfileJson(it) }),
+                        )
                         .toString()
                         .toByteArray()
                 }
@@ -419,6 +428,20 @@ class LibraryBackup(private val repo: LibraryRepository) {
                             )
                         }
                         .orEmpty()
+                // Progress sync reports and device names: optional, and a row this version cannot
+                // read is skipped rather than stopping the restore.
+                val kosync =
+                    root
+                        .optJSONArray("kosync")
+                        ?.objects()
+                        ?.mapNotNull { runCatching { parseKosync(it) }.getOrNull() }
+                        .orEmpty()
+                val deviceProfiles =
+                    root
+                        .optJSONArray("deviceProfiles")
+                        ?.objects()
+                        ?.mapNotNull { runCatching { parseDeviceProfile(it) }.getOrNull() }
+                        .orEmpty()
                 var added = 0
                 repo.database.withTransaction {
                     books.forEach { b ->
@@ -510,6 +533,26 @@ class LibraryBackup(private val repo: LibraryRepository) {
                         )
                             dao.statistics(it)
                     }
+                    // The newer of the phone's report and the backup's wins, per device and book.
+                    val currentKosync =
+                        dao.everyKosyncReport().associateBy { it.document to it.deviceId }
+                    kosync.forEach { report ->
+                        val mine = currentKosync[report.document to report.deviceId]
+                        if (
+                            mine == null ||
+                                compareValuesBy(mine, report, { it.timestamp }, { it.receivedAt }) <
+                                    0
+                        )
+                            dao.saveKosyncReport(report)
+                    }
+                    val currentProfiles = dao.allDeviceProfiles().associateBy { it.deviceKey }
+                    deviceProfiles.forEach { profile ->
+                        if (
+                            (currentProfiles[profile.deviceKey]?.updatedAt ?: -1) <
+                                profile.updatedAt
+                        )
+                            dao.saveDeviceProfile(profile)
+                    }
                 }
                 committed = true
                 "$added books restored · existing books retained · credentials excluded"
@@ -575,6 +618,45 @@ internal fun parseReading(o: JSONObject) =
         o.getString("sourcePath"),
         o.getString("sourceHash"),
         o.getString("documentHash"),
+    )
+
+internal fun kosyncJson(r: KosyncReport) =
+    JSONObject()
+        .put("document", r.document)
+        .put("deviceId", r.deviceId)
+        .put("device", r.device)
+        .put("progress", r.progress)
+        .put("percentage", r.percentage)
+        .put("timestamp", r.timestamp)
+        .put("receivedAt", r.receivedAt)
+
+internal fun parseKosync(o: JSONObject) =
+    KosyncReport(
+        o.getString("document").also { require(it.isNotBlank() && it.length <= 128) },
+        o.getString("deviceId").also { require(it.isNotBlank() && it.length <= 256) },
+        o.getString("device").also { require(it.length <= 256) },
+        o.getString("progress").also { require(it.length <= 65536) },
+        o.getDouble("percentage").also { require(it.isFinite()) },
+        o.getLong("timestamp"),
+        o.getLong("receivedAt"),
+    )
+
+internal fun deviceProfileJson(p: DeviceProfile) =
+    JSONObject()
+        .put("deviceKey", p.deviceKey)
+        .put("displayName", p.displayName)
+        .put("mergedInto", p.mergedInto ?: JSONObject.NULL)
+        .put("hiddenAt", p.hiddenAt)
+        .put("updatedAt", p.updatedAt)
+
+internal fun parseDeviceProfile(o: JSONObject) =
+    DeviceProfile(
+        o.getString("deviceKey").also { require(it.isNotBlank() && it.length <= 300) },
+        o.optString("displayName").also { require(it.length <= DeviceRoster.MAX_NAME) },
+        if (o.isNull("mergedInto")) null
+        else o.getString("mergedInto").also { require(it.isNotBlank() && it.length <= 300) },
+        o.optLong("hiddenAt").coerceAtLeast(0),
+        o.getLong("updatedAt"),
     )
 
 internal fun annotationJson(a: BookAnnotation) =

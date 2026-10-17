@@ -96,7 +96,8 @@ enum class ProgressSource {
 /**
  * One source's position for the status strip and the Progress sheet. [percent] is 0..1; [page] is
  * Hardcover's page; [at] is when the source was last seen, in milliseconds. [device] names the
- * e-reader when it is known.
+ * e-reader when it is known; [deviceKey] is its [DeviceKeys] key. [old] marks a position the SSH
+ * bridge read before sync, which never updates.
  */
 data class ProgressEntry(
     val source: ProgressSource,
@@ -104,20 +105,25 @@ data class ProgressEntry(
     val page: Int? = null,
     val at: Long? = null,
     val device: String? = null,
+    val deviceKey: String? = null,
+    val old: Boolean = false,
 )
 
 /**
  * Every position known for a book, phone first, e-readers newest first, Hardcover last. A record
- * has no phone position. The SSH snapshot and Folio Link reports are kept apart: each e-reader that
- * reported gets its own row, and nothing is merged or rewritten.
+ * has no phone position. Each device gets one row: the old SSH positions ([snapshots]) and the
+ * Progress sync reports ([reports]) of a device, and of the devices the owner merged into it, show
+ * as one row, the newest winning, under the name Librillo shows for it ([devices]). Forgotten
+ * devices are left out. Nothing is rewritten or deleted.
  */
 fun progressEntries(
     hasEpub: Boolean,
     phone: PhoneReading?,
-    device: ReadingSnapshot?,
+    snapshots: List<ReadingSnapshot>,
     reports: List<KosyncReport>,
     hardcoverLinked: Boolean,
     hardcoverPage: Int? = null,
+    devices: DeviceRoster = DeviceRoster.EMPTY,
 ): List<ProgressEntry> {
     val own =
         phone
@@ -129,22 +135,35 @@ fun progressEntries(
                     at = it.updatedAt,
                 )
             }
-    val ereaders =
-        listOfNotNull(
-            device?.let {
-                ProgressEntry(
-                    ProgressSource.EREADER,
-                    it.percent?.takeIf { p -> p.isFinite() && p in 0.0..1.0 },
-                    at = it.fetchedAt,
-                )
-            }
-        ) +
+    val positions =
+        snapshots.map {
+            ProgressEntry(
+                ProgressSource.EREADER,
+                it.percent?.takeIf { p -> p.isFinite() && p in 0.0..1.0 },
+                at = it.fetchedAt,
+                deviceKey = DeviceKeys.ssh(it.deviceId),
+            )
+        } +
             reports.map {
                 ProgressEntry(
                     ProgressSource.EREADER,
                     it.percentage.takeIf { p -> p.isFinite() && p in 0.0..1.0 },
                     at = it.timestamp * 1000,
-                    device = it.device,
+                    device = it.device.trim().ifEmpty { null },
+                    deviceKey = DeviceKeys.ereader(it.deviceId),
+                )
+            }
+    val ereaders =
+        positions
+            .filterNot { devices.hidden(it.deviceKey!!) }
+            .groupBy { devices.root(it.deviceKey!!) }
+            .map { (root, rows) ->
+                val newest = rows.maxBy { it.at ?: 0L }
+                val device = devices.device(root)
+                newest.copy(
+                    device = devices.name(root) ?: newest.device,
+                    deviceKey = root,
+                    old = device?.old ?: DeviceKeys.isOld(root),
                 )
             }
     val hardcover =
@@ -154,11 +173,14 @@ fun progressEntries(
         listOfNotNull(hardcover)
 }
 
-/** The e-reader that is furthest ahead of the phone, by more than half a percent; else null. */
+/**
+ * The e-reader that is furthest ahead of the phone, by more than half a percent; else null. An old
+ * position from before sync never counts: it is history, not a device to catch up with.
+ */
 fun aheadOfPhone(entries: List<ProgressEntry>): ProgressEntry? {
     val own = entries.firstOrNull { it.source == ProgressSource.PHONE }?.percent ?: 0.0
     return entries
-        .filter { it.source == ProgressSource.EREADER && it.percent != null }
+        .filter { it.source == ProgressSource.EREADER && it.percent != null && !it.old }
         .filter { it.percent!! > own + 0.005 }
         .maxByOrNull { it.percent!! }
 }

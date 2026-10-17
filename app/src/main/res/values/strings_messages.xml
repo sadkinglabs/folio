@@ -168,8 +168,6 @@
     <string name="msg_discovery_saving_match">Saving the Hardcover match…</string>
     <string name="msg_discovery_removed_before_linking">A matching book is in Recently removed. Restore it from Settings before linking</string>
     <string name="msg_discovery_matched_existing">Matched to the book already in your library. Its lists and reading data are kept.</string>
-    <string name="msg_discovery_epub_already_matched">This EPUB is already matched to a book. Open it from your library.</string>
-    <string name="msg_discovery_linked_elsewhere">This Hardcover book is linked to another EPUB. Update progress from that book\'s details.</string>
     <string name="msg_discovery_hardcover_book_exists">This Hardcover book is already in your library. Open it to attach your EPUB.</string>
     <string name="msg_discovery_linked">Book linked. Check the status or progress before sending it to Hardcover.</string>
     <string name="msg_discovery_match_saved">Hardcover match saved on this phone. Tap Add to Hardcover Want to Read to add it there.</string>

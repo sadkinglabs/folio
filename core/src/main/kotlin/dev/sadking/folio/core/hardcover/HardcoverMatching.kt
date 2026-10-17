@@ -188,6 +188,42 @@ object HardcoverMatching {
     fun score(query: MatchQuery, candidate: MatchCandidate): Int =
         titleScore(query.title, candidate.title) + authorScore(query.authors, candidate.authors)
 
+    /**
+     * True when the titles differ but one holds the other's main title: most often another book of
+     * the same series, such as "The Fall of Hyperion" for "Hyperion", or "Dune Messiah" for "Dune";
+     * sometimes a translation that keeps the title ("El Hobbit").
+     */
+    fun seriesSibling(query: MatchQuery, candidate: MatchCandidate): Boolean =
+        titleScore(query.title, candidate.title) == 1
+
+    /**
+     * True when a sure ISBN answer must be checked with a title search before linking: its title
+     * only holds the item's (or the other way round), so it may be another book of the series whose
+     * ISBN the EPUB carries by mistake — the EPUB of "The Fall of Hyperion" with the ISBN of
+     * "Hyperion".
+     */
+    fun needsSearch(query: MatchQuery, isbn: MatchDecision): Boolean =
+        isbn is MatchDecision.Confident && seriesSibling(query, isbn.candidate)
+
+    /**
+     * A sure ISBN answer that [needsSearch], checked against the title search's [results] (null
+     * when the search could not be made). The search's own sure answer wins, whichever book it is.
+     * Otherwise nothing is linked: the ISBN's book and the plausible results, at most 3, go to
+     * "Check these matches".
+     */
+    fun confirmIsbn(
+        query: MatchQuery,
+        isbn: MatchDecision.Confident,
+        results: List<MatchCandidate>?,
+    ): MatchDecision {
+        val search = results?.let { fromSearch(query, it) }
+        if (search is MatchDecision.Confident) return search
+        val others = (search as? MatchDecision.Unsure)?.candidates.orEmpty()
+        return MatchDecision.Unsure(
+            (listOf(isbn.candidate) + others).distinctBy { it.hardcoverId }.take(MAX_CANDIDATES)
+        )
+    }
+
     private class Scored(val candidate: MatchCandidate, val score: Int)
 
     /** Distinct books by score, best first; ties keep Hardcover's order. */
@@ -197,16 +233,21 @@ object HardcoverMatching {
             .map { Scored(it, score(query, it)) }
             .sortedByDescending { it.score }
 
-    private fun confident(ranked: List<Scored>): MatchCandidate? {
+    /**
+     * The best result when it scores 4 and every other one is clearly worse: 2 or less, or a series
+     * sibling ([seriesSibling]), which is another book and not a rival for this one.
+     */
+    private fun confident(query: MatchQuery, ranked: List<Scored>): MatchCandidate? {
         val best = ranked.firstOrNull() ?: return null
-        val next = ranked.getOrNull(1)?.score ?: 0
-        return best.candidate.takeIf { best.score == 4 && next <= 2 }
+        val rivals = ranked.drop(1).filter { it.score > 2 && !seriesSibling(query, it.candidate) }
+        return best.candidate.takeIf { best.score == 4 && rivals.isEmpty() }
     }
 
     /**
      * ISBN hits (distinct books). One book: Confident when score ≥ 2, else Unsure([it]). Several:
      * Unsure, the top 3 by score then Hardcover's order (A2: several books always go to "Check
-     * these matches"). None: NotFound.
+     * these matches"). None: NotFound. A Confident answer whose title only holds the item's, or the
+     * other way round, still needs the title search ([needsSearch], [confirmIsbn]).
      */
     fun fromIsbn(query: MatchQuery, hits: List<MatchCandidate>): MatchDecision {
         val ranked = rank(query, hits)
@@ -221,11 +262,12 @@ object HardcoverMatching {
 
     /**
      * Search results in Hardcover's order. Rank by score, then order. Confident: best scores 4 and
-     * the next ≤ 2. Unsure: those scoring ≥ 2, top 3. Else NotFound.
+     * every other result scores ≤ 2 or is a series sibling. Unsure: those scoring ≥ 2, top 3. Else
+     * NotFound.
      */
     fun fromSearch(query: MatchQuery, results: List<MatchCandidate>): MatchDecision {
         val ranked = rank(query, results)
-        confident(ranked)?.let {
+        confident(query, ranked)?.let {
             return MatchDecision.Confident(it)
         }
         val plausible = ranked.filter { it.score >= 2 }.take(MAX_CANDIDATES)

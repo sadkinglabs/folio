@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A Hardcover book that is already matched to another book. Both routes (Check these
+         matches and the Hardcover sheet) use these. %1$s is the other book's title. -->
+    <string name="hc_link_taken">Already matched to “%1$s”.</string>
+    <string name="hc_link_taken_removed">Already matched to “%1$s”, which is in Recently removed.</string>
+    <string name="hc_link_move_body">Move the match here and “%1$s” goes back to matching. Its notes, progress and lists stay with it.</string>
+    <string name="hc_link_move">Move the match here</string>
+    <string name="hc_link_keep">Keep it there</string>
+    <string name="hc_link_moved">Match moved. “%1$s” goes back to matching.</string>
+    <string name="hc_link_kept">The match stays with “%1$s”.</string>
+</resources>

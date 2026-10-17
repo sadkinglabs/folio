@@ -182,7 +182,7 @@ internal fun AttachSheet(
                 }
                 .sortedByDescending { suggested(it) }
         }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

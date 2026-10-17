@@ -54,7 +54,7 @@ fun HardcoverBookSearchSheet(
             model.saveTitle(onSaved)
         }
     }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

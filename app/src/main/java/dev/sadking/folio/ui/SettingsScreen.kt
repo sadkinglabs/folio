@@ -581,7 +581,7 @@ internal fun SettingsScreen(
     if (!twoPane && pane != null)
         if (pane == SettingsPane.TEXT)
             // Not SettingsSheet: the Text sheet scrolls itself, and a scroll inside a scroll fails.
-            ModalBottomSheet(
+            FolioSheet(
                 onDismissRequest = ::close,
                 shape = FolioSpace.sheetShape,
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -876,7 +876,7 @@ private fun readingTimeSummary(statistics: DeviceStatistics?): String =
 
 @Composable
 private fun SettingsSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -938,7 +938,7 @@ internal fun ReadingDefaultsSheet(
     onDismiss: () -> Unit,
 ) {
     // Not SettingsSheet: the Text sheet scrolls itself, and a scroll inside a scroll fails.
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

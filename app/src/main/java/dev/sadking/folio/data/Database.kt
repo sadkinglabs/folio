@@ -194,6 +194,21 @@ data class KosyncReport(
     val receivedAt: Long,
 )
 
+/**
+ * How Librillo shows one device that reports positions (schema 12): the owner's name for it, the
+ * device it is the same as, and when the owner forgot it. It only changes how devices are shown:
+ * their reports, snapshots and positions are never changed or deleted. [deviceKey] is a
+ * [DeviceKeys] key. [hiddenAt] is 0 while shown; a device heard from after it shows again.
+ */
+@Entity(tableName = "device_profiles")
+data class DeviceProfile(
+    @PrimaryKey val deviceKey: String,
+    @ColumnInfo(defaultValue = "''") val displayName: String = "",
+    val mergedInto: String? = null,
+    @ColumnInfo(defaultValue = "0") val hiddenAt: Long = 0,
+    val updatedAt: Long,
+)
+
 @Entity(
     tableName = "phone_bookmarks",
     indices = [Index("bookId")],
@@ -504,6 +519,15 @@ interface LibraryDao {
     @Query("SELECT * FROM removed_entries WHERE id=:id")
     suspend fun removedEntry(id: String): RemovedEntry?
 
+    /** Takes one entry out of Recently removed, leaving the rest of its group there. */
+    @Query("DELETE FROM removed_entries WHERE id=:id") suspend fun unmarkRemoved(id: String)
+
+    /** Every stored book, Recently removed included. */
+    @Query("SELECT * FROM books") fun storedBooks(): Flow<List<Book>>
+
+    /** Every stored catalogue entry, Recently removed included. */
+    @Query("SELECT * FROM wishlist") fun storedWishes(): Flow<List<WishBook>>
+
     @Query("DELETE FROM collections WHERE id=:id") suspend fun deleteShelf(id: String)
 
     @Query(
@@ -595,6 +619,22 @@ interface LibraryDao {
     fun annotations(): Flow<List<BookAnnotation>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun reading(value: ReadingSnapshot)
+
+    /** Every e-reader position the old SSH bridge read, books in Recently removed included. */
+    @Query("SELECT * FROM reading") fun everyReading(): Flow<List<ReadingSnapshot>>
+
+    /** Every Progress sync report from every device. */
+    @Query("SELECT * FROM kosync_progress") suspend fun everyKosyncReport(): List<KosyncReport>
+
+    @Query("SELECT * FROM device_profiles") fun deviceProfiles(): Flow<List<DeviceProfile>>
+
+    @Query("SELECT * FROM device_profiles") suspend fun allDeviceProfiles(): List<DeviceProfile>
+
+    @Query("SELECT * FROM device_profiles WHERE deviceKey = :key")
+    suspend fun deviceProfile(key: String): DeviceProfile?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveDeviceProfile(value: DeviceProfile)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun annotation(value: BookAnnotation)
 
@@ -743,8 +783,9 @@ interface HardcoverDao {
             HardcoverBaselineRow::class,
             HardcoverMatchRow::class,
             HardcoverQuestionRow::class,
+            DeviceProfile::class,
         ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -893,6 +934,19 @@ val MIGRATION_10_11 =
         }
     }
 
+/**
+ * Schema 12: device profiles, the owner's names, merges and forgets for the devices that report
+ * positions. A new table; nothing existing changes.
+ */
+val MIGRATION_11_12 =
+    object : androidx.room.migration.Migration(11, 12) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS device_profiles (deviceKey TEXT NOT NULL PRIMARY KEY, displayName TEXT NOT NULL DEFAULT '', mergedInto TEXT, hiddenAt INTEGER NOT NULL DEFAULT 0, updatedAt INTEGER NOT NULL)"
+            )
+        }
+    }
+
 /** Every shipped migration, in order. The app and migration tests must use this same list. */
 val ALL_MIGRATIONS =
     arrayOf(
@@ -906,4 +960,5 @@ val ALL_MIGRATIONS =
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
+        MIGRATION_11_12,
     )

@@ -678,8 +678,13 @@ class LibraryRepository(
                     require(dao.removedEntry(wishId) == null && dao.removedEntry(bookId) == null) {
                         context.getString(R.string.data6_attach_restore_first)
                     }
-                    val wish =
+                    val stored =
                         dao.wish(wishId) ?: error(context.getString(R.string.data6_wish_gone))
+                    // A link to a book that no longer exists is no attachment: it is replaced.
+                    val wish =
+                        stored.copy(
+                            linkedBookId = stored.linkedBookId?.takeIf { dao.book(it) != null }
+                        )
                     val book = dao.book(bookId) ?: error(context.getString(R.string.msg_book_gone))
                     requireAttachment(wish, book, dao.allWishes())
                     dao.updateWish(wish.copy(linkedBookId = book.id))

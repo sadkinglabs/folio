@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Devices that send positions: the Device tab's list, the device sheet, the Progress sheet. -->
+    <string name="dev_section">Devices</string>
+    <string name="dev_section_hint">Every e-reader that has synced or sent a reading position. Tap one to rename it, join it with another, or forget it.</string>
+    <string name="dev_unnamed">E-reader</string>
+    <string name="dev_old_name">Old e-reader position (before sync)</string>
+    <string name="dev_seen">Last heard from %1$s</string>
+    <string name="dev_syncs">Syncs books</string>
+    <plurals name="dev_positions">
+        <item quantity="one">Position for %d book</item>
+        <item quantity="other">Positions for %d books</item>
+    </plurals>
+    <string name="dev_old_hint">Read over SSH before sync. It won’t update.</string>
+    <plurals name="dev_includes">
+        <item quantity="one">Shown together with %d other device</item>
+        <item quantity="other">Shown together with %d other devices</item>
+    </plurals>
+    <string name="dev_line">%1$s · %2$s</string>
+
+    <string name="dev_sheet_own_name">It calls itself “%1$s”.</string>
+    <string name="dev_sheet_name">Name</string>
+    <string name="dev_sheet_save_name">Save name</string>
+    <string name="dev_sheet_same_title">Same e-reader as another one?</string>
+    <string name="dev_sheet_same_hint">Its positions then show as one row, the newest winning.</string>
+    <string name="dev_sheet_same">This is the same e-reader as %1$s</string>
+    <string name="dev_sheet_together_title">Shown together with this one</string>
+    <string name="dev_sheet_separate">Show separately</string>
+    <string name="dev_sheet_forget">Forget this device</string>
+    <string name="dev_sheet_forget_hint">It no longer shows in Progress or here. Its positions stay on the phone, and it comes back if it reports again.</string>
+
+    <string name="dev_saving">Saving…</string>
+    <string name="dev_gone">That device is no longer on the phone.</string>
+    <string name="dev_same_already">Those are shown as one device already.</string>
+    <string name="dev_renamed">Renamed to “%1$s”.</string>
+    <string name="dev_name_reset">“%1$s” uses its own name again.</string>
+    <string name="dev_merged">“%1$s” now shows as “%2$s”.</string>
+    <string name="dev_separated">“%1$s” shows on its own again.</string>
+    <string name="dev_forgotten">Forgot “%1$s”. It comes back if it reports again.</string>
+</resources>

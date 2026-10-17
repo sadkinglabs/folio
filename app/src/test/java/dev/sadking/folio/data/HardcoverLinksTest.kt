@@ -262,39 +262,183 @@ class HardcoverLinksTest {
         )
     }
 
-    @Test
-    fun aHardcoverBookWhoseEntryIsInRecentlyRemovedIsRefused() {
-        val other = entry(hardcoverId = 42)
-        removed(other.id, "Catalogue")
-        val book = book()
-        unsure(book.id)
-        assertEquals(
-            text(dev.sadking.folio.R.string.msg_discovery_removed_before_linking),
-            refused(book.id),
+    private fun taken(itemId: String, hardcoverId: Int = 42): HardcoverLinkTaken =
+        assertThrows(HardcoverLinkTaken::class.java) { link(itemId, hardcoverId) }
+
+    private fun move(itemId: String, hardcoverId: Int = 42) = runBlocking {
+        links.link(itemId, hardcoverId, "Hyperion", listOf("Dan Simmons"), move = true)
+    }
+
+    private fun takenText(title: String) =
+        context.getString(dev.sadking.folio.R.string.hc_link_taken, title)
+
+    private fun takenRemovedText(title: String) =
+        context.getString(dev.sadking.folio.R.string.hc_link_taken_removed, title)
+
+    /** Notes, a phone position and an e-reader position for [bookId]: none may be lost. */
+    private fun readingData(bookId: String, hash: String) = runBlocking {
+        dao.annotation(
+            BookAnnotation("note-$bookId", bookId, "kindle", "text", "my note", "", "", "", "", "")
         )
-        assertEquals("The match stays to check", listOf(book.id), records())
+        dao.savePhoneReading(PhoneReading(bookId, hash, "{}", "/body/p", 0.4, 10))
+        dao.reading(ReadingSnapshot(bookId, "kindle", 0.5, "/p", "reading", 0, 11, "", "", ""))
+    }
+
+    private fun assertReadingDataKept(bookId: String, hash: String) = runBlocking {
+        assertNotNull(dao.book(bookId))
+        assertEquals(
+            listOf("note-$bookId"),
+            dao.everyAnnotation().filter { it.bookId == bookId }.map { it.id },
+        )
+        assertNotNull(dao.phoneReading(bookId, hash))
+        // Straight from the table: the DAO's lists leave out books in Recently removed.
+        db.openHelper.readableDatabase
+            .query("SELECT COUNT(*) FROM reading WHERE bookId = ?", arrayOf(bookId))
+            .use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1, it.getInt(0))
+            }
     }
 
     @Test
-    fun aHardcoverBookLinkedToAnotherBookIsRefused() {
-        val first = book()
-        link(first.id)
-        val second = book("Dune (copy)")
-        assertEquals(
-            text(dev.sadking.folio.R.string.msg_discovery_linked_elsewhere),
-            refused(second.id),
-        )
+    fun aHardcoverBookWhoseEntryIsInRecentlyRemovedSaysSoAndCanMoveHere() {
+        val other = entry(hardcoverId = 42)
+        runBlocking {
+            dao.insertShelf(Shelf("s1", "Summer"))
+            dao.addWishMembership(WishMembership(other.id, "s1"))
+        }
+        removed(other.id, "Catalogue")
+        val book = book("Hyperion")
+        unsure(book.id)
+        val refusal = taken(book.id)
+        assertEquals(takenRemovedText("Entry"), refusal.message)
+        assertTrue(refusal.holder.removed)
+        assertEquals("The match stays to check", listOf(book.id), records())
+        assertEquals(other.id, move(book.id))
+        val entry = runBlocking { dao.wish(other.id)!! }
+        assertEquals(book.id, entry.linkedBookId)
+        assertNull("Out of Recently removed", runBlocking { dao.removedEntry(other.id) })
+        assertEquals(listOf("s1"), runBlocking { dao.membershipsOf(book.id) }.map { it.shelfId })
+        assertTrue(records().isEmpty())
+    }
+
+    @Test
+    fun aHolderWhoseBookIsInRecentlyRemovedSaysSoAndKeepsThatBooksData() {
+        val fall = book("The Fall of Hyperion")
+        readingData(fall.id, fall.currentHash)
+        val holder = runBlocking { dao.wish(link(fall.id))!! }
+        runBlocking { repo.removeLocal(setOf(fall.id)) }
+        val hyperion = book("Hyperion")
+        val refusal = taken(hyperion.id)
+        assertEquals(takenRemovedText("The Fall of Hyperion"), refusal.message)
+        assertEquals(fall.id, refusal.holder.bookId)
+        move(hyperion.id)
+        assertEquals(hyperion.id, runBlocking { dao.wish(holder.id)!! }.linkedBookId)
+        // The removed book stays in Recently removed, unmatched, with everything it had.
+        assertNotNull(runBlocking { dao.removedEntry(fall.id) })
+        assertReadingDataKept(fall.id, fall.currentHash)
+        runBlocking { repo.restoreRemoved(fall.id) }
+        assertTrue(runBlocking { dao.allWishes() }.none { it.linkedBookId == fall.id })
+        assertReadingDataKept(fall.id, fall.currentHash)
+    }
+
+    @Test
+    fun aLinkToABookThatNoLongerExistsIsRepairedNotRefused() {
+        val gone = UUID.randomUUID().toString()
+        val stale = entry(hardcoverId = 42, linkedBookId = gone)
+        val book = book("Hyperion")
+        unsure(book.id)
+        assertEquals(stale.id, link(book.id))
+        assertEquals(book.id, runBlocking { dao.wish(stale.id)!! }.linkedBookId)
+        assertTrue(records().isEmpty())
         assertEquals(1, runBlocking { dao.allWishes() }.size)
     }
 
     @Test
-    fun anEntryCannotTakeAHardcoverBookAnotherEntryHas() {
+    fun aStaleLinkIsNoAttachmentForAttachEither() {
+        val stale = entry(hardcoverId = 42, linkedBookId = UUID.randomUUID().toString())
+        val book = book("Hyperion")
+        runBlocking { repo.attach(stale.id, book.id) }
+        assertEquals(book.id, runBlocking { dao.wish(stale.id)!! }.linkedBookId)
+    }
+
+    @Test
+    fun aHardcoverBookMatchedToAnotherBookNamesItAndMovesHere() {
+        // The owner's case: "The Fall of Hyperion" was matched to Hardcover's "Hyperion".
+        val fall = book("The Fall of Hyperion")
+        readingData(fall.id, fall.currentHash)
+        runBlocking {
+            dao.insertShelf(Shelf("s2", "Sci-fi"))
+            dao.addMembership(Membership(fall.id, "s2"))
+        }
+        val holder = runBlocking { dao.wish(link(fall.id))!! }
+        val hyperion = book("Hyperion")
+        unsure(hyperion.id)
+        val refusal = taken(hyperion.id)
+        assertEquals(takenText("The Fall of Hyperion"), refusal.message)
+        assertEquals(
+            HardcoverHolder(holder.id, fall.id, "The Fall of Hyperion", false),
+            refusal.holder,
+        )
+        assertEquals(1, runBlocking { dao.allWishes() }.size)
+        assertEquals(holder.id, move(hyperion.id))
+        assertEquals(hyperion.id, runBlocking { dao.wish(holder.id)!! }.linkedBookId)
+        // The other book is unmatched, goes back to matching, and keeps everything it had.
+        assertTrue(runBlocking { dao.allWishes() }.none { it.linkedBookId == fall.id })
+        assertReadingDataKept(fall.id, fall.currentHash)
+        assertEquals(listOf("s2"), runBlocking { dao.membershipsOf(fall.id) }.map { it.shelfId })
+        assertTrue(records().isEmpty())
+        val pending =
+            dev.sadking.folio.sync.matchItems(
+                runBlocking { dao.allBooks() },
+                runBlocking { dao.allStoredWishes() },
+                emptySet(),
+                emptyMap(),
+            )
+        assertEquals(listOf(fall.id), pending.map { it.itemId })
+    }
+
+    @Test
+    fun anEntryCanTakeTheHardcoverBookFromAnotherEntryThatKeepsTheRest() {
+        val fall = book("The Fall of Hyperion")
+        val other = entry(hardcoverId = 42, linkedBookId = fall.id)
+        runBlocking { dao.updateWish(other.copy(status = "Finished")) }
+        val mine = entry()
+        assertEquals(takenText("The Fall of Hyperion"), taken(mine.id).message)
+        assertNull(runBlocking { dao.wish(mine.id)!! }.hardcoverId)
+        assertEquals(mine.id, move(mine.id))
+        assertEquals(42, runBlocking { dao.wish(mine.id)!! }.hardcoverId)
+        val left = runBlocking { dao.wish(other.id)!! }
+        assertNull(left.hardcoverId)
+        assertEquals(fall.id, left.linkedBookId)
+        assertEquals("Finished", left.status)
+    }
+
+    @Test
+    fun anEntryCannotTakeAHardcoverBookAnotherEntryHasWithoutMoving() {
         entry(hardcoverId = 42)
         val entry = entry()
-        assertEquals(
-            text(dev.sadking.folio.R.string.msg_discovery_hardcover_book_exists),
-            refused(entry.id),
-        )
+        assertEquals(takenText("Entry"), taken(entry.id).message)
         assertNull(runBlocking { dao.wish(entry.id)!! }.hardcoverId)
+    }
+
+    @Test
+    fun checkTheseMatchesSaysWhichBookHoldsACandidate() {
+        val fall = book("The Fall of Hyperion")
+        val holder = runBlocking { dao.wish(link(fall.id))!! }
+        val hyperion = book("Hyperion")
+        unsure(hyperion.id)
+        val checks =
+            dev.sadking.folio.sync.matchChecks(
+                runBlocking { dao.allStoredBooks() },
+                runBlocking { dao.allStoredWishes() },
+                runBlocking { store.allMatchRecords() }.associateBy { it.itemId },
+            )
+        val check = checks.single()
+        assertEquals(hyperion.id, check.itemId)
+        assertEquals(
+            HardcoverHolder(holder.id, fall.id, "The Fall of Hyperion", false),
+            check.held[42],
+        )
     }
 }

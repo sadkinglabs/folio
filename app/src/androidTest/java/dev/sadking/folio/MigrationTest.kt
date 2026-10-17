@@ -6,11 +6,13 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.ALL_MIGRATIONS
+import dev.sadking.folio.data.DeviceProfile
 import dev.sadking.folio.data.HardcoverBaselineRow
 import dev.sadking.folio.data.HardcoverMatchRow
 import dev.sadking.folio.data.HardcoverQuestionRow
 import dev.sadking.folio.data.LibraryDatabase
 import dev.sadking.folio.data.MIGRATION_10_11
+import dev.sadking.folio.data.MIGRATION_11_12
 import dev.sadking.folio.data.MIGRATION_7_8
 import dev.sadking.folio.data.MIGRATION_8_9
 import dev.sadking.folio.data.MIGRATION_9_10
@@ -229,6 +231,74 @@ class MigrationTest {
                 assertTrue(it.moveToFirst())
                 assertEquals(2, it.getInt(0))
             }
+        }
+    }
+
+    @Test
+    fun schema12AddsDeviceProfilesAndKeepsEveryPosition() {
+        val name = "device-profiles.db"
+        helper.createDatabase(name, 11).use {
+            it.execSQL(
+                "INSERT INTO books (id, title, authors, description, publisher, language, identifiers, series, seriesIndex, tags, originalPath, currentPath, coverPath, originalHash, currentHash, addedAt, status, format, statusAt) VALUES ('book', 'Hyperion', '[]', '', '', '', '[]', '', '', '[]', 'A/H.epub', 'A/H.epub', NULL, 'h', 'h', 1, 'Reading', 'epub', 7)"
+            )
+            it.execSQL(
+                "INSERT INTO reading VALUES ('book', 'saved-ssh', 0.46, '/p', 'reading', 0, 5, 'a.sdr', 'h', 'h')"
+            )
+            it.execSQL(
+                "INSERT INTO kosync_progress VALUES ('doc', 'kindle-1', 'KindlePaperWhite5SE', '/body/p', 0.5, 9, 9000)"
+            )
+            it.execSQL(
+                "INSERT INTO annotations VALUES ('note', 'book', 'kindle-1', 'text', 'my note', 'Ch 1', '2026-10-01', 'p0', 'p1', 'highlight')"
+            )
+        }
+        helper.runMigrationsAndValidate(name, 12, true, MIGRATION_11_12).use { db ->
+            for (table in listOf("books", "reading", "kosync_progress", "annotations")) {
+                db.query("SELECT COUNT(*) FROM $table").use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals(table, 1, it.getInt(0))
+                }
+            }
+            db.query("SELECT percent FROM reading WHERE deviceId = 'saved-ssh'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(0.46, it.getDouble(0), 0.0)
+            }
+            db.execSQL(
+                "INSERT INTO device_profiles (deviceKey, updatedAt) VALUES ('ssh:saved-ssh', 10)"
+            )
+            db.query("SELECT displayName, mergedInto, hiddenAt FROM device_profiles").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("", it.getString(0))
+                assertTrue(it.isNull(1))
+                assertEquals(0L, it.getLong(2))
+            }
+            assertThrows(SQLiteConstraintException::class.java) {
+                db.execSQL(
+                    "INSERT INTO device_profiles VALUES ('ssh:saved-ssh', 'Again', NULL, 0, 11)"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun roomOpensSchema12AndSavesDeviceProfiles() = runBlocking {
+        val name = "device-profiles-dao.db"
+        helper.createDatabase(name, 11).close()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database =
+            Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+                .addMigrations(*ALL_MIGRATIONS)
+                .build()
+        try {
+            val dao = database.library()
+            dao.saveDeviceProfile(DeviceProfile("ssh:old", mergedInto = "ereader:k", updatedAt = 1))
+            dao.saveDeviceProfile(DeviceProfile("ssh:old", hiddenAt = 5, updatedAt = 2))
+            val saved = dao.deviceProfile("ssh:old")!!
+            assertNull(saved.mergedInto)
+            assertEquals(5L, saved.hiddenAt)
+            assertEquals(1, dao.allDeviceProfiles().size)
+        } finally {
+            database.close()
+            context.deleteDatabase(name)
         }
     }
 

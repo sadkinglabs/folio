@@ -207,7 +207,7 @@ print('Migration 9→10 matches Room schema; books keep their status, with an un
 old.execute("INSERT INTO wishlist (id,catalogKey,title,authors,coverPath,hardcoverId,hardcoverTitle,hardcoverSynced,addedAt,linkedBookId,details,status) VALUES ('wish10','hardcover:10','Kept entry','[]',NULL,10,'Kept entry',1,1000,NULL,'{}','Want to Read')")
 v11=json.loads((schemas/'11.json').read_text())['database']
 assert v11['version']==11
-source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_10_11',1)[1].split('val ALL_MIGRATIONS',1)[0]
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_10_11',1)[1].split('val MIGRATION_11_12',1)[0]
 statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
 assert len(statements)==4,statements
 for sql in statements:old.execute(sql)
@@ -232,3 +232,31 @@ for sql in ["INSERT INTO hardcover_baseline VALUES (1,10,2,0,2001)","INSERT INTO
     except sqlite3.IntegrityError:pass
 assert not old.execute('PRAGMA foreign_key_check').fetchall()
 print('Migration 10→11 matches Room schema; catalogue entries and books keep their status (entries with an unknown (0) time of change), e-reader baselines and observations are kept, and the Hardcover tables enforce one row per key.')
+
+# Schema 12: device profiles (names, merges and forgets for the devices that report positions).
+# A new table only: every report, snapshot and position stays as it was.
+old.execute("INSERT INTO kosync_progress VALUES ('doc11','kindle-11','KindlePaperWhite5SE','/body/p',0.5,20,20000)")
+v12=json.loads((schemas/'12.json').read_text())['database']
+assert v12['version']==12
+source=(root/'app/src/main/java/dev/sadking/folio/data/Database.kt').read_text().split('val MIGRATION_11_12',1)[1].split('val ALL_MIGRATIONS',1)[0]
+statements=re.findall(r'db\.execSQL\(\s*"([^"\n]+)"\s*\)',source)
+assert len(statements)==1,statements
+for sql in statements:old.execute(sql)
+expected12=sqlite3.connect(':memory:');schema(expected12,v12)
+for entity in v12['entities']:
+ name=entity['tableName']
+ assert old.execute(f'PRAGMA table_info({name})').fetchall()==expected12.execute(f'PRAGMA table_info({name})').fetchall(),name
+ assert old.execute(f'PRAGMA foreign_key_list({name})').fetchall()==expected12.execute(f'PRAGMA foreign_key_list({name})').fetchall(),name
+ assert sorted((r[1],r[2]) for r in old.execute(f'PRAGMA index_list({name})'))==sorted((r[1],r[2]) for r in expected12.execute(f'PRAGMA index_list({name})')),name
+assert old.execute("SELECT percent FROM reading WHERE bookId='kept'").fetchone()==(0.4,)
+assert old.execute("SELECT count(*) FROM kosync_progress").fetchone()==(2,)
+assert old.execute("SELECT title,status FROM wishlist WHERE id='wish10'").fetchone()==('Kept entry','Want to Read')
+old.execute("INSERT INTO device_profiles (deviceKey,updatedAt) VALUES ('ssh:old',3000)")
+assert old.execute("SELECT displayName,mergedInto,hiddenAt FROM device_profiles").fetchone()==('',None,0)
+old.execute("INSERT INTO device_profiles VALUES ('ereader:kindle-11','Paperwhite',NULL,0,3001)")
+try:
+    old.execute("INSERT INTO device_profiles VALUES ('ssh:old','Again',NULL,0,3002)")
+    raise AssertionError('Two profiles for one device')
+except sqlite3.IntegrityError:pass
+assert not old.execute('PRAGMA foreign_key_check').fetchall()
+print('Migration 11→12 matches Room schema; device profiles default to shown and unnamed, one per device, and reports, old positions and the library are kept.')

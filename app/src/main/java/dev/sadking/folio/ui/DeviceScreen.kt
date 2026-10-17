@@ -38,6 +38,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sadking.folio.R
+import dev.sadking.folio.data.DeviceRoster
+import dev.sadking.folio.data.KnownDevice
 import dev.sadking.folio.link.FolioLink
 import dev.sadking.folio.link.LinkLog
 import dev.sadking.folio.link.PluginExport
@@ -62,6 +64,8 @@ internal const val DEVICE_ACTIVITY_TAG = "device-activity"
  * The Device tab wired to the app: the phone's sync settings, its addresses (refreshed while the
  * tab is open, as Wi-Fi and the hotspot come and go), the log, the sign-in sheet and saving the
  * plugin. Everything the screen shows is passed to [DeviceScreen], which previews render directly.
+ * Its list of devices opens [DeviceSheet], whose changes go to [onRename], [onMerge] (device key,
+ * the key it is the same as), [onSeparate] and [onForget].
  */
 @Composable
 internal fun DeviceTab(
@@ -73,7 +77,13 @@ internal fun DeviceTab(
     onSync: () -> Unit,
     onSetUp: () -> Unit,
     onDecisions: () -> Unit,
+    devices: DeviceRoster = DeviceRoster.EMPTY,
+    onRename: (String, String) -> Unit = { _, _ -> },
+    onMerge: (String, String) -> Unit = { _, _ -> },
+    onSeparate: (String) -> Unit = {},
+    onForget: (String) -> Unit = {},
 ) {
+    var openDevice by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val port by link.port.collectAsStateWithLifecycle()
     val entries by link.log.entries.collectAsStateWithLifecycle()
@@ -150,7 +160,28 @@ internal fun DeviceTab(
         onSignIn = { showSignIn = true },
         onSavePlugin = { savePlugin.launch("folio.koplugin.zip") },
         pluginSaved = pluginSaved,
+        devices = devices.shown,
+        onDevice = { openDevice = it.key },
     )
+    // The device stays open while it is shown; merged into another or forgotten, the sheet closes.
+    val device = openDevice?.let { key -> devices.shown.firstOrNull { it.key == key } }
+    if (device != null)
+        DeviceSheet(
+            device,
+            others = devices.shown.filter { it.key != device.key },
+            now = now,
+            onRename = { onRename(device.key, it) },
+            onMerge = { other ->
+                openDevice = null
+                onMerge(device.key, other.key)
+            },
+            onSeparate = { member -> onSeparate(member.key) },
+            onForget = {
+                openDevice = null
+                onForget(device.key)
+            },
+            onDismiss = { openDevice = null },
+        )
     if (showSignIn)
         LinkSignInSheet(
             addresses = shown,
@@ -186,6 +217,9 @@ internal fun DeviceScreen(
     onSignIn: () -> Unit,
     onSavePlugin: () -> Unit,
     pluginSaved: Boolean? = null,
+    /** Every device to list, newest first (forgotten ones left out). */
+    devices: List<KnownDevice> = emptyList(),
+    onDevice: (KnownDevice) -> Unit = {},
 ) {
     var showAllActivity by rememberSaveable { mutableStateOf(false) }
     val large = LocalDensity.current.fontScale > 1.5f
@@ -234,6 +268,7 @@ internal fun DeviceScreen(
             }
         val refused = ereaders.flatMap { it.refused }
         if (refused.isNotEmpty()) RefusedFiles(refused)
+        DeviceList(devices, now, onDevice)
         SettingsGroup(stringResource(R.string.m9sync_settings)) {
             SettingsSwitchRow(
                 Icons.Outlined.Sync,
@@ -539,7 +574,7 @@ private fun ActivitySheet(
     val context = LocalContext.current
     val timeFormat = remember { DateFormat.getTimeFormat(context) }
     val dateFormat = remember { DateFormat.getDateFormat(context) }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -649,7 +684,7 @@ internal fun LinkSignInSheet(
     onDismiss: () -> Unit,
 ) {
     var shown by remember { mutableStateOf<String?>(null) }
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

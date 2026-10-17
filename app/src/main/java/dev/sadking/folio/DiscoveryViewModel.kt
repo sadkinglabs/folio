@@ -167,6 +167,9 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
     val hardcoverEditions = MutableStateFlow<List<HardcoverEdition>>(emptyList())
     val notices = MutableSharedFlow<Operation>(extraBufferCapacity = 8)
 
+    /** A link that waits for the owner: Hardcover's book is already matched elsewhere. */
+    val moveOffer = MutableStateFlow<MoveOffer?>(null)
+
     fun openReading(book: Book) =
         run(msg(R.string.msg_discovery_loading_tracking)) {
             readingBookId.value = book.id
@@ -174,6 +177,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             hardcoverEditions.value = emptyList()
             matches.value = emptyList()
             matchWishId.value = null
+            moveOffer.value = null
             if (settings.username.isBlank()) return@run msg(R.string.msg_discovery_connect_to_track)
             val link =
                 dao.allWishes().firstOrNull {
@@ -268,6 +272,7 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
     fun clearReading() {
+        moveOffer.value = null
         readingBookId.value = null
         hardcoverReading.value = null
         hardcoverEditions.value = emptyList()
@@ -528,88 +533,98 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             else msg(R.string.msg_discovery_confirm_to_link)
         }
 
+    /**
+     * The owner tapped Link on a Hardcover result. For a book or catalogue entry (the Hardcover
+     * sheet, or a catalogue entry's own search) the same rules as Check these matches apply
+     * (HardcoverLinks): when Hardcover's book is already matched elsewhere, [moveOffer] asks the
+     * owner whether to move the match. From the scan screen, the result becomes a catalogue entry.
+     */
     fun link(match: HardcoverMatch) =
         run(msg(R.string.msg_discovery_saving_match)) {
-            val wishId = matchWishId.value ?: readingBookId.value?.let { dao.wish(it)?.id }
-            if (wishId == null) {
-                val id = UUID.randomUUID().toString()
-                val folder = File(app.repository.root, id)
-                try {
-                    val trackedBook = readingBookId.value?.let { dao.book(it) }
-                    val already = dao.allStoredWishes().filter { it.hardcoverId == match.id }
-                    require(already.none { dao.removedEntry(it.id) != null }) {
-                        msg(R.string.msg_discovery_removed_before_linking)
-                    }
-                    require(already.size <= 1) { msg(R.string.msg_discovery_duplicates) }
-                    if (already.isNotEmpty()) {
-                        trackedBook?.let { app.repository.attach(already.single().id, it.id) }
-                        matches.value = emptyList()
-                        matchWishId.value = null
-                        if (readingBookId.value != null) loadReading(match.id)
-                        return@run msg(R.string.msg_discovery_matched_existing)
-                    }
-                    if (trackedBook != null)
-                        require(dao.allWishes().none { it.linkedBookId == trackedBook.id }) {
-                            msg(R.string.msg_discovery_epub_already_matched)
-                        }
-                    val photo =
-                        (if (trackedBook != null) trackedBook.coverPath else cover.value)
-                            ?.let(::File)
-                            ?.takeIf { it.isFile }
-                    val savedCover = photo?.let {
+            moveOffer.value = null
+            val item = matchWishId.value ?: readingBookId.value
+            if (item == null) saveMatch(match)
+            else linkItem(item, match.id, match.title, match.authors, move = false)
+        }
+
+    /** "Move the match here": links the offer's item and moves the match from its holder. */
+    fun moveLink(offer: MoveOffer) =
+        run(msg(R.string.msg_discovery_saving_match)) {
+            linkItem(offer.itemId, offer.hardcoverId, offer.title, offer.authors, move = true)
+            msg(R.string.hc_link_moved, offer.holder.title)
+        }
+
+    /** "Keep it there": the match stays where it is. */
+    fun keepLink() {
+        val offer = moveOffer.value ?: return
+        moveOffer.value = null
+        state.value = DiscoveryState(message = msg(R.string.hc_link_kept, offer.holder.title))
+    }
+
+    private suspend fun linkItem(
+        itemId: String,
+        hardcoverId: Int,
+        title: String,
+        authors: List<String>,
+        move: Boolean,
+    ): String {
+        moveOffer.value = null
+        try {
+            HardcoverLinks(app.repository).link(itemId, hardcoverId, title, authors, move)
+        } catch (e: HardcoverLinkTaken) {
+            moveOffer.value = MoveOffer(itemId, hardcoverId, title, authors, e.holder)
+            throw e
+        }
+        // What the match left goes back to matching; Hardcover hears about the link by sync.
+        dev.sadking.folio.sync.HardcoverSync.get(app).kick(pull = false)
+        matches.value = emptyList()
+        matchWishId.value = null
+        if (readingBookId.value != null) loadReading(hardcoverId)
+        return if (readingBookId.value != null) msg(R.string.msg_discovery_linked)
+        else msg(R.string.msg_discovery_match_saved)
+    }
+
+    /** A Hardcover result from the scan screen, kept as a catalogue entry. */
+    private suspend fun saveMatch(match: HardcoverMatch): String {
+        val id = UUID.randomUUID().toString()
+        val folder = File(app.repository.root, id)
+        try {
+            val already = dao.allStoredWishes().filter { it.hardcoverId == match.id }
+            require(already.none { dao.removedEntry(it.id) != null }) {
+                msg(R.string.msg_discovery_removed_before_linking)
+            }
+            require(already.size <= 1) { msg(R.string.msg_discovery_duplicates) }
+            if (already.isNotEmpty()) {
+                matches.value = emptyList()
+                return msg(R.string.msg_discovery_matched_existing)
+            }
+            val savedCover =
+                cover.value
+                    ?.let(::File)
+                    ?.takeIf { it.isFile }
+                    ?.let {
                         check(folder.mkdirs())
                         it.copyTo(File(folder, "wish-cover.jpg")).absolutePath
                     }
-                    val wish =
-                        WishBook(
-                            id,
-                            "hardcover:${match.id}",
-                            match.title,
-                            encode(match.authors),
-                            savedCover,
-                            match.id,
-                            match.title,
-                            linkedBookId = trackedBook?.id,
-                        )
-                    parseWish(wishJson(wish))
-                    if (dao.insertWish(wish) == -1L) {
-                        folder.deleteRecursively()
-                        if (trackedBook != null)
-                            dao.allWishes()
-                                .firstOrNull { it.catalogKey == wish.catalogKey }
-                                ?.let { existing ->
-                                    require(
-                                        existing.linkedBookId == null ||
-                                            existing.linkedBookId == trackedBook.id
-                                    ) {
-                                        msg(R.string.msg_discovery_linked_elsewhere)
-                                    }
-                                    app.repository.attach(existing.id, trackedBook.id)
-                                }
-                    }
-                } catch (e: Exception) {
-                    folder.deleteRecursively()
-                    throw e
-                }
-            } else {
-                val wish = dao.wish(wishId) ?: error(msg(R.string.msg_book_gone))
-                require(dao.allWishes().none { it.id != wish.id && it.hardcoverId == match.id }) {
-                    msg(R.string.msg_discovery_hardcover_book_exists)
-                }
-                dao.updateWish(
-                    wish.copy(
-                        hardcoverId = match.id,
-                        hardcoverTitle = match.title,
-                        hardcoverSynced = false,
-                    )
+            val wish =
+                WishBook(
+                    id,
+                    "hardcover:${match.id}",
+                    match.title,
+                    encode(match.authors),
+                    savedCover,
+                    match.id,
+                    match.title,
                 )
-            }
-            matches.value = emptyList()
-            matchWishId.value = null
-            if (readingBookId.value != null) loadReading(match.id)
-            if (readingBookId.value != null) msg(R.string.msg_discovery_linked)
-            else msg(R.string.msg_discovery_match_saved)
+            parseWish(wishJson(wish))
+            if (dao.insertWish(wish) == -1L) folder.deleteRecursively()
+        } catch (e: Exception) {
+            folder.deleteRecursively()
+            throw e
         }
+        matches.value = emptyList()
+        return msg(R.string.msg_discovery_match_saved)
+    }
 
     fun publish(wish: WishBook) =
         run(msg(R.string.msg_discovery_publishing)) {
@@ -705,7 +720,16 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
                                     hardcoverId = row.book.id,
                                     hardcoverTitle = row.book.title,
                                 )
-                        if (target != null) requireAttachment(wish, target, dao.allWishes())
+                        // A link to a book that no longer exists is no attachment.
+                        if (target != null)
+                            requireAttachment(
+                                wish.copy(
+                                    linkedBookId =
+                                        wish.linkedBookId?.takeIf { dao.book(it) != null }
+                                ),
+                                target,
+                                dao.allWishes(),
+                            )
                         val value =
                             wish.copy(
                                 linkedBookId = target?.id ?: wish.linkedBookId,

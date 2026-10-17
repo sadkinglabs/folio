@@ -62,7 +62,7 @@ fun AddBooksSheet(
     onAction: (AddBookAction) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

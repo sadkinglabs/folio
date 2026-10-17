@@ -522,7 +522,7 @@ internal fun ListEditorSheet(
         it.equals(name.trim(), true) && !it.equals(shelf?.name ?: "", true)
     }
     val valid = name.isNotBlank() && !taken && (field in manualFields || value.isNotBlank())
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = { if (!busy) onDismiss() },
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

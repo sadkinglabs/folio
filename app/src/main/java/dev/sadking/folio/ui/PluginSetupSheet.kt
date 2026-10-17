@@ -56,7 +56,7 @@ internal fun PluginSetupSheet(
     onInstall: (host: String, port: Int, fingerprint: String, folder: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

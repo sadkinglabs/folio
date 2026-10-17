@@ -2,6 +2,7 @@ package dev.sadking.folio.core.hardcover
 
 import dev.sadking.folio.core.hardcover.HardcoverMatching as M
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -261,6 +262,35 @@ class HardcoverMatchingTest {
     }
 
     @Test
+    fun anIsbnOfAnotherBookInTheSeriesIsCheckedWithTheTitleSearch() {
+        // A sequel's EPUB that carries the first book's ISBN (a common metadata slip).
+        val hyperion = book(1, "Hyperion", "Dan Simmons", year = 1989)
+        val fallBook = book(2, "The Fall of Hyperion", "Dan Simmons", year = 1990)
+        val fall = query("The Fall of Hyperion", "Dan Simmons")
+        assertEquals(3, M.score(fall, hyperion))
+        assertTrue(M.seriesSibling(fall, hyperion))
+        val isbn = M.fromIsbn(fall, listOf(hyperion)) as MatchDecision.Confident
+        assertTrue(M.needsSearch(fall, isbn))
+        // The search finds the book itself: that wins.
+        assertEquals(
+            MatchDecision.Confident(fallBook),
+            M.confirmIsbn(fall, isbn, listOf(hyperion, fallBook)),
+        )
+        // The search finds nothing better, or cannot be made: never linked, left to the owner.
+        assertEquals(MatchDecision.Unsure(listOf(hyperion)), M.confirmIsbn(fall, isbn, listOf()))
+        assertEquals(MatchDecision.Unsure(listOf(hyperion)), M.confirmIsbn(fall, isbn, null))
+        assertEquals(
+            MatchDecision.Unsure(listOf(hyperion)),
+            M.confirmIsbn(fall, isbn, listOf(hyperion)),
+        )
+        // An ISBN book with the same title, or another title altogether, needs no search.
+        val same = query("Hyperion", "Dan Simmons")
+        assertFalse(M.needsSearch(same, M.fromIsbn(same, listOf(hyperion))))
+        val translated = query("Las Torres del Tiempo", "Dan Simmons")
+        assertFalse(M.needsSearch(translated, M.fromIsbn(translated, listOf(hyperion))))
+    }
+
+    @Test
     fun noIsbnBookIsNotFound() {
         assertEquals(MatchDecision.NotFound, M.fromIsbn(query("The Hobbit"), emptyList()))
     }
@@ -296,6 +326,31 @@ class HardcoverMatchingTest {
         assertEquals(
             MatchDecision.Unsure(listOf(one, two, three)),
             M.fromSearch(q, listOf(two, three, one)),
+        )
+    }
+
+    @Test
+    fun aSeriesSiblingIsNeverTakenForTheBook() {
+        val hyperion = book(1, "Hyperion", "Dan Simmons", year = 1989)
+        val fall = book(2, "The Fall of Hyperion", "Dan Simmons", year = 1990)
+        val cantos = book(3, "Hyperion Cantos", "Dan Simmons")
+        // Each book links to its own entry; the other book of the series is not a rival.
+        assertEquals(
+            MatchDecision.Confident(fall),
+            M.fromSearch(query("The Fall of Hyperion", "Dan Simmons"), listOf(hyperion, fall)),
+        )
+        assertEquals(
+            MatchDecision.Confident(hyperion),
+            M.fromSearch(query("Hyperion", "Dan Simmons"), listOf(fall, cantos, hyperion)),
+        )
+        // With only the sibling found, the sequel is never linked to the first book.
+        assertEquals(
+            MatchDecision.Unsure(listOf(hyperion)),
+            M.fromSearch(query("The Fall of Hyperion", "Dan Simmons"), listOf(hyperion)),
+        )
+        assertEquals(
+            null,
+            M.fromLibrary(query("The Fall of Hyperion", "Dan Simmons"), listOf(hyperion)),
         )
     }
 
