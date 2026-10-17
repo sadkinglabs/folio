@@ -50,6 +50,8 @@
     <string name="listen_voice_network">Needs internet</string>
     <string name="listen_add_voices">Add voices in Android settings</string>
     <string name="listen_failed">Reading aloud stopped.</string>
+    <string name="listen_natural_stopped">The natural voice stopped working, so reading stopped.</string>
+    <string name="listen_use_phone_voice">Use phone voice</string>
     <string name="reader_slider">Place in the book</string>
     <string name="reader_previous_page">Previous page</string>
     <string name="reader_next_page">Next page</string>

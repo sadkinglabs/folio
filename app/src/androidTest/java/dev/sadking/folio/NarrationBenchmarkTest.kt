@@ -11,6 +11,7 @@ import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import dev.sadking.folio.reader.KokoroModel
 import dev.sadking.folio.reader.NarrationBenchmark
 import dev.sadking.folio.reader.NarrationPriors
+import dev.sadking.folio.reader.SherpaCallback
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -67,11 +68,13 @@ class NarrationBenchmarkTest {
                         "It is a truth universally acknowledged. However little known the " +
                             "feelings of such a man may be, this truth is well fixed.",
                         GenerationConfig(silenceScale = 0.4f, speed = 1f, sid = 3),
-                    ) {
-                        streamed += it.size
-                        pieces++
-                        1
-                    }
+                        // A plain lambda lacks the method sherpa-onnx's JNI looks up.
+                        SherpaCallback {
+                            streamed += it.size
+                            pieces++
+                            true
+                        },
+                    )
                     .samples
             assertTrue(pieces >= 2)
             assertEquals(returned.size, streamed)

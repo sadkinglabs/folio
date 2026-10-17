@@ -184,13 +184,27 @@ internal class AudioTrackSink(
     private val starvationFrames = (tuning.starvationSeconds * sampleRate).toLong()
 
     private fun run() {
-        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+        try {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+        } catch (_: Throwable) {}
         try {
             out = output()
         } catch (failure: Throwable) {
             events.onError(failure.message ?: "Audio output failed")
             return
         }
+        try {
+            loop()
+        } catch (failure: Throwable) {
+            // An uncaught exception on this thread would end the app: end narration instead.
+            try {
+                out.release()
+            } catch (_: Throwable) {}
+            events.onError(failure.message ?: "Audio output failed")
+        }
+    }
+
+    private fun loop() {
         while (true) {
             while (true) {
                 val command = commands.poll() ?: break

@@ -42,6 +42,7 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -173,6 +174,8 @@ internal class NarrationEnv(
  * late results of the old one never play.
  *
  * Main-thread confined: Readium calls it on Main, and the synthesis and audio threads post back.
+ * Every entry point is guarded: an unexpected exception ends narration with an error (Readium's
+ * player then stops) instead of ending the app.
  */
 internal class KokoroEngine(
     private val runner: SynthesisRunner,
@@ -185,7 +188,12 @@ internal class KokoroEngine(
     private val tuning = env.tuning
     private val sampleRate = runner.sampleRate
     private val main = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope =
+        CoroutineScope(
+            SupervisorJob() +
+                Dispatchers.Main.immediate +
+                CoroutineExceptionHandler { _, failure -> crashed(failure) }
+        )
     private val genRef = AtomicLong(1)
     private val gen: Long
         get() = genRef.get()
@@ -335,28 +343,29 @@ internal class KokoroEngine(
 
     // ---- Readium ----------------------------------------------------------------------------
 
-    override fun submitPreferences(preferences: KokoroPreferences) {
+    override fun submitPreferences(preferences: KokoroPreferences) = guard {
         val before = mutableSettings.value
         val after = resolve(preferences)
         mutableSettings.value = after
-        if (closed || (after.speaker == before.speaker && after.speed == before.speed)) return
+        if (closed || (after.speaker == before.speaker && after.speed == before.speed)) return@guard
         // Readium follows with stop() and speak(current): have that sentence on its way already.
-        val at = held ?: requestIndex.takeIf { it >= 0 } ?: planned.firstOrNull()?.index ?: return
+        val at =
+            held ?: requestIndex.takeIf { it >= 0 } ?: planned.firstOrNull()?.index ?: return@guard
         reanchor(at)
     }
 
-    override fun speak(requestId: TtsEngine.RequestId, text: String, language: Language?) {
-        if (closed) return
+    override fun speak(requestId: TtsEngine.RequestId, text: String, language: Language?) = guard {
+        if (closed) return@guard
         request = requestId
         // Asking again after the "too slow" question means: try again.
         slowShown = false
         failure?.let { message ->
-            main.post { if (!closed && request == requestId) fail(message) }
-            return
+            post { if (!closed && request == requestId) fail(message) }
+            return@guard
         }
         if (!primed) {
             pendingSpeak = requestId to text
-            return
+            return@guard
         }
         align(requestId, text)
     }
@@ -365,8 +374,8 @@ internal class KokoroEngine(
      * Readium stopped (pause, skip, restart). Pausing keeps everything buffered, so the next
      * [speak] of the same sentence continues mid-sentence; any other decides then.
      */
-    override fun stop() {
-        if (closed) return
+    override fun stop() = guard {
+        if (closed) return@guard
         val interrupted = request
         pauseNow()
         request = null
@@ -378,8 +387,8 @@ internal class KokoroEngine(
      * Pauses the output at once. Readium only calls [stop] while it waits on an utterance; a pause
      * between two utterances reaches the engine through [ReadAloud] instead.
      */
-    fun pauseNow() {
-        if (closed) return
+    fun pauseNow() = guard {
+        if (closed) return@guard
         if (held == null && requestIndex >= 0) {
             held = requestIndex
             heldAtMs = env.clock()
@@ -393,19 +402,19 @@ internal class KokoroEngine(
     }
 
     /** From ReadAloud's location collect: the utterance Readium shows now. */
-    fun onLocation(locator: Locator, text: String) {
-        if (closed) return
+    fun onLocation(locator: Locator, text: String) = guard {
+        if (closed) return@guard
         val key = normalizeKey(text)
         if (!primed) {
             pendingLocation = locator to key
-            return
+            return@guard
         }
         checkLocation(locator, key)
     }
 
     /** Prepare the rest of the chapter before playing (TooSlow choice). */
-    fun prepareChapter() {
-        if (closed) return
+    fun prepareChapter() = guard {
+        if (closed) return@guard
         mode = Mode.CHAPTER
         chapterHref = planned.firstOrNull { it.index == anchorIndex() }?.href
         slowShown = false
@@ -419,8 +428,8 @@ internal class KokoroEngine(
      * Play now with a pause whenever the reserve runs out (TooSlow choice; automatic when the
      * screen is off).
      */
-    fun playWithBreaks() {
-        if (closed) return
+    fun playWithBreaks() = guard {
+        if (closed) return@guard
         mode = Mode.WITH_BREAKS
         slowShown = false
         waitSinceMs = waitSinceMs ?: env.clock()
@@ -430,7 +439,7 @@ internal class KokoroEngine(
 
     override fun close() {
         if (closed) return
-        val summary =
+        val summary = runCatching {
             metrics.summary(
                 env.clock(),
                 SessionSummaryFixed(
@@ -448,21 +457,63 @@ internal class KokoroEngine(
                     readiumLate = readiumLate,
                 ),
             )
+        }
         closed = true
         genRef.incrementAndGet()
-        output.send(SinkCommand.Release)
+        // Each step on its own: one that fails must not keep the model or the output held.
+        quietly { output.send(SinkCommand.Release) }
         // The runtime frees the model on its own thread, after any request in progress.
-        runner.release()
-        walking?.cancel()
-        scope.cancel()
-        releaseWakeLock()
-        if (model.observations > 0) env.savePrior(model.toPrior(System.currentTimeMillis()))
-        env.recorder?.finish(summary)
-        env.cache?.let { cache -> narrationScope.launch { cache.pin(emptyList()) } }
-        NarrationRecorder.log {
-            "session tapToFirstAudioMs=${summary.tapToFirstAudioMs} stalls=${summary.stalls}"
+        quietly { runner.release() }
+        quietly { walking?.cancel() }
+        quietly { scope.cancel() }
+        main.removeCallbacks(recheck)
+        quietly { releaseWakeLock() }
+        quietly {
+            if (model.observations > 0) env.savePrior(model.toPrior(System.currentTimeMillis()))
         }
+        summary.getOrNull()?.let { done ->
+            quietly { env.recorder?.finish(done) }
+            NarrationRecorder.log {
+                "session tapToFirstAudioMs=${done.tapToFirstAudioMs} stalls=${done.stalls}"
+            }
+        }
+        quietly { env.cache?.let { cache -> narrationScope.launch { cache.pin(emptyList()) } } }
         setStatus(NarrationStatus.Idle)
+    }
+
+    /** Runs [block]; an unexpected exception ends narration with an error, never the app. */
+    private inline fun guard(block: () -> Unit) {
+        try {
+            block()
+        } catch (failure: Throwable) {
+            crashed(failure)
+        }
+    }
+
+    /** Posts [block] to Main, guarded. */
+    private fun post(block: () -> Unit) {
+        main.post { guard(block) }
+    }
+
+    private inline fun quietly(block: () -> Unit) {
+        try {
+            block()
+        } catch (_: Throwable) {}
+    }
+
+    /** A bug or a failure nobody planned for: stop narrating and say so. */
+    private fun crashed(failure: Throwable) {
+        NarrationRecorder.log { "engine error ${failure.javaClass.name}" }
+        if (closed) return
+        val message = failure.message ?: "Narration failed"
+        try {
+            fail(message)
+        } catch (_: Throwable) {
+            // fail() itself broke (a listener threw): at least show that narration stopped.
+            this.failure = message
+            request = null
+            setStatus(NarrationStatus.Failed(message))
+        }
     }
 
     // ---- Matching Readium's requests to the plan -------------------------------------------
@@ -514,7 +565,7 @@ internal class KokoroEngine(
             heardAhead -> {
                 // Readium's round trip took longer than the sentence: it was heard already.
                 readiumLate++
-                main.post {
+                post {
                     if (!closed && request == id) {
                         listener?.onStart(id)
                         request = null
@@ -523,8 +574,7 @@ internal class KokoroEngine(
                     }
                 }
             }
-            index in heardStarted ->
-                main.post { if (!closed && request == id) listener?.onStart(id) }
+            index in heardStarted -> post { if (!closed && request == id) listener?.onStart(id) }
         }
         prune()
         if (!playing) {
@@ -960,7 +1010,7 @@ internal class KokoroEngine(
                 } catch (failure: Throwable) {
                     Outcome.Failed(failure.message ?: "Kokoro failed")
                 }
-            main.post { onMade(slot, started, outcome) }
+            post { onMade(slot, started, outcome) }
         }
     }
 
@@ -1183,7 +1233,7 @@ internal class KokoroEngine(
         }
     }
 
-    private val recheck = Runnable { if (!closed && !playing) evaluateGate() }
+    private val recheck = Runnable { guard { if (!closed && !playing) evaluateGate() } }
 
     private fun pendingUnits(): List<PendingUnit> {
         val anchor = anchorIndex()
@@ -1280,19 +1330,19 @@ internal class KokoroEngine(
 
     private inner class Events : SinkEvents {
         override fun onHeard(flushes: Int, events: List<HeardEvent>) {
-            main.post { heard(flushes, events) }
+            post { heard(flushes, events) }
         }
 
         override fun onStarved(gen: Long) {
-            main.post { starved(gen) }
+            post { starved(gen) }
         }
 
         override fun onDrained(gen: Long) {
-            main.post { drained(gen) }
+            post { drained(gen) }
         }
 
         override fun onFirstAudio() {
-            main.post {
+            post {
                 if (firstAudioAtMs == null) {
                     firstAudioAtMs = env.clock()
                     NarrationRecorder.log {
@@ -1304,14 +1354,14 @@ internal class KokoroEngine(
         }
 
         override fun onRewindFailed(gen: Long, utteranceIndex: Long) {
-            main.post {
+            post {
                 if (gen == this@KokoroEngine.gen && !closed)
                     reanchor(pieces[utteranceIndex]?.utterance ?: requestIndex)
             }
         }
 
         override fun onError(message: String) {
-            main.post { if (!closed) fail(message) }
+            post { if (!closed) fail(message) }
         }
     }
 
@@ -1484,8 +1534,18 @@ internal class KokoroEngine(
     }
 }
 
-/** Disk work that must finish even after its engine closed (cache writes of finished audio). */
-private val narrationScope = CoroutineScope(SupervisorJob() + narrationIo)
+/**
+ * Disk work that must finish even after its engine closed (cache writes of finished audio). A disk
+ * error loses that audio, never the app.
+ */
+private val narrationScope =
+    CoroutineScope(
+        SupervisorJob() +
+            narrationIo +
+            CoroutineExceptionHandler { _, failure ->
+                NarrationRecorder.log { "disk error ${failure.javaClass.name}" }
+            }
+    )
 
 /** Creates [KokoroEngine]s on the shared [KokoroRuntime]; [engine] is the last one made. */
 internal class KokoroEngineProvider(
@@ -1516,50 +1576,66 @@ internal class KokoroEngineProvider(
             val plan =
                 PrefetchingPlanSource(UtterancePlanner(publication), startAt, prefetchScope, 24)
             val handle = KokoroRuntime.acquire(app, config)
-            val tuning = KokoroRuntime.tuning
-            val power = app.getSystemService(PowerManager::class.java)
-            val env =
-                NarrationEnv(
-                    tuning = tuning,
-                    cache = NarrationCache.get(app),
-                    wakeLock = AndroidWakeLock(power),
-                    thermal = {
-                        ThermalReading(
-                            power.currentThermalStatus,
-                            power.getThermalHeadroom(10).takeIf { !it.isNaN() },
-                        )
-                    },
-                    screenOn = { power.isInteractive },
-                    recorder = recorder,
-                    variant = variant,
-                    threads = config.threads,
-                    prior = NarrationPriors.load(app, variant, config.threads),
-                    savePrior = { NarrationPriors.save(app, variant, config.threads, it) },
-                    tappedAtMs = tappedAtMs,
-                    modelLoadMs = handle.loadMs,
-                    warmup = handle.warmup,
-                    fasterModelOffer =
-                        variant == KokoroModel.Variant.INT8 &&
-                            !KokoroModel.ready(app, KokoroModel.Variant.FP32),
-                )
-            val created =
-                KokoroEngine(
-                    handle,
-                    { queue, limits, events ->
-                        AudioTrackSink(queue, handle.sampleRate, tuning, limits, events)
-                    },
-                    plan,
-                    startAt,
-                    initialPreferences,
-                    env,
-                )
-            Try.success(created.also { engine = it })
+            try {
+                createWith(app, config, handle, plan, initialPreferences)
+            } catch (failure: Throwable) {
+                // The engine never started: give the model back.
+                handle.release()
+                throw failure
+            }
         } catch (cancel: CancellationException) {
             throw cancel
         } catch (failure: Throwable) {
             // UnsatisfiedLinkError included: a missing native library must not crash the reader.
             Try.failure(KokoroError(failure.message ?: "Kokoro could not start"))
         }
+
+    private fun createWith(
+        app: Context,
+        config: KokoroRuntime.Config,
+        handle: KokoroRuntime.Handle,
+        plan: PlanSource,
+        initialPreferences: KokoroPreferences,
+    ): Try<KokoroEngine, Error> {
+        val tuning = KokoroRuntime.tuning
+        val power = app.getSystemService(PowerManager::class.java)
+        val env =
+            NarrationEnv(
+                tuning = tuning,
+                cache = NarrationCache.get(app),
+                wakeLock = AndroidWakeLock(power),
+                thermal = {
+                    ThermalReading(
+                        power.currentThermalStatus,
+                        power.getThermalHeadroom(10).takeIf { !it.isNaN() },
+                    )
+                },
+                screenOn = { power.isInteractive },
+                recorder = recorder,
+                variant = variant,
+                threads = config.threads,
+                prior = NarrationPriors.load(app, variant, config.threads),
+                savePrior = { NarrationPriors.save(app, variant, config.threads, it) },
+                tappedAtMs = tappedAtMs,
+                modelLoadMs = handle.loadMs,
+                warmup = handle.warmup,
+                fasterModelOffer =
+                    variant == KokoroModel.Variant.INT8 &&
+                        !KokoroModel.ready(app, KokoroModel.Variant.FP32),
+            )
+        val created =
+            KokoroEngine(
+                handle,
+                { queue, limits, events ->
+                    AudioTrackSink(queue, handle.sampleRate, tuning, limits, events)
+                },
+                plan,
+                startAt,
+                initialPreferences,
+                env,
+            )
+        return Try.success(created.also { engine = it })
+    }
 
     override fun createPreferencesEditor(
         publication: Publication,

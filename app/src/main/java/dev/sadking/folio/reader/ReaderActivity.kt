@@ -191,8 +191,18 @@ class ReaderActivity : FragmentActivity() {
             val failed = getString(R.string.listen_failed)
             val bookId = model.book?.id ?: return@launch
             val page = suspend { nav.firstVisibleElementLocator() ?: nav.currentLocator.value }
-            if (!model.listen.start(bookId, publication, page, { navigationError = failed }))
-                navigationError = getString(R.string.listen_no_voice)
+            val started =
+                try {
+                    model.listen.start(bookId, publication, page, { navigationError = failed })
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    // Never let read-aloud close the book.
+                    model.listen.stop()
+                    navigationError = failed
+                    return@launch
+                }
+            if (!started) navigationError = getString(R.string.listen_no_voice)
         }
     }
 
@@ -790,6 +800,32 @@ class ReaderActivity : FragmentActivity() {
                 snackbar.showSnackbar(text, duration = SnackbarDuration.Long)
                 navigationError = null
                 model.dismissMessage()
+            }
+        }
+        val naturalProblem = listen.naturalProblem
+        LaunchedEffect(naturalProblem) {
+            when (naturalProblem) {
+                null -> Unit
+                NaturalProblem.FELL_BACK -> {
+                    snackbar.showSnackbar(
+                        getString(R.string.listen_natural_unavailable),
+                        duration = SnackbarDuration.Long,
+                    )
+                    listen.dismissNaturalProblem()
+                }
+                NaturalProblem.STOPPED -> {
+                    val result =
+                        snackbar.showSnackbar(
+                            getString(R.string.listen_natural_stopped),
+                            actionLabel = getString(R.string.listen_use_phone_voice),
+                            withDismissAction = true,
+                            duration = SnackbarDuration.Long,
+                        )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        listen.preferPhoneVoice()
+                        startListening()
+                    } else listen.dismissNaturalProblem()
+                }
             }
         }
         LaunchedEffect(

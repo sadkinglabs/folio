@@ -151,6 +151,30 @@ class AudioTrackSinkTest {
         assertEquals(emptyList<String>(), events.errors)
     }
 
+    @Test
+    fun anOutputThatThrowsEndsNarrationWithAnErrorNotTheApp() {
+        queue.offer(unit(0, 0, 1, 0.3), 1)
+        limits.requestEnd = 0
+        limits.maxUtterance = 0
+        val uncaught = CopyOnWriteArrayList<Throwable>()
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, failure -> uncaught += failure }
+        try {
+            val broken =
+                object : PcmOutput by output {
+                    override fun play() = throw IllegalStateException("play() on a dead track")
+                }
+            sink = AudioTrackSink(queue, rate, tuning, limits, events) { broken }
+            sink.send(SinkCommand.Play)
+            waitFor { events.errors.isNotEmpty() }
+            assertEquals(listOf("play() on a dead track"), events.errors.toList())
+            Thread.sleep(50)
+            assertEquals(emptyList<Throwable>(), uncaught.toList())
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous)
+        }
+    }
+
     private class Recorder : SinkEvents {
         val heard = CopyOnWriteArrayList<HeardEvent>()
         val flushesSeen = CopyOnWriteArrayList<Int>()

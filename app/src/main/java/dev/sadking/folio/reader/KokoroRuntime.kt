@@ -53,6 +53,25 @@ internal interface LoadedVoice : Synthesizer {
 }
 
 /**
+ * The streaming callback handed to sherpa-onnx: [onSamples] returns false to stop early.
+ *
+ * sherpa-onnx's JNI code looks the callback up by the exact method `Integer invoke(float[])`. A
+ * Kotlin lambda does not have it: since Kotlin 2.0 lambdas compile to `invokedynamic`, whose class
+ * has only the erased `Object invoke(Object)`. The lookup then fails, the native code carries on
+ * with the error pending, and ART aborts the whole app (CheckJNI, on in debug builds). This class
+ * declares the method itself, and never lets an exception reach native code.
+ */
+internal class SherpaCallback(private val onSamples: (FloatArray) -> Boolean) :
+    (FloatArray) -> Int {
+    override fun invoke(samples: FloatArray): Int =
+        try {
+            if (onSamples(samples)) 1 else 0
+        } catch (_: Throwable) {
+            0
+        }
+}
+
+/**
  * Kokoro through sherpa-onnx. The streaming callback is used only to stop early: the samples it
  * passes are the same ones the call returns, so reading both would play them twice.
  */
@@ -69,9 +88,8 @@ internal class SherpaSynthesizer(private val tts: OfflineTts) : LoadedVoice {
         tts.generateWithConfigAndCallback(
                 speechText,
                 GenerationConfig(silenceScale = silenceScale, speed = speed, sid = sid),
-            ) {
-                if (keepGoing()) 1 else 0
-            }
+                SherpaCallback { keepGoing() },
+            )
             .samples
 
     override fun release() = tts.release()
@@ -87,10 +105,11 @@ internal class SherpaSynthesizer(private val tts: OfflineTts) : LoadedVoice {
             tts.generateWithConfigAndCallback(
                     speechText,
                     GenerationConfig(silenceScale = silenceScale, speed = speed, sid = sid),
-                ) {
-                    pieces += it.copyOf()
-                    1
-                }
+                    SherpaCallback {
+                        pieces += it.copyOf()
+                        true
+                    },
+                )
                 .samples
         // The callback and the return value carry the same samples; if they ever differ, report
         // the returned audio as one piece rather than count anything twice.
@@ -372,6 +391,8 @@ internal object KokoroRuntime {
                     is Run -> runJob(task)
                     is Release -> runRelease(task)
                 }
+            } catch (_: Throwable) {
+                // An uncaught exception here would end the app, not just narration.
             } finally {
                 outstanding.decrementAndGet()
             }
@@ -384,8 +405,12 @@ internal object KokoroRuntime {
                 val started = SystemClock.elapsedRealtime()
                 var loadMs = 0L
                 if (voiceConfig != task.config || voice == null) {
-                    voice?.release()
+                    val old = voice
                     voice = null
+                    // A model that fails to free must not stop the next one from loading.
+                    try {
+                        old?.release()
+                    } catch (_: Throwable) {}
                     voiceConfig = null
                     warmup = null
                     voice = loader(task.context, task.config)
@@ -439,10 +464,11 @@ internal object KokoroRuntime {
 
     private fun runRelease(task: Release) {
         if (task.ifIdleOnly && synchronized(lock) { refs > 0 || loading.isNotEmpty() }) return
-        voice?.release()
+        val loaded = voice
         voice = null
         voiceConfig = null
         warmup = null
+        loaded?.release()
     }
 
     private object NotLoaded : Synthesizer {

@@ -8,6 +8,7 @@ import dev.sadking.folio.reader.narration.NarrationMetrics
 import dev.sadking.folio.reader.narration.SessionSummary
 import dev.sadking.folio.reader.narration.UnitRecord
 import java.io.File
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -18,7 +19,15 @@ import kotlinx.coroutines.launch
  * Lengths and timings only, never text. Writes run on [narrationIo].
  */
 internal class NarrationRecorder(val dir: File) {
-    private val scope = CoroutineScope(SupervisorJob() + narrationIo)
+    /** A file that cannot be written loses that row, never the app. */
+    private val scope =
+        CoroutineScope(
+            SupervisorJob() +
+                narrationIo +
+                CoroutineExceptionHandler { _, failure ->
+                    log { "recorder ${failure.javaClass.name}" }
+                }
+        )
 
     init {
         scope.launch {

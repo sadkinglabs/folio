@@ -15,6 +15,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.reader.narration.SlowChoice
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -129,6 +130,16 @@ internal fun routeSlow(choice: SlowChoice, actions: SlowActions) {
     }
 }
 
+/** Why the natural voice is not reading, for the reader's one-time notice. */
+internal enum class NaturalProblem {
+    /**
+     * It stopped while reading (or never got going): reading ended; the phone's voice is offered.
+     */
+    STOPPED,
+    /** It could not start, so the phone's voice reads instead. */
+    FELL_BACK,
+}
+
 /** The speeds the speed button steps through, in order. */
 internal val LISTEN_SPEEDS = listOf(1.0, 1.25, 1.5, 2.0, 0.75)
 
@@ -205,6 +216,10 @@ internal class ReadAloud(
     var narration by mutableStateOf<NarrationStatus>(NarrationStatus.Idle)
         private set
 
+    /** Set when the natural voice failed; the reader says so once, then clears it. */
+    var naturalProblem by mutableStateOf<NaturalProblem?>(null)
+        private set
+
     /** The question on screen, kept while the engine pauses for it. */
     private var slow: NarrationStatus.TooSlow? = null
 
@@ -256,36 +271,64 @@ internal class ReadAloud(
         val tappedAtMs = SystemClock.elapsedRealtime()
         state = ListenState.STARTING
         reading = Reading(bookId, publication, page, onFailure)
-        val from = from ?: page()
+        val from =
+            from
+                ?: try {
+                    page()
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Throwable) {
+                    null
+                }
         naturalFits = englishBook(publication.metadata.languages)
         val wantsNatural =
             naturalFits &&
                 KokoroModel.installed(app).isNotEmpty() &&
                 settings.getString("listenEngine", "natural") == "natural"
-        val started =
-            (wantsNatural && startNatural(publication, from, tappedAtMs)) ||
-                startPhone(publication, from)
+        val naturalStarted = wantsNatural && attempt { startNatural(publication, from, tappedAtMs) }
+        if (!naturalStarted) narration = NarrationStatus.Idle
+        val started = naturalStarted || attempt { startPhone(publication, from) }
+        if (wantsNatural && !naturalStarted && started) naturalProblem = NaturalProblem.FELL_BACK
         if (!started) {
             state = ListenState.OFF
             reading = null
             restartWhenStarted = false
             return false
         }
-        ListenService.current =
-            ListenService.Listening(bookId, navigator!!.asMedia3Player(), ::stop)
-        controller =
-            MediaController.Builder(
-                    app,
-                    SessionToken(app, ComponentName(app, ListenService::class.java)),
-                )
-                .buildAsync()
-        navigator?.play()
+        val playing = attempt {
+            ListenService.current =
+                ListenService.Listening(bookId, navigator!!.asMedia3Player(), ::stop)
+            controller =
+                MediaController.Builder(
+                        app,
+                        SessionToken(app, ComponentName(app, ListenService::class.java)),
+                    )
+                    .buildAsync()
+            navigator?.play()
+            true
+        }
+        if (!playing) {
+            stop()
+            reading = null
+            restartWhenStarted = false
+            return false
+        }
         if (restartWhenStarted) {
             restartWhenStarted = false
             restartHere()
         }
         return true
     }
+
+    /** False instead of an exception: a voice that cannot start must never close the reader. */
+    private inline fun attempt(block: () -> Boolean): Boolean =
+        try {
+            block()
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Throwable) {
+            false
+        }
 
     private suspend fun startNatural(
         publication: Publication,
@@ -299,9 +342,17 @@ internal class ReadAloud(
         val recording = if (recordMeasurements) NarrationRecorder.start(app) else null
         val provider = KokoroEngineProvider(app, from, tappedAtMs, variant, recording)
         val created =
-            TtsNavigatorFactory(app, publication, provider, kokoroSentenceTokenizer)
-                ?.createNavigator(listener, from, kokoroPreferences())
-                ?.getOrNull()
+            try {
+                TtsNavigatorFactory(app, publication, provider, kokoroSentenceTokenizer)
+                    ?.createNavigator(listener, from, kokoroPreferences())
+                    ?.getOrNull()
+            } catch (cancel: CancellationException) {
+                provider.engine?.close()
+                throw cancel
+            } catch (_: Throwable) {
+                provider.engine?.close()
+                null
+            }
         if (created == null) {
             narration = NarrationStatus.Idle
             return false
@@ -363,6 +414,11 @@ internal class ReadAloud(
                 launch { engine.settings.collect { followEngineSpeed(it.speed) } }
                 launch {
                     engine.status.collect { status ->
+                        if (status is NarrationStatus.Failed) {
+                            // The natural voice cannot go on: end reading, say so plainly.
+                            if (state != ListenState.OFF) failed(onFailure)
+                            return@collect
+                        }
                         if (status is NarrationStatus.TooSlow) {
                             slow = status
                             // The question waits with the reader paused.
@@ -388,10 +444,7 @@ internal class ReadAloud(
             created.playback.collect { playback ->
                 when (playback.state) {
                     is MediaNavigator.State.Ended -> stop()
-                    is MediaNavigator.State.Failure -> {
-                        stop()
-                        onFailure()
-                    }
+                    is MediaNavigator.State.Failure -> failed(onFailure)
                     else -> {
                         // Readium does not tell the engine about a pause between sentences.
                         if (!playback.playWhenReady) kokoro?.engine?.pauseNow()
@@ -400,6 +453,27 @@ internal class ReadAloud(
                 }
             }
         }
+    }
+
+    /**
+     * Reading stopped on an error. With the natural voice the reader offers the phone's voice;
+     * otherwise it says reading stopped.
+     */
+    private fun failed(onFailure: () -> Unit) {
+        val wasNatural = natural
+        stop()
+        if (wasNatural) naturalProblem = NaturalProblem.STOPPED else onFailure()
+    }
+
+    /** The notice about [naturalProblem] was shown. */
+    fun dismissNaturalProblem() {
+        naturalProblem = null
+    }
+
+    /** From the notice after the natural voice stopped: read with the phone's voice from now on. */
+    fun preferPhoneVoice() {
+        naturalProblem = null
+        settings.edit().putString("listenEngine", "phone").apply()
     }
 
     fun toggle() {
