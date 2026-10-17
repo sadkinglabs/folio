@@ -94,7 +94,7 @@ Inner column, `spacedBy(FolioSpace.gap)`:
 3. `stats_which_days` "Which days" (`titleSmall`) over the **weekday chart** (§ 6.4).
 4. `StatusStrip` with three tiles: `Icons.Outlined.Timer` `stats_tile_session` "Session" · "24 min" · `stats_tile_session_detail` "longest 1 h 50" (`compactDurationText`: "1 h 50", "48 min"); `Icons.Outlined.TrendingUp` `stats_tile_trend` "Trend" · "+12%" / "−8%" / "—" · the previous range's name ("September"); `Icons.Outlined.Headphones` `stats_tile_listening` "Listening" · "1 h 31 min" · `stats_share_of_time` "12% of total".
 
-A streak counts days with any reading or listening, in the phone's time zone; the core defines it.
+A streak counts days with at least 1 minute of reading, in the phone's time zone; listening does not count (owner, 2026-10-17). The core defines it.
 
 ### 3.6 Books row
 
@@ -301,7 +301,7 @@ Known limits seen in the renders: in a 360 dp right pane (a tablet in portrait w
 ## 11. Open questions for the owner
 
 1. **The bar.** Five tabs plus the centred tile do not fit six equal slots with the tile at the centre. Recommended: tile over the third slot (mockup `stats-bar`), 34 dp left of centre. Alternative: Lists becomes a third top tab inside Library (Library · Want to Read · Lists), the bar stays Library, Stats · tile · Device, Settings, and the tile stays centred. Which?
-2. **Streak rule.** Does listening keep a streak alive, or only reading? The mockup counts both.
+2. **Streak rule.** Answered: only reading keeps a streak; listening is shown but never counts toward streaks or goals.
 3. **Calendar bars without titles.** KOReader prints the title in each bar; here the legend names the books and the cells show only bars. OK, or do you want initials in the longer bars?
 4. **Share card theme.** Rendered in the phone's current theme (light or dark, dynamic). Or always light, so it looks the same wherever it is posted?
 5. **Goals pace.** "On pace" compares books finished with target × year fraction. Fine, or should the year goal stay a plain count?
