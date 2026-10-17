@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpSize
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import kotlin.math.roundToInt
@@ -127,12 +128,13 @@ val LocalFolioWindow: ProvidableCompositionLocal<FolioWindow> = compositionLocal
 }
 
 /**
- * The current window: its size from the configuration (so rotation and folding recompose), and the
- * fold's hinge from Jetpack WindowManager while the screen is half open like a book. Previews and
- * tests have no activity and so no hinge.
+ * The current window: its size from [space] when given (the room the app is drawn in), else the
+ * configuration (so rotation and folding recompose), and the fold's hinge from Jetpack
+ * WindowManager while the screen is half open like a book. Previews and tests have no activity and
+ * so no hinge.
  */
 @Composable
-fun rememberFolioWindow(): FolioWindow {
+fun rememberFolioWindow(space: DpSize? = null): FolioWindow {
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val density = LocalDensity.current.density
@@ -157,10 +159,12 @@ fun rememberFolioWindow(): FolioWindow {
                 }
             }
         }
-    return remember(configuration.screenWidthDp, configuration.screenHeightDp, hinge) {
+    val widthDp = space?.width?.value?.toInt() ?: configuration.screenWidthDp
+    val heightDp = space?.height?.value?.toInt() ?: configuration.screenHeightDp
+    return remember(widthDp, heightDp, hinge) {
         folioWindow(
-            configuration.screenWidthDp,
-            configuration.screenHeightDp,
+            widthDp,
+            heightDp,
             hinge?.first,
             hinge?.second ?: 0,
         )

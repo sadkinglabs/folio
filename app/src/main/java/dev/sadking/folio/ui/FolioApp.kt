@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.unit.DpSize
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.hazeSource
@@ -48,6 +49,14 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun FolioApp(model: LibraryViewModel) {
+    // The space Librillo is given decides phone, rail or two panes: the window on a phone or
+    // tablet, one side in split screen, and the forced size in tests (the configuration's screen
+    // size does not follow any of those).
+    BoxWithConstraints(Modifier.fillMaxSize()) { FolioAppBody(model, DpSize(maxWidth, maxHeight)) }
+}
+
+@Composable
+private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
     val discovery: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val devices: DeviceViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     var showProfileImport by rememberSaveable { mutableStateOf(false) }
@@ -102,7 +111,7 @@ fun FolioApp(model: LibraryViewModel) {
             }
         }
     // The window's size class and a fold's hinge decide between the bar, the rail and two panes.
-    val frame = rememberFolioWindow()
+    val frame = rememberFolioWindow(space)
     FolioTheme(dark, dynamic) {
         val books by model.books.collectAsStateWithLifecycle()
         val phoneReading by model.phoneReading.collectAsStateWithLifecycle()
