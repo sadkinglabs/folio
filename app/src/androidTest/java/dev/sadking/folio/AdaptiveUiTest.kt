@@ -58,7 +58,7 @@ class AdaptiveUiTest {
     }
 
     @Before
-    fun seed() = runBlocking {
+    fun seed(): Unit = runBlocking {
         require(android.os.Build.HARDWARE in listOf("ranchu", "goldfish")) {
             "Fixtures run only on an emulator"
         }
