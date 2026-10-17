@@ -57,8 +57,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.sadking.folio.R
 import dev.sadking.folio.data.BookAnnotation
-import dev.sadking.folio.data.KosyncReport
 import dev.sadking.folio.data.PhoneBookmark
+import dev.sadking.folio.data.ReaderPlaces
 import dev.sadking.folio.reader.dictionary.DefineSheet
 import dev.sadking.folio.reader.dictionary.DictionaryModel
 import dev.sadking.folio.reader.dictionary.DictionaryState
@@ -1313,11 +1313,12 @@ class ReaderActivity : FragmentActivity() {
 
     @Composable
     private fun DevicesPanel(bookId: String?, scope: CoroutineScope, close: () -> Unit) {
-        val flow = remember(bookId) { model.linkReports() }
-        val reports by
-            flow?.collectAsState(initial = emptyList())
-                ?: remember { mutableStateOf(emptyList<KosyncReport>()) }
+        val flow = remember(bookId) { model.devicePlaces() }
+        // Until the devices load, nothing: a forgotten old position must not flash in.
+        val places by flow.collectAsState(initial = ReaderPlaces(emptyList(), null, null))
+        val reports = places.reports
         val fallbackName = stringResource(R.string.device_ereader_default)
+        val oldName = stringResource(R.string.dev_old_name)
         val rows =
             reports.map {
                 DeviceRow(
@@ -1328,10 +1329,10 @@ class ReaderActivity : FragmentActivity() {
                 )
             } +
                 listOfNotNull(
-                    model.kindle?.let {
+                    places.old?.let {
                         DeviceRow(
                             LEGACY_ROW,
-                            fallbackName,
+                            places.oldName ?: oldName,
                             ((it.percent ?: 0.0) * 100).toInt(),
                             it.fetchedAt,
                             legacy = true,

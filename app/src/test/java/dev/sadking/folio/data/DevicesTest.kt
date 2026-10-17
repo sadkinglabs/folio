@@ -223,4 +223,34 @@ class DevicesTest {
         assertEquals("The newest report wins", 0.7, folded.percentage, 0.0)
         assertEquals("Kindle", folded.device)
     }
+
+    @Test
+    fun theReaderShowsTheOldPositionOnlyAsTheProgressSheetDoes() {
+        val now = this.now
+        // Shown on its own, with no name of its own: the sheet's label for an old position.
+        val shown = directory().readerPlaces(listOf(report()), snapshot())
+        assertEquals(listOf(kindleId), shown.reports.map { it.deviceId })
+        assertEquals(snapshot(), shown.old)
+        assertNull(shown.oldName)
+
+        // Forgotten: gone from the reader too.
+        val roster = directory()
+        val forgot = DeviceProfiles.forget(roster.device(ssh)!!, null, now)
+        assertNull(directory(listOf(forgot)).readerPlaces(listOf(report()), snapshot()).old)
+
+        // Joined with the Kindle, whose report is newer: one row, the Kindle's.
+        val merged = DeviceProfiles.merge(roster, roster.device(ssh)!!, null, kindle, now)!!
+        val joined = directory(listOf(merged)).readerPlaces(listOf(report()), snapshot())
+        assertNull(joined.old)
+        assertEquals(1, joined.reports.size)
+
+        // Joined, and the old position is the newer one: it wins, under the Kindle's name.
+        val older = report(at = now - 30 * hour)
+        val newer =
+            directory(listOf(merged), reports = listOf(older))
+                .readerPlaces(listOf(older), snapshot())
+        assertTrue(newer.reports.isEmpty())
+        assertEquals(snapshot(), newer.old)
+        assertEquals("Kindle", newer.oldName)
+    }
 }

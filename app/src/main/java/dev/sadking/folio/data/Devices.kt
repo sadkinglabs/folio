@@ -194,6 +194,25 @@ class DeviceRoster(sightings: List<DeviceSighting>, profiles: List<DeviceProfile
             .sortedByDescending { it.timestamp }
 
     /**
+     * One book's e-reader places for the reader's Devices sheet, by the Progress sheet's rule: one
+     * row per device, forgotten ones left out, merged ones folded together with the newest winning.
+     * [old] is the position the SSH bridge read before sync, if any; it is kept only when its
+     * device is shown and no report of that device is as new.
+     */
+    fun readerPlaces(reports: List<KosyncReport>, old: ReadingSnapshot?): ReaderPlaces {
+        val rows = reports(reports)
+        val oldKey = old?.let { DeviceKeys.ssh(it.deviceId) }
+        if (old == null || oldKey == null || hidden(oldKey)) return ReaderPlaces(rows, null, null)
+        val root = root(oldKey)
+        val rival = rows.firstOrNull { root(DeviceKeys.ereader(it.deviceId)) == root }
+        return when {
+            rival == null -> ReaderPlaces(rows, old, name(oldKey))
+            rival.timestamp * 1000 >= old.fetchedAt -> ReaderPlaces(rows, null, null)
+            else -> ReaderPlaces(rows - rival, old, name(oldKey) ?: rival.device.ifBlank { null })
+        }
+    }
+
+    /**
      * The e-readers that sync, as the Device tab shows them: named as Librillo shows them, one per
      * device (the one that synced last), forgotten ones left out.
      */
@@ -216,6 +235,17 @@ class DeviceRoster(sightings: List<DeviceSighting>, profiles: List<DeviceProfile
         const val MAX_NAME = 80
     }
 }
+
+/**
+ * What the reader's Devices sheet shows ([DeviceRoster.readerPlaces]): the Progress sync [reports],
+ * one per device, and the [old] SSH position when it still has a row, under [oldName] (null: the
+ * sheet's own label for an old position).
+ */
+data class ReaderPlaces(
+    val reports: List<KosyncReport>,
+    val old: ReadingSnapshot?,
+    val oldName: String?,
+)
 
 /**
  * The owner's changes to a device, each as the one profile row to save, from the row there is now

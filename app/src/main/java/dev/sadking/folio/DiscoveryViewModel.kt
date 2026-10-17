@@ -288,6 +288,9 @@ class DiscoveryViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (e: CancellationException) {
                 state.value = DiscoveryState(message = msg(R.string.msg_discovery_cancelled))
                 throw e
+            } catch (e: HardcoverLinkTaken) {
+                // The move prompt says it, with what to do about it; no message on top of that.
+                state.value = DiscoveryState()
             } catch (e: Exception) {
                 state.value =
                     DiscoveryState(

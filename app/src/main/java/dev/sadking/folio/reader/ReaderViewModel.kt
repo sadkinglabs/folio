@@ -674,22 +674,30 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Other devices' latest Folio Link places in this book, newest first, one per device as the
-     * owner arranged them (named, merged, forgotten: [DeviceRoster]); null without a key.
+     * Other devices' latest Folio Link places in this book, newest first, and the old SSH position
+     * ([kindle]), as the owner arranged the devices (named, merged, forgotten: [DeviceRoster]).
+     * Without a Folio Link key, only the old position.
      */
-    fun linkReports(): Flow<List<KosyncReport>>? {
-        val document = linkDocument ?: return null
+    fun devicePlaces(): Flow<ReaderPlaces> {
+        val old = kindle
+        val document = linkDocument
         val phone = app.link.settings.phoneDeviceId
+        val reports =
+            if (document == null) kotlinx.coroutines.flow.flowOf(emptyList())
+            else dao.kosyncReportsFlow(document)
         return kotlinx.coroutines.flow
             .combine(
-                dao.kosyncReportsFlow(document),
+                reports,
                 dao.kosyncFlow(),
                 dao.everyReading(),
                 dao.deviceProfiles(),
                 dev.sadking.folio.sync.SyncState.of(app).ereaders,
             ) { reports, all, snapshots, profiles, ereaders ->
                 DeviceRoster(deviceSightings(ereaders.values, all, snapshots, phone), profiles)
-                    .reports(reports.filter { it.deviceId != phone && it.progress.startsWith("/") })
+                    .readerPlaces(
+                        reports.filter { it.deviceId != phone && it.progress.startsWith("/") },
+                        old,
+                    )
             }
             .flowOn(Dispatchers.Default)
     }
