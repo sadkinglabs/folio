@@ -284,4 +284,37 @@ class ScreenshotTest {
         shoot("listen-benchmark-result", tall = true) { ReaderListenBenchmarkResultPreview() }
 
     @Test fun readerFailed() = shoot("reader-failed") { ReaderFailedPreview() }
+
+    // M12 Stats mockups: the visual reference for the implementation.
+    @Test fun stats() = shoot("stats", tall = true) { StatsPreview() }
+
+    @Test fun statsGoals() = shoot("stats-goals") { StatsGoalsPreview() }
+
+    @Test fun statsPhoneOnly() = shoot("stats-phone-only") { StatsPhoneOnlyPreview() }
+
+    @Test fun statsEmpty() = shoot("stats-empty") { StatsEmptyPreview() }
+
+    @Test fun statsLoading() = shoot("stats-loading") { StatsLoadingPreview() }
+
+    @Test fun statsDay() = shoot("stats-day") { StatsDayPreview() }
+
+    @Test fun statsGoalsSheet() = shoot("stats-goals-sheet") { StatsGoalsSheetPreview() }
+
+    @Test fun detailsStats() = shoot("details-stats", tall = true) { DetailsStatsPreview() }
+
+    @Test fun statsBookSheet() = shoot("stats-book-sheet", tall = true) { BookStatsSheetPreview() }
+
+    @Test fun yearReview() = shoot("year-review", tall = true) { YearReviewPreview() }
+
+    @Test fun yearShareCard() = shoot("year-share-card") { YearShareCardPreview() }
+
+    @Test fun tabletStats() = shootAt("tablet-stats", TABLET) { TabletStatsPreview() }
+
+    @Test
+    fun tabletStatsLandscape() =
+        shootAt("tablet-stats-landscape", TABLET_LANDSCAPE) { TabletStatsPreview() }
+
+    @Test fun foldableStats() = shootAt("foldable-stats", FOLDABLE) { FoldStatsPreview() }
+
+    @Test fun statsBar() = shoot("stats-bar") { StatsBarPreview() }
 }

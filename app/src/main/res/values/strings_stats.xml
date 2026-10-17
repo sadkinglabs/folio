@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M12 Stats: the tab, its sections and sheets. Copy stays short and plain. -->
+    <string name="stats_tab">Stats</string>
+    <string name="stats_title">Stats</string>
+    <string name="stats_goals">Goals</string>
+
+    <!-- The range group above the hero: four connected toggle buttons. -->
+    <string name="stats_range_week">Week</string>
+    <string name="stats_range_month">Month</string>
+    <string name="stats_range_year">Year</string>
+    <string name="stats_range_all">All</string>
+    <string name="stats_eyebrow_week">This week</string>
+    <string name="stats_eyebrow_month">This month</string>
+    <string name="stats_eyebrow_year">This year</string>
+    <string name="stats_eyebrow_all">All time</string>
+
+    <!-- Durations. -->
+    <string name="stats_hours_minutes">%1$d h %2$d min</string>
+    <string name="stats_hours">%1$d h</string>
+    <string name="stats_minutes">%1$d min</string>
+    <string name="stats_days_of">%1$d of %2$d days</string>
+    <plurals name="stats_sessions_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+    <!-- Two facts on one line: "18 of 31 days · 42 sessions". -->
+    <string name="stats_joined">%1$s · %2$s</string>
+    <string name="stats_legend_reading">Reading</string>
+    <string name="stats_legend_listening">Listening</string>
+
+    <!-- The hero's three tiles. -->
+    <string name="stats_tile_days">Days</string>
+    <string name="stats_tile_sessions">Sessions</string>
+    <string name="stats_tile_pace">Pace</string>
+    <string name="stats_wpm">%1$d wpm</string>
+    <string name="stats_words_per_minute">%1$d words a minute</string>
+    <string name="stats_tile_days_detail">of %1$d</string>
+    <string name="stats_tile_sessions_detail">%1$s each</string>
+    <string name="stats_tile_pace_detail">both devices</string>
+    <string name="stats_tile_pace_phone">phone</string>
+    <string name="stats_trend_up">Up %1$d%% on %2$s</string>
+    <string name="stats_trend_down">Down %1$d%% on %2$s</string>
+    <string name="stats_trend_same">Same as %1$s</string>
+    <string name="stats_sources_line">Kindle, phone and listening. Earlier years from Hardcover.</string>
+
+    <!-- Calendar. -->
+    <string name="stats_calendar">Calendar</string>
+    <string name="stats_previous_month">Previous month</string>
+    <string name="stats_next_month">Next month</string>
+    <string name="stats_legend_more">%1$d more</string>
+    <string name="stats_calendar_day_a11y">%1$s: %2$s, %3$d books</string>
+    <string name="stats_calendar_day_none_a11y">%1$s: no reading</string>
+    <string name="stats_calendar_today">Today</string>
+    <string name="stats_calendar_empty">Nothing read this month.</string>
+
+    <!-- Habits. -->
+    <string name="stats_habits">Habits</string>
+    <plurals name="stats_streak_days">
+        <item quantity="one">%d-day streak</item>
+        <item quantity="other">%d-day streak</item>
+    </plurals>
+    <string name="stats_streak_longest">Longest %1$d days · %2$s</string>
+    <string name="stats_streak_none">No streak yet</string>
+    <string name="stats_streak_none_body">Read two days in a row to start one.</string>
+    <string name="stats_when_you_read">When you read</string>
+    <string name="stats_which_days">Which days</string>
+    <string name="stats_hours_a11y">Most reading around %1$s.</string>
+    <string name="stats_weekdays_a11y">Most reading on %1$s.</string>
+    <string name="stats_trend_a11y">%1$s of reading and %2$s of listening. Most on %3$s.</string>
+    <string name="stats_tile_session">Session</string>
+    <string name="stats_tile_session_detail">longest %1$s</string>
+    <string name="stats_tile_trend">Trend</string>
+    <string name="stats_tile_listening">Listening</string>
+    <string name="stats_share_of_time">%1$d%% of total</string>
+
+    <!-- Books in the range. -->
+    <string name="stats_books">Books</string>
+    <string name="stats_books_line">In this range</string>
+    <string name="stats_books_empty">No books in this range yet.</string>
+    <string name="stats_book_a11y">%1$s, %2$s</string>
+
+    <!-- Milestones. -->
+    <string name="stats_milestones">Milestones</string>
+    <string name="stats_milestone_first_finish">First book finished</string>
+    <string name="stats_milestone_books">%1$d books</string>
+    <string name="stats_milestone_hours">%1$d hours</string>
+    <string name="stats_milestone_streak">Longest streak</string>
+    <string name="stats_milestone_fastest">Fastest finish</string>
+    <string name="stats_milestone_biggest_day">Biggest day</string>
+    <string name="stats_milestone_first_listen">First listen</string>
+    <string name="stats_milestone_year">A full year</string>
+    <string name="stats_milestones_empty">Finish a book or read a week in a row and the first ones show here.</string>
+
+    <!-- Years and the year in review. -->
+    <string name="stats_years">Years</string>
+    <string name="stats_year_line">%1$d books · %2$s</string>
+    <string name="stats_year_hardcover">%1$d books · from Hardcover</string>
+    <string name="stats_open_year">Open %1$d in review</string>
+    <string name="stats_share">Share</string>
+    <string name="stats_share_image">Share image</string>
+    <string name="stats_year_review_title">%1$d in review</string>
+    <string name="stats_year_hero_line">%1$d books · %2$d hours</string>
+    <string name="stats_year_top_books">Top books</string>
+    <string name="stats_year_by_month">Books by month</string>
+    <string name="stats_year_by_month_a11y">%1$d books this year, most in %2$s.</string>
+    <string name="stats_year_records">Records</string>
+    <string name="stats_year_firsts">Firsts</string>
+    <string name="stats_share_eyebrow">Librillo · year in review</string>
+    <string name="stats_share_footer">Librillo</string>
+    <string name="stats_share_streak">Longest streak</string>
+    <string name="stats_share_hour">Favourite hour</string>
+    <string name="stats_share_pace">Pace</string>
+    <string name="stats_share_listening">Listening</string>
+    <string name="stats_share_days">%1$d days</string>
+    <string name="stats_share_preparing">Preparing the image…</string>
+    <string name="stats_share_failed">Couldn’t make the image. Try again.</string>
+
+    <!-- Goals. -->
+    <string name="stats_goal_set_title">Set a goal</string>
+    <string name="stats_goal_set_body">Books this year, minutes a day, or both.</string>
+    <string name="stats_goal_set">Set a goal</string>
+    <string name="stats_goals_body">Only on this phone. Nothing is sent anywhere.</string>
+    <string name="stats_goal_books_year">Books this year</string>
+    <string name="stats_goal_minutes_day">Minutes a day</string>
+    <string name="stats_goal_books_progress">%1$d of %2$d books</string>
+    <string name="stats_goal_minutes_progress">%1$d of %2$d min today</string>
+    <string name="stats_goal_on_pace">On pace</string>
+    <plurals name="stats_goal_behind">
+        <item quantity="one">%d book behind pace</item>
+        <item quantity="other">%d books behind pace</item>
+    </plurals>
+    <plurals name="stats_goal_ahead">
+        <item quantity="one">%d book ahead of pace</item>
+        <item quantity="other">%d books ahead of pace</item>
+    </plurals>
+    <string name="stats_goal_done_today">Done for today</string>
+    <string name="stats_goal_left_today">%1$d min to go</string>
+    <string name="stats_fewer">Fewer</string>
+    <string name="stats_more">More</string>
+    <string name="stats_save">Save</string>
+    <string name="stats_goals_off">Turn goals off</string>
+
+    <!-- States. -->
+    <string name="stats_empty_title">No reading yet</string>
+    <string name="stats_empty_body">Read on your phone or sync your e-reader, and your stats start here.</string>
+    <string name="stats_empty_action">Go to Library</string>
+    <string name="stats_sync_pending">Your e-reader sends its history at the next sync.</string>
+    <string name="stats_phone_only">Phone only so far. Your e-reader joins at the next sync.</string>
+    <string name="stats_loading">Counting…</string>
+    <string name="stats_error">Couldn’t read your stats.</string>
+    <string name="stats_retry">Try again</string>
+
+    <!-- Day sheet. -->
+    <string name="stats_day_sessions_a11y">Sessions through the day</string>
+    <string name="stats_source_phone">Phone</string>
+    <string name="stats_source_listening">Listening</string>
+    <string name="stats_day_pages">%1$d pages</string>
+
+    <!-- Per book: the card on the book page and its sheet. -->
+    <string name="stats_book_stats">Reading stats</string>
+    <string name="stats_book_time_left">About %1$s left at your pace</string>
+    <string name="stats_book_finished_in">Finished in %1$d days</string>
+    <string name="stats_book_started">Started %1$s</string>
+    <string name="stats_book_finished">Finished %1$s</string>
+    <string name="stats_book_days_so_far">%1$d days so far</string>
+    <string name="stats_book_tile_time">Time</string>
+    <string name="stats_book_tile_sessions">Sessions</string>
+    <string name="stats_book_tile_pace">Pace</string>
+    <string name="stats_book_pace_detail">average %1$d</string>
+    <string name="stats_book_timeline">Progress over time</string>
+    <string name="stats_book_timeline_a11y">From %1$d%% to %2$d%% over %3$d days, %4$d sessions.</string>
+    <string name="stats_book_by_device">By device</string>
+    <string name="stats_book_recent_sessions">Recent sessions</string>
+    <string name="stats_book_session_row">%1$s · %2$s · %3$d pages</string>
+    <string name="stats_book_no_sessions">No sessions yet. Open the book to start.</string>
+    <string name="stats_book_card_a11y">Reading stats: %1$s, %2$d sessions, %3$s</string>
+</resources>
