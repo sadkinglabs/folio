@@ -932,6 +932,14 @@ interface StatsDao {
 
     @Upsert suspend fun upsertDigests(rows: List<KoreaderDigestRow>)
 
+    /** The digests of KOReader files that match a book (A1). */
+    @Query("SELECT digest FROM koreader_digests WHERE bookId IS NOT NULL")
+    suspend fun knownDigests(): List<String>
+
+    @Query("SELECT * FROM stats_book_names") suspend fun allBookNames(): List<StatsBookNameRow>
+
+    @Upsert suspend fun upsertBookNames(rows: List<StatsBookNameRow>)
+
     @Query("SELECT * FROM book_words") fun words(): Flow<List<BookWordsRow>>
 
     @Query("SELECT * FROM book_words") suspend fun allWords(): List<BookWordsRow>

@@ -5,12 +5,15 @@ import android.content.ContextWrapper
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.sadking.folio.core.Epub
+import dev.sadking.folio.core.stats.KoreaderSessions
 import dev.sadking.folio.core.sync.Baseline
 import dev.sadking.folio.core.sync.PhoneAction
 import dev.sadking.folio.core.sync.Question
 import dev.sadking.folio.core.sync.SyncAnnotation
 import dev.sadking.folio.data.Book
 import dev.sadking.folio.data.BookAnnotation
+import dev.sadking.folio.data.DeviceKeys
+import dev.sadking.folio.data.KoreaderDigestRow
 import dev.sadking.folio.data.LibraryDatabase
 import dev.sadking.folio.data.LibraryRepository
 import dev.sadking.folio.data.Membership
@@ -965,5 +968,99 @@ class RoomSyncLibraryTest {
 
         val again = JSONObject((call("POST", "/sync", manifest) as LinkResponse.Text).body)
         assertEquals(0, again.getJSONArray("kindle").length())
+    }
+
+    // ---- Reading statistics from the e-reader (M12 D4, A1) ----
+
+    private val bookA = "a".repeat(32)
+    private val bookB = "b".repeat(32)
+
+    private fun wire(book: String, start: Long, seconds: Long, pages: Int = 10) =
+        KoreaderSessions.WireSession(book, start, seconds, pages, from = 0.1, to = 0.5, read = 0.4)
+
+    private fun sessionRows() = runBlocking { db.stats().allSessions() }
+
+    @Test
+    fun savedSessionsAreKindleRowsWithTheirFileAndNoBook() {
+        val saved =
+            library.saveSessions(
+                "kindle",
+                listOf(wire(bookA, 1_700_000_000, 60), wire(bookB, 1_700_000_100, 90)),
+            )
+        assertEquals(2, saved)
+        val rows = sessionRows()
+        assertEquals(2, rows.size)
+        rows.forEach {
+            assertEquals("KINDLE", it.source)
+            assertEquals(DeviceKeys.ereader("kindle"), it.deviceKey)
+            assertNull(it.bookId)
+        }
+        assertEquals(setOf(bookA, bookB), rows.map { it.document }.toSet())
+    }
+
+    @Test
+    fun sessionsUntilIsTheLatestEnd() {
+        assertEquals(0L, library.sessionsUntil("kindle"))
+        // The session that starts last ends first: the watermark is the other one's end.
+        library.saveSessions(
+            "kindle",
+            listOf(wire(bookA, 1_700_000_000, 500), wire(bookB, 1_700_000_100, 60)),
+        )
+        assertEquals(1_700_000_500L, library.sessionsUntil("kindle"))
+    }
+
+    @Test
+    fun aGrownCopyReplacesTheStoredSession() {
+        library.saveSessions("kindle", listOf(wire(bookA, 1_700_000_000, 60, pages = 3)))
+        clock += 1_000
+        val saved =
+            library.saveSessions("kindle", listOf(wire(bookA, 1_700_000_000, 120, pages = 5)))
+        assertEquals(1, saved)
+        val row = sessionRows().single()
+        assertEquals(120L, row.durationSec)
+        assertEquals(5, row.pages)
+        assertEquals(clock, row.updatedAt)
+    }
+
+    @Test
+    fun aShorterCopyDoesNotReplaceTheStoredSession() {
+        library.saveSessions("kindle", listOf(wire(bookA, 1_700_000_000, 120, pages = 5)))
+        val saved =
+            library.saveSessions("kindle", listOf(wire(bookA, 1_700_000_000, 60, pages = 3)))
+        assertEquals(0, saved)
+        val row = sessionRows().single()
+        assertEquals(120L, row.durationSec)
+        assertEquals(5, row.pages)
+    }
+
+    @Test
+    fun anotherEreadersWatermarkIsZero() {
+        library.saveSessions("kindle", listOf(wire(bookA, 1_700_000_000, 60)))
+        assertEquals(0L, library.sessionsUntil("kobo"))
+    }
+
+    @Test
+    fun bookNamesAreUpsertedAndTheNewestWins() {
+        library.saveBookNames("kindle", mapOf(bookA to ("Old title" to "Old author")))
+        clock += 1_000
+        library.saveBookNames(
+            "kindle",
+            mapOf(bookA to ("New title" to "New author"), bookB to ("Title B" to "")),
+        )
+        val names = runBlocking { db.stats().allBookNames() }.associateBy { it.digest }
+        assertEquals(2, names.size)
+        assertEquals("New title", names.getValue(bookA).title)
+        assertEquals("New author", names.getValue(bookA).authors)
+        assertEquals(clock, names.getValue(bookA).updatedAt)
+        assertEquals("", names.getValue(bookB).authors)
+    }
+
+    @Test
+    fun knownDigestsAreTheDigestsThatHaveABook() {
+        assertEquals(emptyList<String>(), library.knownDigests())
+        runBlocking {
+            db.stats().upsertDigests(listOf(KoreaderDigestRow(bookA, "book-1", "rev-1", clock)))
+        }
+        assertEquals(listOf(bookA), library.knownDigests())
     }
 }

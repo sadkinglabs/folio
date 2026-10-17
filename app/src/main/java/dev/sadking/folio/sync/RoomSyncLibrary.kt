@@ -5,23 +5,27 @@ import dev.sadking.folio.FolioApplication
 import dev.sadking.folio.core.BookFormats
 import dev.sadking.folio.core.Comic
 import dev.sadking.folio.core.Epub
+import dev.sadking.folio.core.stats.KoreaderSessions
 import dev.sadking.folio.core.sync.Baseline
 import dev.sadking.folio.core.sync.PhoneAction
 import dev.sadking.folio.core.sync.PhoneBook
 import dev.sadking.folio.core.sync.Question
 import dev.sadking.folio.core.sync.SyncAnnotation
 import dev.sadking.folio.core.sync.SyncPending
+import dev.sadking.folio.data.DeviceKeys
 import dev.sadking.folio.data.DeviceStatistics
 import dev.sadking.folio.data.LINK_DEVICE_PREFIX
 import dev.sadking.folio.data.LibraryRepository
 import dev.sadking.folio.data.Membership
 import dev.sadking.folio.data.NotABook
 import dev.sadking.folio.data.Shelf
+import dev.sadking.folio.data.StatsBookNameRow
 import dev.sadking.folio.data.SyncBaseline
 import dev.sadking.folio.data.UnreadableBook
 import dev.sadking.folio.data.WishMembership
 import dev.sadking.folio.data.decode
 import dev.sadking.folio.data.encode
+import dev.sadking.folio.data.keepSessions
 import dev.sadking.folio.data.validateStatistics
 import dev.sadking.folio.link.ReadingStatistics
 import dev.sadking.folio.link.Refusal
@@ -71,6 +75,7 @@ internal constructor(
 
     private val dao = repo.dao
     private val baselineDao = repo.database.syncBaselines()
+    private val stats = repo.database.stats()
 
     override fun phoneBooks(): List<PhoneBook> = io {
         val removed = dao.allRemoved().map { it.id }.toSet()
@@ -373,6 +378,57 @@ internal constructor(
             throw IllegalArgumentException("Invalid reading statistics", e)
         }
         io { dao.statistics(value) }
+    }
+
+    /**
+     * The latest `start + seconds` (epoch seconds) of the KOReader sessions kept from [ereaderId],
+     * as the plugin's watermark. 0 when there are none; another e-reader's sessions don't count.
+     */
+    override fun sessionsUntil(ereaderId: String): Long = io {
+        stats.kindleUntil(DeviceKeys.ereader(ereaderId)) ?: 0L
+    }
+
+    /**
+     * Keeps [sessions] from [ereaderId] as Kindle rows: the book stays as KOReader's file digest
+     * (`document`) with no `bookId` until it is matched. A session only grows: a copy no longer
+     * than the stored one is not written (see [keepSessions]). Returns how many rows were written;
+     * nothing is deleted.
+     */
+    override fun saveSessions(
+        ereaderId: String,
+        sessions: List<KoreaderSessions.WireSession>,
+    ): Int = io {
+        stats.keepSessions(
+            sessions.map {
+                KoreaderSessions.toSession(ereaderId, DeviceKeys.ereader(ereaderId), it)
+            },
+            now(),
+        )
+    }
+
+    /** The digests of KOReader files the phone can match to a library book (A1). */
+    override fun knownDigests(): List<String> = io { stats.knownDigests() }
+
+    /**
+     * Keeps the names [ereaderId] sent for books the phone can't match (A1), by digest, as `digest
+     * -> (title, authors)`. Each name is written now, so a newer name for a digest replaces the
+     * stored one.
+     */
+    override fun saveBookNames(ereaderId: String, names: Map<String, Pair<String, String>>) {
+        if (names.isEmpty()) return
+        val at = now()
+        io {
+            stats.upsertBookNames(
+                names.map { (digest, name) ->
+                    StatsBookNameRow(
+                        digest,
+                        title = name.first,
+                        authors = name.second,
+                        updatedAt = at,
+                    )
+                }
+            )
+        }
     }
 
     /**
