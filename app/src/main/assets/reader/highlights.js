@@ -180,9 +180,9 @@
   // Which end of the selection the owner is moving: the one that changed last.
   const moving = {start: null, end: null, side: 'end'};
   window.FolioSelection = {
-    // The selection's moving end: edge 1 when it holds the last character on this page and the
-    // chapter has a further page, -1 when it holds the first character and there is an earlier
-    // page, else 0. With the selection's length and a key for that end and the page, so the reader
+    // The selection's moving end: edge 1 when the next visible character after it is on a later
+    // page (it holds the page's last word, or has slipped past it), -1 when the one before it is on
+    // an earlier page, else 0. With the selection's length and a key for that end and the page, so the reader
     // can tell a pause from a drag. Null when nothing is selected.
     edge() {
       const selection = window.getSelection();
@@ -206,12 +206,12 @@
       const earlier = scrolled > 1;
       let edge = 0;
       if (moving.side === 'end' && later) {
-        // The last selected character is on this page and the next one is on the next page.
-        if (neighbour(range.endContainer, range.endOffset, false) === 1 &&
-            neighbour(range.endContainer, range.endOffset, true) === 0) edge = 1;
+        // The next visible character is off this page: the end rests on the page's last word, or
+        // has already slipped past it into the next page's column (it jumps there as the finger
+        // nears the corner).
+        if (neighbour(range.endContainer, range.endOffset, true) === 0) edge = 1;
       } else if (moving.side === 'start' && earlier) {
-        if (neighbour(range.startContainer, range.startOffset, true) === 1 &&
-            neighbour(range.startContainer, range.startOffset, false) === 0) edge = -1;
+        if (neighbour(range.startContainer, range.startOffset, false) === 0) edge = -1;
       }
       const key = (moving.side === 'end' ? endKey : startKey) + '@' + Math.round(scrolled);
       return {edge, length: range.toString().length, key};

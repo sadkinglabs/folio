@@ -271,6 +271,17 @@ class ReaderActivity : FragmentActivity() {
      * tap, a page swipe or a selection before the page acts on it. See [EdgeSwipeTracker].
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // A long-press can become a drag before the selection menu exists: watch the selection
+        // from the first touch, and stop when the finger lifts with no menu open.
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> if (selectionWatch?.isActive != true) watchSelection()
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL ->
+                if (selectionMode == null) {
+                    selectionWatch?.cancel()
+                    selectionWatch = null
+                }
+        }
         val step =
             edgeSwipe.onTouch(
                 ev.actionMasked,

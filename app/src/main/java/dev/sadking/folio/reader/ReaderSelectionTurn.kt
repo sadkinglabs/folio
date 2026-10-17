@@ -41,15 +41,16 @@ internal fun parseSelectionEdge(raw: String?): SelectionEdge? {
 
 /**
  * Decides when to turn the page under a selection, from the page's answers over time. It turns when
- * the moving end has rested on the page's first or last word for [dwellMs], and only once the
- * selection has grown past its first size: a word long-pressed at the bottom of a page, to look it
- * up, does not turn the page. One turn per resting place.
+ * the moving end has been at the page's first or last word for [dwellMs], however much it jitters
+ * there (near the corner it jumps between the last word and the next page's column), and only once
+ * the selection has grown past its first size: a word long-pressed at the bottom of a page, to look
+ * it up, does not turn the page. After a turn the end must leave the edge before another.
  */
 internal class SelectionPageTurner(private val dwellMs: Long = SELECTION_TURN_DWELL_MS) {
     private var shortest = Int.MAX_VALUE
-    private var key: String? = null
+    private var direction = 0
     private var since = 0L
-    private var turnedAt: String? = null
+    private var armed = true
 
     /** The direction to turn after [sample] at [now] (milliseconds): 1, -1, or 0 to stay. */
     fun next(sample: SelectionEdge?, now: Long): Int {
@@ -58,20 +59,23 @@ internal class SelectionPageTurner(private val dwellMs: Long = SELECTION_TURN_DW
             return 0
         }
         shortest = minOf(shortest, sample.length)
-        if (sample.key != key) {
-            key = sample.key
+        if (sample.edge != direction) {
+            direction = sample.edge
             since = now
         }
-        if (sample.edge == 0 || sample.length <= shortest || sample.key == turnedAt) return 0
-        if (now - since < dwellMs) return 0
-        turnedAt = sample.key
+        if (sample.edge == 0) {
+            armed = true
+            return 0
+        }
+        if (!armed || sample.length <= shortest || now - since < dwellMs) return 0
+        armed = false
         return sample.edge
     }
 
     fun reset() {
         shortest = Int.MAX_VALUE
-        key = null
+        direction = 0
         since = 0L
-        turnedAt = null
+        armed = true
     }
 }

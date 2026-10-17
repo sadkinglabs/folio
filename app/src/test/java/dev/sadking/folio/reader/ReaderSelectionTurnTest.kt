@@ -51,6 +51,19 @@ class ReaderSelectionTurnTest {
     }
 
     @Test
+    fun anEndJitteringAtTheCornerStillTurnsAfterTheDwell() {
+        // Near the corner the end jumps between the last word and the next page's column.
+        val turner = SelectionPageTurner()
+        turner.next(SelectionEdge(0, 5, "a@0"), 0)
+        assertEquals(0, turner.next(SelectionEdge(1, 60, "last@0"), 100))
+        assertEquals(0, turner.next(SelectionEdge(1, 61, "past@0"), 250))
+        assertEquals(0, turner.next(SelectionEdge(1, 60, "last@0"), 400))
+        assertEquals(1, turner.next(SelectionEdge(1, 61, "past@0"), 600))
+        // Still at the edge on the new page's side: no second turn until it leaves.
+        assertEquals(0, turner.next(SelectionEdge(1, 61, "past@1080"), 1200))
+    }
+
+    @Test
     fun goingBackWorksTheSameWay() {
         val turner = SelectionPageTurner(dwellMs = 500)
         turner.next(SelectionEdge(0, 5, "s@1080"), 0)
