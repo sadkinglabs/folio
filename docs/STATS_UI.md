@@ -113,7 +113,6 @@ A streak counts days with at least 1 minute of reading, in the phone's time zone
 | Fastest finish | `stats_milestone_fastest` | "Salt and Iron in 3 days" | `Gem` | `Bolt` |
 | Biggest day | `stats_milestone_biggest_day` | "4 h 10 min" | `VerySunny` | `WbSunny` |
 | First listen | `stats_milestone_first_listen` | the title | `Clover4Leaf` | `Headphones` |
-| A full year | `stats_milestone_year` | "2026" | `Cookie12Sided` | `CalendarMonth` |
 
 ### 3.8 Years
 

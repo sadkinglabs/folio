@@ -404,7 +404,7 @@ internal object StatsUi {
                     it.end,
                     MilestoneKind.STREAK,
                     text.string(R.string.stats_milestone_streak),
-                    text.string(R.string.stats_share_days, it.days),
+                    text.plural(R.plurals.stats_share_days, it.days, it.days),
                 )
             }
         records.fastestFinish?.let {
@@ -412,8 +412,9 @@ internal object StatsUi {
                 it.date,
                 MilestoneKind.FASTEST,
                 text.string(R.string.stats_milestone_fastest),
-                text.string(
-                    R.string.stats_milestone_fastest_detail,
+                text.plural(
+                    R.plurals.stats_milestone_fastest_detail,
+                    it.value.toInt(),
                     label(snapshot, it.book, text).title,
                     it.value.toInt(),
                 ),
@@ -553,14 +554,14 @@ internal object StatsUi {
                     ?.takeIf { it.days >= MIN_STREAK_RECORD }
                     ?.let {
                         text.string(R.string.stats_share_streak) to
-                            text.string(R.string.stats_share_days, it.days)
+                            text.plural(R.plurals.stats_share_days, it.days, it.days)
                     },
                 fastest?.let {
                     text.string(R.string.stats_milestone_fastest) to
                         text.string(
                             R.string.stats_joined,
                             label(snapshot, it.book, text).title,
-                            text.string(R.string.stats_share_days, it.value.toInt()),
+                            text.plural(R.plurals.stats_share_days, it.value.toInt(), it.value.toInt()),
                         )
                 },
             )

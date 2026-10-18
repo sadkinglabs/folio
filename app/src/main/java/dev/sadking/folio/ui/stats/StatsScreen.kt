@@ -1616,7 +1616,7 @@ internal fun YearShareCard(review: YearReview, modifier: Modifier = Modifier) {
                     verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
                 ) {
                     MiniStat(
-                        stringResource(R.string.stats_share_days, review.longestStreak),
+                        pluralStringResource(R.plurals.stats_share_days, review.longestStreak, review.longestStreak),
                         stringResource(R.string.stats_share_streak),
                     )
                     MiniStat(

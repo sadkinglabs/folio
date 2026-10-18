@@ -97,7 +97,10 @@
     <string name="stats_milestone_biggest_day">Biggest day</string>
     <string name="stats_milestone_first_listen">First listen</string>
     <string name="stats_milestone_reading_time">Reading time</string>
-    <string name="stats_milestone_fastest_detail">%1$s in %2$d days</string>
+    <plurals name="stats_milestone_fastest_detail">
+        <item quantity="one">%1$s in %2$d day</item>
+        <item quantity="other">%1$s in %2$d days</item>
+    </plurals>
     <string name="stats_milestones_empty">Finish a book or read a week in a row and the first ones show here.</string>
 
     <!-- Years and the year in review. -->
@@ -122,7 +125,10 @@
     <string name="stats_share_hour">Favourite hour</string>
     <string name="stats_share_pace">Pace</string>
     <string name="stats_share_listening">Listening</string>
-    <string name="stats_share_days">%1$d days</string>
+    <plurals name="stats_share_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
     <string name="stats_share_preparing">Preparing the image…</string>
     <string name="stats_share_failed">Couldn’t make the image. Try again.</string>
 
