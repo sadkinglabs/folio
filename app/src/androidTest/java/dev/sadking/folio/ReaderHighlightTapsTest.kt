@@ -57,7 +57,8 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
  * ways to the sheet are covered: tapping a drawn highlight, and selecting a highlighted passage
  * again from the selection menu, itself tapped for real. Also a passage selected across a page turn
  * is saved and drawn as one highlight: one injected finger holds the selection while a second
- * finger's injected tap turns the page.
+ * finger's injected tap turns the page, and then a separate one-finger tap turns it again, as the
+ * other hand's tap arrives while the held finger is on a selection handle.
  */
 class ReaderHighlightTapsTest {
     private companion object {
@@ -762,6 +763,30 @@ class ReaderHighlightTapsTest {
             // The first finger lifts; the selection stays.
             inject(downTime, MotionEvent.ACTION_UP, 0 to held)
             assertEquals("false", scenario.page("getSelection().isCollapsed"))
+            // The other hand taps again, now as a touch of its own: the way it reaches the reader
+            // when the held finger is on a selection handle, which is a window of its own. No
+            // finger is down on the reader's window, and it still knows text is selected.
+            if (runCatching { compose.waitUntil(5_000) { selecting() } }.isFailure)
+                fail(
+                    "The reader forgot the selection once no finger was down on its window.\n" +
+                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}"
+                )
+            val turnedOnce = scrolled()
+            // Low on the page, clear of the selection's menu and handles near its top.
+            tap(width * 3 / 4, height * 3 / 4)
+            if (runCatching { compose.waitUntil(10_000) { scrolled() > turnedOnce + 1 } }.isFailure)
+                fail(
+                    "The page did not turn after the other hand's own tap.\n" +
+                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
+                        Diagnostics.state()
+                )
+            // The tap never reached the page: the selection is still there.
+            assertEquals("false", scenario.page("getSelection().isCollapsed"))
+            val steps = scenario.tapSteps()
+            assertTrue(
+                steps.joinToString("\n"),
+                steps.any { it.endsWith("other-hand tap: next page") },
+            )
             scenario.onActivity { it.selectionAction(SELECTION_HIGHLIGHT) }
             compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() }
             val made = phoneRows(id).single()

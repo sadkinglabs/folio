@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.ActionMode
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
@@ -167,6 +168,9 @@ class ReaderActivity : FragmentActivity() {
                     menu.add(Menu.NONE, id, order, label)
                 }
                 selectionMode = mode
+                // The page opens this menu for selected text: that is its word that text is
+                // selected, until its next answer.
+                selectedOnPage = true
                 watchSelection()
                 return true
             }
@@ -180,12 +184,9 @@ class ReaderActivity : FragmentActivity() {
             }
 
             override fun onDestroyActionMode(mode: ActionMode) {
-                if (selectionMode === mode) {
-                    selectionMode = null
-                    // The page may close its menu while a handle is dragged: keep watching until
-                    // the finger lifts.
-                    if (!touching) stopWatchingSelection()
-                }
+                // The watch goes on while text is selected: the page may close its menu while a
+                // handle is dragged.
+                if (selectionMode === mode) selectionMode = null
             }
         }
 
@@ -197,8 +198,8 @@ class ReaderActivity : FragmentActivity() {
         get() = selectionMode?.menu
 
     /**
-     * Asks the page whether text is selected, while a finger is down or the selection menu is open;
-     * see [watchSelection].
+     * Asks the page whether text is selected, while a finger is down on the reader's window, the
+     * selection menu is open or text is selected; see [watchSelection].
      */
     private var selectionWatch: Job? = null
 
@@ -208,9 +209,27 @@ class ReaderActivity : FragmentActivity() {
     /** True between a touch's first finger down and its last finger up. */
     private var touching = false
 
-    /** Second-finger taps while text is selected; see ReaderSelectionTurn.kt. */
+    /** The other hand's taps and slides while text is selected; see ReaderSelectionTurn.kt. */
     private val selectionTaps by lazy {
-        SelectionTaps(slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat())
+        val config = ViewConfiguration.get(this)
+        SelectionTaps(
+            slop = config.scaledTouchSlop.toFloat(),
+            swipe =
+                maxOf(
+                    config.scaledPagingTouchSlop.toFloat(),
+                    SELECTION_SWIPE_DP * resources.displayMetrics.density,
+                ),
+        )
+    }
+
+    /** Copies of the touch [selectionTaps] holds back from the page, oldest first. */
+    private val heldTouches = mutableListOf<MotionEvent>()
+
+    /** Gives a held touch that stays down to the page; see [SelectionTaps.expire]. */
+    private val expireHeldTouch = Runnable {
+        val touch = selectionTaps.expire(SystemClock.uptimeMillis()) ?: return@Runnable
+        touch.note?.let(tapTrace::add)
+        replayHeldTouches()
     }
 
     /** Turns under a selection, one at a time, so each sees the page the last one left. */
@@ -296,7 +315,8 @@ class ReaderActivity : FragmentActivity() {
             navigator != null &&
             !panelOpen &&
             !closing &&
-            selectionMode == null
+            selectionMode == null &&
+            !selecting
 
     /**
      * Every touch on the reader's window passes here first, so an edge slide can be told from a
@@ -304,17 +324,15 @@ class ReaderActivity : FragmentActivity() {
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         // A long-press can become a drag before the selection menu exists: watch the selection
-        // from the first touch, and stop when the finger lifts with no menu open.
+        // from the first touch. The watch stops itself once no finger is down here and nothing
+        // is selected.
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touching = true
                 if (selectionWatch?.isActive != true) watchSelection()
             }
             MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> {
-                touching = false
-                if (selectionMode == null) stopWatchingSelection()
-            }
+            MotionEvent.ACTION_CANCEL -> touching = false
         }
         val step =
             edgeSwipe.onTouch(
@@ -365,12 +383,11 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * Hands [ev] to the page, without any second finger that is tapping while text is selected:
-     * that finger's touches never reach the page, so the held finger's drag goes on undisturbed. A
-     * tap turns the page under the selection. See [SelectionTaps].
+     * Hands [ev] to the page, except the other hand's touches while text is selected: those are
+     * held back until [SelectionTaps] knows whether they turn the page. A turn never reaches the
+     * page, so the held finger's drag goes on undisturbed; anything else is given to the page.
      */
     private fun toPage(ev: MotionEvent): Boolean {
-        val overflow = navigator?.overflow?.value
         val count = ev.pointerCount
         val touch =
             selectionTaps.onTouch(
@@ -380,14 +397,31 @@ class ReaderActivity : FragmentActivity() {
                 FloatArray(count) { ev.getX(it) },
                 FloatArray(count) { ev.getY(it) },
                 ev.eventTime,
-                window.decorView.width.toFloat(),
-                overflow?.readingProgression == ReadingProgression.RTL,
+                turnRules(),
                 epubNavigator != null && !model.scrolling && selecting,
             )
+        touch.note?.let(tapTrace::add)
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            window.decorView.removeCallbacks(expireHeldTouch)
+            dropHeldTouches()
+        }
         if (touch.turn != 0) turnUnderSelection(forward = touch.turn > 0)
         return when (val page = touch.page) {
             PageTouch.Whole -> super.dispatchTouchEvent(ev)
-            PageTouch.Withheld -> true
+            PageTouch.Withheld -> {
+                dropHeldTouches()
+                true
+            }
+            PageTouch.Held -> {
+                heldTouches += MotionEvent.obtain(ev)
+                if (ev.actionMasked == MotionEvent.ACTION_DOWN)
+                    window.decorView.postDelayed(expireHeldTouch, SELECTION_TAP_MS + 1)
+                true
+            }
+            PageTouch.Replay -> {
+                replayHeldTouches()
+                super.dispatchTouchEvent(ev)
+            }
             is PageTouch.Only -> {
                 val trimmed = ev.only(page)
                 try {
@@ -399,10 +433,46 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /** Where the page is in the window, and how its taps and slides turn. */
+    private fun turnRules(): TurnRules {
+        val view = navigator?.publicationView
+        val at = IntArray(2)
+        view?.getLocationInWindow(at)
+        val width = view?.width?.takeIf { it > 0 } ?: window.decorView.width
+        val comfort = model.comfort
+        return TurnRules(
+            left = if (view != null) at[0].toFloat() else 0f,
+            width = width.toFloat(),
+            zones = comfort.tapZones,
+            leftHanded = comfort.leftHanded,
+            rtl = navigator?.overflow?.value?.readingProgression == ReadingProgression.RTL,
+        )
+    }
+
+    /** Gives the page the touch held back so far, as it came. */
+    private fun replayHeldTouches() {
+        val replay = heldTouches.toList()
+        heldTouches.clear()
+        for (event in replay) {
+            try {
+                super.dispatchTouchEvent(event)
+            } finally {
+                event.recycle()
+            }
+        }
+    }
+
+    /** Forgets the touch held back so far: the page never sees it. */
+    private fun dropHeldTouches() {
+        heldTouches.forEach(MotionEvent::recycle)
+        heldTouches.clear()
+    }
+
     /**
      * Turns the page [forward] (or back) under the selection when the chapter has a page there;
-     * else a short buzz, and the page stays. Waits for the turn to show, so a quick further tap
-     * turns on from the new page.
+     * else a short buzz, and the page stays. When the selection is already gone, the page turns as
+     * a plain tap would. Waits for the turn to show, so a quick further tap turns on from the new
+     * page.
      */
     private fun turnUnderSelection(forward: Boolean) {
         val nav = epubNavigator ?: return
@@ -418,14 +488,22 @@ class ReaderActivity : FragmentActivity() {
                     } catch (_: Exception) {
                         null
                     }
-                if (parseSelectionPage(raw)?.canTurn(forward) != true) {
-                    tapTrace.add("second-finger tap: no page there in this chapter")
+                val state = parseSelectionPage(raw)
+                val way = if (forward) "next page" else "previous page"
+                val animated: Boolean
+                if (state != null && !state.selected) {
+                    tapTrace.add("turn: nothing selected any more, plain $way")
+                    animated = model.comfort.pageAnimation
+                } else if (state?.canTurn(forward) != true) {
+                    tapTrace.add("turn under the selection: no page there in this chapter")
                     window.decorView.performHapticFeedback(HapticFeedbackConstants.REJECT)
                     return@withLock
+                } else {
+                    tapTrace.add("turn under the selection: $way")
+                    animated = false
                 }
-                tapTrace.add("second-finger tap: " + if (forward) "next page" else "previous page")
                 val before = nav.currentLocator.value
-                if (forward) nav.goForward(animated = false) else nav.goBackward(animated = false)
+                if (forward) nav.goForward(animated) else nav.goBackward(animated)
                 withTimeoutOrNull(SELECTION_TURN_SETTLE_MS) {
                     nav.currentLocator.first { it != before }
                 }
@@ -1003,43 +1081,44 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * Asks the page every [SELECTION_POLL_MS] whether text is selected, so a second finger's tap
-     * can turn the page under it (see [toPage] and ReaderSelectionTurn.kt). Runs while a finger is
-     * down or the selection menu is open. Internal for tests: a selection made by script opens no
-     * menu.
+     * Asks the page every [SELECTION_POLL_MS] whether text is selected, so the other hand's tap or
+     * slide can turn the page under it (see [toPage] and ReaderSelectionTurn.kt). Runs while a
+     * finger is down on the reader's window, the selection menu is open, or text is selected: the
+     * finger holding a selection may be on a handle, which is a window of its own, so the reader
+     * may see no finger down at all. Internal for tests: a selection made by script opens no menu.
      */
     internal fun watchSelection() {
         selectionWatch?.cancel()
         val nav = epubNavigator ?: return
         selectionWatch = lifecycleScope.launch {
             while (isActive) {
-                if (!model.scrolling) {
-                    val raw =
-                        try {
-                            withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                                nav.bridge("JSON.stringify(FolioSelection.state());")
+                selectedOnPage =
+                    if (model.scrolling) false
+                    else {
+                        val raw =
+                            try {
+                                withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                                    nav.bridge("JSON.stringify(FolioSelection.state());")
+                                }
+                            } catch (cancel: CancellationException) {
+                                throw cancel
+                            } catch (_: Exception) {
+                                null
                             }
-                        } catch (cancel: CancellationException) {
-                            throw cancel
-                        } catch (_: Exception) {
-                            null
-                        }
-                    selectedOnPage = parseSelectionPage(raw)?.selected == true
-                }
+                        parseSelectionPage(raw)?.selected == true
+                    }
+                if (!touching && selectionMode == null && !selectedOnPage) break
                 delay(SELECTION_POLL_MS)
             }
         }
     }
 
-    private fun stopWatchingSelection() {
-        selectionWatch?.cancel()
-        selectionWatch = null
-        selectedOnPage = false
-    }
-
-    /** Whether the reader knows text is selected; read by the instrumented test. */
+    /**
+     * Whether text is selected: from when the page says so (or opens its selection menu) until it
+     * says it is not. Read by the instrumented test.
+     */
     internal val selecting: Boolean
-        get() = selectionMode != null || selectedOnPage
+        get() = selectedOnPage
 
     private fun copy(text: String) {
         getSystemService(ClipboardManager::class.java)
