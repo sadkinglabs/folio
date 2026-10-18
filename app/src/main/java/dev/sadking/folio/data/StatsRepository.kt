@@ -108,6 +108,7 @@ class StatsRepository(
             goals = input.goals,
             waitingForEreader =
                 linked.ereaders.isNotEmpty() && sessions.none { it.source == SessionSource.KINDLE },
+            hasEreaderSessions = sessions.any { it.source == SessionSource.KINDLE },
         )
     }
 

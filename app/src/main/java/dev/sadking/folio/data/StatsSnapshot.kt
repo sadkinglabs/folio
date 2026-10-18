@@ -14,7 +14,8 @@ data class StatsLabel(
 data class StatsSnapshot(
     val stats: ReadingStats,
     /**
-     * By book key. A key missing here (an unmatched `doc:` key) shows R.string.stats_unknown_book.
+     * By book key. A key missing here shows a fallback name: a missing `doc:` key shows
+     * R.string.stats_unknown_book, a missing `hc:` key R.string.stats_unknown_hardcover_book.
      */
     val labels: Map<String, StatsLabel>,
     /** By device key, as the device roster names them. `phone:` keys are absent: "This phone". */
@@ -22,4 +23,6 @@ data class StatsSnapshot(
     val goals: GoalSettings,
     /** An e-reader syncs, but none of its sessions has arrived yet: "first sync pending". */
     val waitingForEreader: Boolean,
+    /** At least one session came from an e-reader. False: the screens say phone only so far. */
+    val hasEreaderSessions: Boolean,
 )

@@ -351,6 +351,17 @@ class StatsRepositoryTest {
     }
 
     @Test
+    fun hasEreaderSessionsIsFalseForAPhoneOnlyHistoryAndTrueAfterAKindleSession() {
+        session("p-1", "PHONE", "phone:p1")
+
+        assertFalse(snapshot().hasEreaderSessions)
+
+        kindle("k-1", document = "d9")
+
+        assertTrue(snapshot().hasEreaderSessions)
+    }
+
+    @Test
     fun anEreaderSessionIsNamedByTheRosterAndAPhoneSessionIsNot() {
         addBook("b1")
         val ereader = EreaderSync(id = "k1", name = "Kindle Paperwhite", lastSync = now)

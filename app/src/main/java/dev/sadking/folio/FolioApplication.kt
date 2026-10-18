@@ -8,10 +8,12 @@ import androidx.room.Room
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.DeviceSettings
 import dev.sadking.folio.sync.HardcoverSync
+import dev.sadking.folio.sync.SyncState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class FolioApplication : Application() {
@@ -39,6 +41,20 @@ class FolioApplication : Application() {
         OperationRunner(
             authentication = { deviceSettings.load().authentication },
             text = { resources.failureText() },
+        )
+    }
+    /** The owner's reading goals (M12). */
+    val statsGoals by lazy { StatsGoals(getSharedPreferences(StatsGoals.PREFS, MODE_PRIVATE)) }
+    /** The reading statistics (M12): one repository for the whole app. */
+    val stats by lazy {
+        val sync = SyncState.of(this)
+        StatsRepository(
+            database.stats(),
+            database.library(),
+            roster =
+                deviceRosterFlow(sync.ereaders, database.library()) { link.settings.phoneDeviceId },
+            ereaders = sync.ereaders.map { it.values.toList() },
+            goals = statsGoals,
         )
     }
 
