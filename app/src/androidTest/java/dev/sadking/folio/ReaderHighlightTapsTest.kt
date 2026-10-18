@@ -2,6 +2,9 @@ package dev.sadking.folio
 
 import android.content.Intent
 import android.graphics.Rect
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -48,10 +51,12 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
 
 /**
  * The highlight sheet answers real taps (M11 fix). Every tap here goes through the system's input
- * (`input tap`), as a finger's does, to the window on top; Compose's performClick would skip that
- * path, which is where the owner's taps were lost. Both ways to the sheet are covered: tapping a
- * drawn highlight, and selecting a highlighted passage again from the selection menu, itself tapped
- * for real. Also a passage selected across a page turn is saved and drawn as one highlight.
+ * (touch events sent with `sendPointerSync`, not the shell), as a finger's does, to the window on
+ * top; Compose's performClick would skip that path, which is where the owner's taps were lost. Both
+ * ways to the sheet are covered: tapping a drawn highlight, and selecting a highlighted passage
+ * again from the selection menu, itself tapped for real. Also a passage selected across a page turn
+ * is saved and drawn as one highlight: one injected finger holds the selection while a second
+ * finger's injected tap turns the page.
  */
 class ReaderHighlightTapsTest {
     private companion object {
@@ -349,12 +354,76 @@ class ReaderHighlightTapsTest {
         return steps
     }
 
-    private fun tap(x: Int, y: Int) {
-        Diagnostics.shell("input tap $x $y")
+    /**
+     * Sends one touch event with [fingers] (id to screen point) as [action] through the system's
+     * input, as a finger's would reach the window there, and waits until it is handled. [downTime]
+     * is the gesture's start; the event's time is now. No shell: a shell command can silently do
+     * nothing on CI.
+     */
+    private fun inject(downTime: Long, action: Int, vararg fingers: Pair<Int, Pair<Int, Int>>) {
+        val properties =
+            fingers
+                .map { (id, _) ->
+                    MotionEvent.PointerProperties().apply {
+                        this.id = id
+                        toolType = MotionEvent.TOOL_TYPE_FINGER
+                    }
+                }
+                .toTypedArray()
+        val coords =
+            fingers
+                .map { (_, at) ->
+                    MotionEvent.PointerCoords().apply {
+                        x = at.first.toFloat()
+                        y = at.second.toFloat()
+                        pressure = 1f
+                        size = 1f
+                    }
+                }
+                .toTypedArray()
+        val event =
+            MotionEvent.obtain(
+                downTime,
+                SystemClock.uptimeMillis(),
+                action,
+                fingers.size,
+                properties,
+                coords,
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_TOUCHSCREEN,
+                0,
+            )
+        try {
+            instrumentation.sendPointerSync(event)
+        } finally {
+            event.recycle()
+        }
     }
 
+    /** The second finger's [action] (pointer down or up), for an event's second pointer. */
+    private fun second(action: Int) = action or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+
+    private fun tap(x: Int, y: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        inject(downTime, MotionEvent.ACTION_DOWN, 0 to (x to y))
+        Thread.sleep(50)
+        inject(downTime, MotionEvent.ACTION_UP, 0 to (x to y))
+    }
+
+    /** A finger held still at ([x], [y]) for about 1.2 seconds, moving nowhere, then lifted. */
     private fun longPress(x: Int, y: Int) {
-        Diagnostics.shell("input swipe $x $y $x $y 1200")
+        val downTime = SystemClock.uptimeMillis()
+        inject(downTime, MotionEvent.ACTION_DOWN, 0 to (x to y))
+        repeat(3) {
+            Thread.sleep(400)
+            inject(downTime, MotionEvent.ACTION_MOVE, 0 to (x to y))
+        }
+        inject(downTime, MotionEvent.ACTION_UP, 0 to (x to y))
     }
 
     /** A real tap in the middle of the Compose node [node], wherever its window is. */
@@ -527,28 +596,55 @@ class ReaderHighlightTapsTest {
     }
 
     @Test
-    fun aSelectionHeldAtThePagesEndTurnsThePageAndIsSavedAndDrawnWhole() {
+    fun aSecondFingersTapTurnsThePageUnderAHeldSelectionAndItIsSavedAndDrawnWhole() {
         // Long paragraphs: chapter two runs over several pages.
         val filler = " The rows ran down to the river and back up the hill again.".repeat(6)
         val id = book(paragraphs = 40, filler = filler)
         open(id).use { scenario ->
+            var at: Pair<Int, Int>? = null
             compose.waitUntil(30_000) {
-                runCatching { scenario.onScreen(word(1, "enough")) }.getOrNull() != null
+                at = runCatching { scenario.onScreen(word(1, "enough")) }.getOrNull()
+                at != null
             }
+            val held = at!!
             fun scrolled() =
                 (scenario.page("Math.abs(document.scrollingElement.scrollLeft)") ?: "0").toDouble()
+            fun selecting(): Boolean {
+                var known = false
+                scenario.onActivity { known = it.selecting }
+                return known && scenario.page("getSelection().isCollapsed") == "false"
+            }
             val before = scrolled()
-            // A word on the first page is selected, as a long press would.
-            scenario.page(
-                """(function(){var t=document.getElementsByTagName('p')[1].firstChild;""" +
-                    """var i=t.data.indexOf('enough');var r=document.createRange();""" +
-                    """r.setStart(t,i);r.setEnd(t,i+6);var s=getSelection();""" +
-                    """s.removeAllRanges();s.addRange(r);return true;})()"""
-            )
-            // A script's selection opens no menu; start what the menu starts.
-            scenario.onActivity { it.watchSelection() }
-            Thread.sleep(600)
-            // Its end is dragged to the last character on the page, and held there.
+            // One finger long-presses a word on the first page and stays down: the page selects
+            // the word, and the reader learns that text is selected. A press that lands before the
+            // page takes touches is lost: it is cancelled (never a tap) and tried again.
+            var downTime = 0L
+            // The first finger stays still for [ms] or until [done], reporting moves in place
+            // every 300 ms with real times, as a resting finger does.
+            fun holdUntil(ms: Long, done: () -> Boolean): Boolean {
+                val end = SystemClock.uptimeMillis() + ms
+                while (SystemClock.uptimeMillis() < end) {
+                    if (done()) return true
+                    Thread.sleep(300)
+                    inject(downTime, MotionEvent.ACTION_MOVE, 0 to held)
+                }
+                return done()
+            }
+            var tries = 0
+            while (true) {
+                downTime = SystemClock.uptimeMillis()
+                inject(downTime, MotionEvent.ACTION_DOWN, 0 to held)
+                tries++
+                if (holdUntil(5_000) { selecting() }) break
+                inject(downTime, MotionEvent.ACTION_CANCEL, 0 to held)
+                if (tries == 3)
+                    fail(
+                        "No selection under a held finger after 3 tries.\n" +
+                            "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
+                            Diagnostics.state()
+                    )
+            }
+            // Its end is dragged to the last character on the page, still under the held finger.
             val extended =
                 scenario.page(
                     """(function(){var s=getSelection();var w=document.createTreeWalker(""" +
@@ -562,8 +658,28 @@ class ReaderHighlightTapsTest {
                         """if(!last)return false;s.extend(last[0],last[1]+1);return true;})()"""
                 )
             assertEquals("true", extended)
-            // The page turns after a short wait, and the selection is still there.
-            compose.waitUntil(10_000) { scrolled() > before + 1 }
+            // Held there, the page stays: only a tap turns it.
+            holdUntil(900) { false }
+            assertEquals(before, scrolled(), 1.0)
+            // A second finger taps the right half, the way an English book reads, while the first
+            // stays down.
+            var width = 0
+            var height = 0
+            scenario.onActivity {
+                width = it.window.decorView.width
+                height = it.window.decorView.height
+            }
+            val tap = width * 3 / 4 to height / 2
+            inject(downTime, second(MotionEvent.ACTION_POINTER_DOWN), 0 to held, 1 to tap)
+            Thread.sleep(60)
+            inject(downTime, second(MotionEvent.ACTION_POINTER_UP), 0 to held, 1 to tap)
+            // The page turns, and the selection is still there.
+            if (runCatching { compose.waitUntil(10_000) { scrolled() > before + 1 } }.isFailure)
+                fail(
+                    "The page did not turn after a second finger's tap.\n" +
+                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
+                        Diagnostics.state()
+                )
             assertEquals("false", scenario.page("getSelection().isCollapsed"))
             // The end goes on onto the new page: a few words into its first full line.
             val further =
@@ -578,6 +694,9 @@ class ReaderHighlightTapsTest {
                         """s.extend(n,i);return true;}}}return false;})()"""
                 )
             assertEquals("true", further)
+            // The first finger lifts; the selection stays.
+            inject(downTime, MotionEvent.ACTION_UP, 0 to held)
+            assertEquals("false", scenario.page("getSelection().isCollapsed"))
             scenario.onActivity { it.selectionAction(SELECTION_HIGHLIGHT) }
             compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() }
             val made = phoneRows(id).single()

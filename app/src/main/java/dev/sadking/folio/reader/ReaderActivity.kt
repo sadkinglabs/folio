@@ -13,8 +13,8 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.ActionMode
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -79,6 +79,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
@@ -95,6 +97,7 @@ import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
+import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -179,8 +182,9 @@ class ReaderActivity : FragmentActivity() {
             override fun onDestroyActionMode(mode: ActionMode) {
                 if (selectionMode === mode) {
                     selectionMode = null
-                    selectionWatch?.cancel()
-                    selectionWatch = null
+                    // The page may close its menu while a handle is dragged: keep watching until
+                    // the finger lifts.
+                    if (!touching) stopWatchingSelection()
                 }
             }
         }
@@ -192,8 +196,25 @@ class ReaderActivity : FragmentActivity() {
     internal val openSelectionMenu: Menu?
         get() = selectionMode?.menu
 
-    /** Turns the page when a selection is dragged to its end; runs while text is selected. */
+    /**
+     * Asks the page whether text is selected, while a finger is down or the selection menu is open;
+     * see [watchSelection].
+     */
     private var selectionWatch: Job? = null
+
+    /** Whether the page last said text is selected; false while it is not being asked. */
+    private var selectedOnPage = false
+
+    /** True between a touch's first finger down and its last finger up. */
+    private var touching = false
+
+    /** Second-finger taps while text is selected; see ReaderSelectionTurn.kt. */
+    private val selectionTaps by lazy {
+        SelectionTaps(slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat())
+    }
+
+    /** Turns under a selection, one at a time, so each sees the page the last one left. */
+    private val selectionTurns = Mutex()
 
     /**
      * A tap on a highlight opens its sheet instead of toggling the controls. Readium calls this on
@@ -285,13 +306,15 @@ class ReaderActivity : FragmentActivity() {
         // A long-press can become a drag before the selection menu exists: watch the selection
         // from the first touch, and stop when the finger lifts with no menu open.
         when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> if (selectionWatch?.isActive != true) watchSelection()
+            MotionEvent.ACTION_DOWN -> {
+                touching = true
+                if (selectionWatch?.isActive != true) watchSelection()
+            }
             MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL ->
-                if (selectionMode == null) {
-                    selectionWatch?.cancel()
-                    selectionWatch = null
-                }
+            MotionEvent.ACTION_CANCEL -> {
+                touching = false
+                if (selectionMode == null) stopWatchingSelection()
+            }
         }
         val step =
             edgeSwipe.onTouch(
@@ -314,7 +337,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val side = edgeSwipe.side
         when (step) {
-            EdgeStep.PASS -> return super.dispatchTouchEvent(ev)
+            EdgeStep.PASS -> return toPage(ev)
             EdgeStep.CLAIM -> {
                 // The page and the controls saw this touch start: end it there as cancelled.
                 val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
@@ -339,6 +362,75 @@ class ReaderActivity : FragmentActivity() {
             }
         }
         return true
+    }
+
+    /**
+     * Hands [ev] to the page, without any second finger that is tapping while text is selected:
+     * that finger's touches never reach the page, so the held finger's drag goes on undisturbed. A
+     * tap turns the page under the selection. See [SelectionTaps].
+     */
+    private fun toPage(ev: MotionEvent): Boolean {
+        val overflow = navigator?.overflow?.value
+        val count = ev.pointerCount
+        val touch =
+            selectionTaps.onTouch(
+                ev.actionMasked,
+                ev.actionIndex,
+                IntArray(count) { ev.getPointerId(it) },
+                FloatArray(count) { ev.getX(it) },
+                FloatArray(count) { ev.getY(it) },
+                ev.eventTime,
+                window.decorView.width.toFloat(),
+                overflow?.readingProgression == ReadingProgression.RTL,
+                epubNavigator != null && !model.scrolling && selecting,
+            )
+        if (touch.turn != 0) turnUnderSelection(forward = touch.turn > 0)
+        return when (val page = touch.page) {
+            PageTouch.Whole -> super.dispatchTouchEvent(ev)
+            PageTouch.Withheld -> true
+            is PageTouch.Only -> {
+                val trimmed = ev.only(page)
+                try {
+                    super.dispatchTouchEvent(trimmed)
+                } finally {
+                    trimmed.recycle()
+                }
+            }
+        }
+    }
+
+    /**
+     * Turns the page [forward] (or back) under the selection when the chapter has a page there;
+     * else a short buzz, and the page stays. Waits for the turn to show, so a quick further tap
+     * turns on from the new page.
+     */
+    private fun turnUnderSelection(forward: Boolean) {
+        val nav = epubNavigator ?: return
+        lifecycleScope.launch {
+            selectionTurns.withLock {
+                val raw =
+                    try {
+                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                            nav.bridge("JSON.stringify(FolioSelection.state());")
+                        }
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        null
+                    }
+                if (parseSelectionPage(raw)?.canTurn(forward) != true) {
+                    tapTrace.add("second-finger tap: no page there in this chapter")
+                    window.decorView.performHapticFeedback(HapticFeedbackConstants.REJECT)
+                    return@withLock
+                }
+                tapTrace.add("second-finger tap: " + if (forward) "next page" else "previous page")
+                val before = nav.currentLocator.value
+                if (forward) nav.goForward(animated = false) else nav.goBackward(animated = false)
+                withTimeoutOrNull(SELECTION_TURN_SETTLE_MS) {
+                    nav.currentLocator.first { it != before }
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -911,35 +1003,43 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * While text is selected in a paged book, turns the page when the selection's moving end is
-     * held on the page's last word (or first, going back). See ReaderSelectionTurn.kt. Started by
-     * the selection menu; internal for tests, whose selections are made by script and so get none.
+     * Asks the page every [SELECTION_POLL_MS] whether text is selected, so a second finger's tap
+     * can turn the page under it (see [toPage] and ReaderSelectionTurn.kt). Runs while a finger is
+     * down or the selection menu is open. Internal for tests: a selection made by script opens no
+     * menu.
      */
     internal fun watchSelection() {
         selectionWatch?.cancel()
         val nav = epubNavigator ?: return
         selectionWatch = lifecycleScope.launch {
-            val turner = SelectionPageTurner()
             while (isActive) {
-                delay(SELECTION_POLL_MS)
-                if (model.scrolling) continue
-                val raw =
-                    try {
-                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                            nav.bridge("JSON.stringify(FolioSelection.edge());")
+                if (!model.scrolling) {
+                    val raw =
+                        try {
+                            withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                                nav.bridge("JSON.stringify(FolioSelection.state());")
+                            }
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            null
                         }
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        null
-                    }
-                when (turner.next(parseSelectionEdge(raw), SystemClock.uptimeMillis())) {
-                    1 -> nav.goForward(animated = false)
-                    -1 -> nav.goBackward(animated = false)
+                    selectedOnPage = parseSelectionPage(raw)?.selected == true
                 }
+                delay(SELECTION_POLL_MS)
             }
         }
     }
+
+    private fun stopWatchingSelection() {
+        selectionWatch?.cancel()
+        selectionWatch = null
+        selectedOnPage = false
+    }
+
+    /** Whether the reader knows text is selected; read by the instrumented test. */
+    internal val selecting: Boolean
+        get() = selectionMode != null || selectedOnPage
 
     private fun copy(text: String) {
         getSystemService(ClipboardManager::class.java)
@@ -1907,3 +2007,57 @@ private fun flattenContents(links: List<Link>, depth: Int = 0): List<Pair<Link, 
     links.flatMap {
         listOf(it to depth) + flattenContents(it.children, (depth + 1).coerceAtMost(5))
     }
+
+/**
+ * A copy of this event with only the pointers [PageTouch.Only.ids], as its action, for the page:
+ * the same times, positions (with their history, so a drag stays smooth) and device. Recycle it.
+ */
+private fun MotionEvent.only(touch: PageTouch.Only): MotionEvent {
+    val indices = touch.ids.map(::findPointerIndex)
+    val properties =
+        Array(indices.size) { i ->
+            MotionEvent.PointerProperties().also { getPointerProperties(indices[i], it) }
+        }
+    // A sample's coordinates: a historical one, or the current one when [sample] is -1.
+    fun coords(sample: Int) =
+        Array(indices.size) { i ->
+            MotionEvent.PointerCoords().also {
+                if (sample < 0) getPointerCoords(indices[i], it)
+                else getHistoricalPointerCoords(indices[i], sample, it)
+            }
+        }
+    val action =
+        when (touch.action) {
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_POINTER_UP ->
+                touch.action or (touch.actionIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            else -> touch.action
+        }
+    val history = if (touch.action == MotionEvent.ACTION_MOVE) historySize else 0
+    val event =
+        MotionEvent.obtain(
+            downTime,
+            if (history > 0) getHistoricalEventTime(0) else eventTime,
+            action,
+            indices.size,
+            properties,
+            coords(if (history > 0) 0 else -1),
+            metaState,
+            buttonState,
+            xPrecision,
+            yPrecision,
+            deviceId,
+            edgeFlags,
+            source,
+            flags,
+        )
+    if (history > 0) {
+        for (sample in 1 until history) event.addBatch(
+            getHistoricalEventTime(sample),
+            coords(sample),
+            metaState,
+        )
+        event.addBatch(eventTime, coords(-1), metaState)
+    }
+    return event
+}

@@ -103,118 +103,20 @@
   // Selecting across pages. A chapter is one document laid out in columns, one page per screen,
   // so a selection can run on into the next page of the same chapter: the reader scrolls to it and
   // the selection stays. The next chapter is another document; a selection cannot run into it.
-  const visibleRect = r => r.width > 0 && r.height > 0 && r.right > 1 && r.left < innerWidth - 1 &&
-    r.bottom > 1 && r.top < innerHeight - 1;
-  // A character's place: 1 on this page, 0 off it, null when it takes no room (hidden text).
-  function onPage(node, index) {
-    const r = document.createRange();
-    r.setStart(node, index);
-    r.setEnd(node, index + 1);
-    const rects = [...r.getClientRects()].filter(x => x.width > 0 || x.height > 0);
-    if (rects.length === 0) return null;
-    return rects.some(visibleRect) ? 1 : 0;
-  }
-  function deepestLast(node) {
-    while (node.lastChild) node = node.lastChild;
-    return node;
-  }
-  // The first text node at or after a boundary, with the index to start from.
-  function textAfter(node, offset) {
-    if (node.nodeType === Node.TEXT_NODE) return [node, offset];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    const child = node.childNodes[offset];
-    if (child && child.nodeType === Node.TEXT_NODE) return [child, 0];
-    walker.currentNode = child || deepestLast(node);
-    const next = walker.nextNode();
-    return next ? [next, 0] : null;
-  }
-  // The last text node at or before a boundary, with the index just after the place to start from.
-  function textBefore(node, offset) {
-    if (node.nodeType === Node.TEXT_NODE) return [node, offset];
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    const child = offset > 0 ? node.childNodes[offset - 1] : null;
-    if (child) {
-      const last = deepestLast(child);
-      if (last.nodeType === Node.TEXT_NODE) return [last, last.data.length];
-      walker.currentNode = last;
-    } else walker.currentNode = node;
-    const previous = walker.previousNode();
-    return previous ? [previous, previous.data.length] : null;
-  }
-  // Where the first visible character after (forward) or before a boundary sits: 1, 0 or null
-  // when there is none in the chapter. Spaces and hidden text are skipped.
-  function neighbour(node, offset, forward) {
-    const start = forward ? textAfter(node, offset) : textBefore(node, offset);
-    if (!start) return null;
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let [text, index] = start;
-    walker.currentNode = text;
-    for (let nodes = 0; text && nodes < 200; nodes++) {
-      if (forward) {
-        for (; index < text.data.length; index++) {
-          if (!/\S/.test(text.data[index])) continue;
-          const place = onPage(text, index);
-          if (place !== null) return place;
-        }
-        text = walker.nextNode();
-        index = 0;
-      } else {
-        for (index -= 1; index >= 0; index--) {
-          if (!/\S/.test(text.data[index])) continue;
-          const place = onPage(text, index);
-          if (place !== null) return place;
-        }
-        text = walker.previousNode();
-        index = text ? text.data.length : 0;
-      }
-    }
-    return null;
-  }
-  function pointKey(node, offset) {
-    const parts = [];
-    for (let n = node; n && n !== document.body; n = n.parentNode) {
-      parts.unshift(n.parentNode ? [...n.parentNode.childNodes].indexOf(n) : 0);
-    }
-    return parts.join('/') + ':' + offset;
-  }
-  // Which end of the selection the owner is moving: the one that changed last.
-  const moving = {start: null, end: null, side: 'end'};
   window.FolioSelection = {
-    // The selection's moving end: edge 1 when the next visible character after it is on a later
-    // page (it holds the page's last word, or has slipped past it), -1 when the one before it is on
-    // an earlier page, else 0. With the selection's length and a key for that end and the page, so the reader
-    // can tell a pause from a drag. Null when nothing is selected.
-    edge() {
+    // Whether text is selected, and whether this chapter has a page before (earlier) and after
+    // (later) the one on screen, in reading order: a right-to-left book scrolls the other way, so
+    // only the distance scrolled counts.
+    state() {
       const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-        moving.start = moving.end = null;
-        moving.side = 'end';
-        return null;
-      }
-      const range = selection.getRangeAt(0);
-      const startKey = pointKey(range.startContainer, range.startOffset);
-      const endKey = pointKey(range.endContainer, range.endOffset);
-      if (moving.end !== null) {
-        if (endKey !== moving.end) moving.side = 'end';
-        else if (startKey !== moving.start) moving.side = 'start';
-      }
-      moving.start = startKey;
-      moving.end = endKey;
+      const selected = !!selection && selection.rangeCount > 0 && !selection.isCollapsed;
       const element = document.scrollingElement || document.documentElement;
       const scrolled = Math.abs(element.scrollLeft);
-      const later = scrolled + innerWidth < element.scrollWidth - 1;
-      const earlier = scrolled > 1;
-      let edge = 0;
-      if (moving.side === 'end' && later) {
-        // The next visible character is off this page: the end rests on the page's last word, or
-        // has already slipped past it into the next page's column (it jumps there as the finger
-        // nears the corner).
-        if (neighbour(range.endContainer, range.endOffset, true) === 0) edge = 1;
-      } else if (moving.side === 'start' && earlier) {
-        if (neighbour(range.startContainer, range.startOffset, false) === 0) edge = -1;
-      }
-      const key = (moving.side === 'end' ? endKey : startKey) + '@' + Math.round(scrolled);
-      return {edge, length: range.toString().length, key};
+      return {
+        selected,
+        earlier: scrolled > 1,
+        later: scrolled + innerWidth < element.scrollWidth - 1
+      };
     }
   };
 })();

@@ -20,15 +20,17 @@ object Diagnostics {
     fun state(): String {
         val app = ApplicationProvider.getApplicationContext<FolioApplication>()
         val operation = app.operations.state.value
+        val windows = runCatching { shell("dumpsys window windows") }.getOrDefault("")
+        // A shell that answers nothing shows here, rather than as an empty focus.
         val focus =
-            runCatching {
-                    shell("dumpsys window windows").lines().filter {
-                        "mCurrentFocus" in it || "mFocusedApp" in it
-                    }
-                }
-                .getOrDefault(emptyList())
+            if (windows.isBlank()) "(shell gave no output)"
+            else
+                windows
+                    .lines()
+                    .filter { "mCurrentFocus" in it || "mFocusedApp" in it }
+                    .joinToString("\n") { it.trim() }
         return "Operation: busy=${operation.busy} failed=${operation.failed} " +
             "message='${operation.message}'\n" +
-            focus.joinToString("\n") { it.trim() }
+            focus
     }
 }

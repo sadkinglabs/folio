@@ -1,94 +1,282 @@
 package dev.sadking.folio.reader
 
+import android.view.MotionEvent.ACTION_CANCEL
+import android.view.MotionEvent.ACTION_DOWN
+import android.view.MotionEvent.ACTION_MOVE
+import android.view.MotionEvent.ACTION_POINTER_DOWN
+import android.view.MotionEvent.ACTION_POINTER_UP
+import android.view.MotionEvent.ACTION_UP
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Selecting across a page turn, on the JVM: when the page turns under a held selection. */
+/**
+ * Selecting across a page turn, on the JVM: which second-finger touches turn the page under a
+ * selection, and what the page gets of them.
+ */
 class ReaderSelectionTurnTest {
+    private val width = 1080f
+    private val slop = 24f
+
     private fun fromPage(value: Any?): String = JSONObject.quote(value.toString())
+
+    /** One finger at a point, by id. */
+    private data class Finger(val id: Int, val x: Float, val y: Float)
+
+    private class Gesture(
+        val taps: SelectionTaps = SelectionTaps(24f, 300),
+        var rtl: Boolean = false,
+        var selecting: Boolean = true,
+    ) {
+        fun touch(action: Int, time: Long, vararg fingers: Finger, index: Int = 0) =
+            taps.onTouch(
+                action,
+                index,
+                fingers.map { it.id }.toIntArray(),
+                fingers.map { it.x }.toFloatArray(),
+                fingers.map { it.y }.toFloatArray(),
+                time,
+                1080f,
+                rtl,
+                selecting,
+            )
+    }
+
+    private val held = Finger(0, 300f, 900f)
+    private val right = Finger(1, 900f, 1200f)
+    private val left = Finger(1, 150f, 1200f)
+
+    /** A held finger, and a second finger [tap] down at [down] and up at [up]; the up's touch. */
+    private fun Gesture.tapWhileHeld(
+        tap: Finger,
+        down: Long = 100,
+        up: Long = 180,
+        lift: Finger = tap,
+    ): SelectionTouch {
+        assertEquals(SelectionTouch(PageTouch.Whole), touch(ACTION_DOWN, 0, held))
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            touch(ACTION_POINTER_DOWN, down, held, tap, index = 1),
+        )
+        return touch(ACTION_POINTER_UP, up, held, lift, index = 1)
+    }
 
     @Test
     fun readsThePagesAnswer() {
-        val raw = fromPage(JSONObject().put("edge", 1).put("length", 42).put("key", "3/1:7@0"))
-        assertEquals(SelectionEdge(1, 42, "3/1:7@0"), parseSelectionEdge(raw))
-        // Nothing selected, a broken answer, or no key: nothing to follow.
-        assertNull(parseSelectionEdge("null"))
-        assertNull(parseSelectionEdge(fromPage("null")))
-        assertNull(parseSelectionEdge("not json"))
-        assertNull(parseSelectionEdge(fromPage(JSONObject().put("edge", 1))))
-        // Anything else is clamped to a direction.
-        val odd = fromPage(JSONObject().put("edge", 5).put("length", -1).put("key", "k"))
-        assertEquals(SelectionEdge(1, 0, "k"), parseSelectionEdge(odd))
+        val raw =
+            fromPage(JSONObject().put("selected", true).put("earlier", false).put("later", true))
+        val page = parseSelectionPage(raw)
+        assertEquals(SelectionPage(selected = true, earlier = false, later = true), page)
+        assertTrue(page!!.canTurn(forward = true))
+        assertFalse(page.canTurn(forward = false))
+        // Nothing selected: no turn, wherever the chapter goes on.
+        assertFalse(SelectionPage(false, true, true).canTurn(true))
+        assertFalse(SelectionPage(false, true, true).canTurn(false))
+        // A broken answer, or not one.
+        assertNull(parseSelectionPage("null"))
+        assertNull(parseSelectionPage(fromPage("null")))
+        assertNull(parseSelectionPage("not json"))
+        assertNull(parseSelectionPage(fromPage(JSONObject().put("later", true))))
     }
 
     @Test
-    fun aSelectionHeldOnThePagesLastWordTurnsOnceAfterTheDwell() {
-        val turner = SelectionPageTurner(dwellMs = 500)
-        // Long-pressed in the middle, then dragged on to the last word of the page.
-        assertEquals(0, turner.next(SelectionEdge(0, 5, "a@0"), 0))
-        assertEquals(0, turner.next(SelectionEdge(0, 30, "b@0"), 120))
-        assertEquals(0, turner.next(SelectionEdge(1, 60, "end@0"), 240))
-        assertEquals(0, turner.next(SelectionEdge(1, 60, "end@0"), 600))
-        assertEquals(1, turner.next(SelectionEdge(1, 60, "end@0"), 740))
-        // Held there still: no second turn.
-        assertEquals(0, turner.next(SelectionEdge(1, 60, "end@0"), 1500))
-        // On the new page the end is off screen until the handle moves on.
-        assertEquals(0, turner.next(SelectionEdge(0, 60, "end@1080"), 1620))
-        assertEquals(0, turner.next(SelectionEdge(0, 90, "next@1080"), 1740))
+    fun theHalfTheBookReadsTowardsGoesForward() {
+        assertEquals(1, selectionTapTurn(900f, width, rtl = false))
+        assertEquals(1, selectionTapTurn(540f, width, rtl = false))
+        assertEquals(-1, selectionTapTurn(539f, width, rtl = false))
+        assertEquals(-1, selectionTapTurn(900f, width, rtl = true))
+        assertEquals(1, selectionTapTurn(100f, width, rtl = true))
     }
 
     @Test
-    fun movingTheHandleRestartsTheWait() {
-        val turner = SelectionPageTurner(dwellMs = 500)
-        turner.next(SelectionEdge(0, 5, "a@0"), 0)
-        turner.next(SelectionEdge(1, 40, "last@0"), 100)
-        // Back off the last word before the wait is over, then onto it again.
-        turner.next(SelectionEdge(0, 35, "before@0"), 400)
-        assertEquals(0, turner.next(SelectionEdge(1, 40, "last@0"), 500))
-        assertEquals(0, turner.next(SelectionEdge(1, 40, "last@0"), 900))
-        assertEquals(1, turner.next(SelectionEdge(1, 40, "last@0"), 1000))
+    fun aQuickSecondFingerTapTurnsForwardAndNeverReachesThePage() {
+        val gesture = Gesture()
+        assertEquals(SelectionTouch(PageTouch.Withheld, turn = 1), gesture.tapWhileHeld(right))
+        // The held finger goes on dragging on the new page: the page gets it as it came.
+        assertEquals(
+            SelectionTouch(PageTouch.Whole),
+            gesture.touch(ACTION_MOVE, 260, held.copy(x = 320f)),
+        )
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_UP, 400, held))
     }
 
     @Test
-    fun anEndJitteringAtTheCornerStillTurnsAfterTheDwell() {
-        // Near the corner the end jumps between the last word and the next page's column.
-        val turner = SelectionPageTurner()
-        turner.next(SelectionEdge(0, 5, "a@0"), 0)
-        assertEquals(0, turner.next(SelectionEdge(1, 60, "last@0"), 100))
-        assertEquals(0, turner.next(SelectionEdge(1, 61, "past@0"), 250))
-        assertEquals(0, turner.next(SelectionEdge(1, 60, "last@0"), 400))
-        assertEquals(1, turner.next(SelectionEdge(1, 61, "past@0"), 600))
-        // Still at the edge on the new page's side: no second turn until it leaves.
-        assertEquals(0, turner.next(SelectionEdge(1, 61, "past@1080"), 1200))
+    fun theOtherHalfGoesBackAndRightToLeftBooksSwapThem() {
+        assertEquals(-1, Gesture().tapWhileHeld(left).turn)
+        assertEquals(-1, Gesture(rtl = true).tapWhileHeld(right).turn)
+        assertEquals(1, Gesture(rtl = true).tapWhileHeld(left).turn)
     }
 
     @Test
-    fun goingBackWorksTheSameWay() {
-        val turner = SelectionPageTurner(dwellMs = 500)
-        turner.next(SelectionEdge(0, 5, "s@1080"), 0)
-        turner.next(SelectionEdge(-1, 50, "first@1080"), 100)
-        assertEquals(-1, turner.next(SelectionEdge(-1, 50, "first@1080"), 600))
+    fun whileBothAreDownThePageSeesOnlyTheHeldFinger() {
+        val gesture = Gesture()
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        // A move of both: the page gets one with the held finger alone, as a move.
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_MOVE, 0, listOf(0))),
+            gesture.touch(ACTION_MOVE, 120, held.copy(x = 310f), right),
+        )
+        // The tapping finger may come first in the event; the held one is still picked out.
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_MOVE, 0, listOf(0))),
+            gesture.touch(ACTION_MOVE, 140, right, held.copy(x = 312f)),
+        )
+        assertEquals(1, gesture.touch(ACTION_POINTER_UP, 180, right, held, index = 0).turn)
     }
 
     @Test
-    fun aLongPressedLastWordDoesNotTurn() {
-        // Selecting the page's last word, to look it up: the selection never grew.
-        val turner = SelectionPageTurner(dwellMs = 500)
-        assertEquals(0, turner.next(SelectionEdge(1, 7, "w@0"), 0))
-        assertEquals(0, turner.next(SelectionEdge(1, 7, "w@0"), 2000))
+    fun severalTapsTurnSeveralPages() {
+        val gesture = Gesture()
+        assertEquals(1, gesture.tapWhileHeld(right).turn)
+        val again = Finger(2, 880f, 1100f)
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            gesture.touch(ACTION_POINTER_DOWN, 400, held, again, index = 1),
+        )
+        assertEquals(1, gesture.touch(ACTION_POINTER_UP, 460, held, again, index = 1).turn)
+        val back = Finger(1, 100f, 1100f)
+        gesture.touch(ACTION_POINTER_DOWN, 700, held, back, index = 1)
+        assertEquals(-1, gesture.touch(ACTION_POINTER_UP, 790, held, back, index = 1).turn)
     }
 
     @Test
-    fun aClearedSelectionStartsOver() {
-        val turner = SelectionPageTurner(dwellMs = 500)
-        turner.next(SelectionEdge(0, 5, "a@0"), 0)
-        turner.next(SelectionEdge(1, 40, "z@0"), 100)
-        assertEquals(1, turner.next(SelectionEdge(1, 40, "z@0"), 600))
-        assertEquals(0, turner.next(null, 700))
-        // A new long press on the page's last word is its first size again.
-        assertEquals(0, turner.next(SelectionEdge(1, 40, "z@0"), 800))
-        assertEquals(0, turner.next(SelectionEdge(1, 40, "z@0"), 1400))
+    fun aLongSecondTouchIsNotATurn() {
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            Gesture().tapWhileHeld(right, down = 100, up = 401),
+        )
+        // Held past the time with moves in between: still none.
+        val gesture = Gesture()
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        gesture.touch(ACTION_MOVE, 450, held, right)
+        assertEquals(0, gesture.touch(ACTION_POINTER_UP, 460, held, right, index = 1).turn)
+        // Exactly the limit still counts.
+        assertEquals(1, Gesture().tapWhileHeld(right, down = 100, up = 400).turn)
+    }
+
+    @Test
+    fun aSecondFingerThatMovesIsNotATurn() {
+        // Moved past the slop and back: a pinch that came back is still a pinch.
+        val gesture = Gesture()
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_MOVE, 0, listOf(0))),
+            gesture.touch(ACTION_MOVE, 120, held, right.copy(x = right.x - 60f)),
+        )
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            gesture.touch(ACTION_POINTER_UP, 160, held, right, index = 1),
+        )
+        // Lifted away from where it landed.
+        assertEquals(0, Gesture().tapWhileHeld(right, lift = right.copy(y = right.y + 40f)).turn)
+        // Within the slop is a tap: a finger never lands still.
+        assertEquals(1, Gesture().tapWhileHeld(right, lift = right.copy(x = right.x + 10f)).turn)
+    }
+
+    @Test
+    fun twoFingersTappingAtOnceTurnNothing() {
+        val gesture = Gesture()
+        val other = Finger(2, 700f, 1300f)
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            gesture.touch(ACTION_POINTER_DOWN, 110, held, right, other, index = 2),
+        )
+        assertEquals(0, gesture.touch(ACTION_POINTER_UP, 150, held, right, other, index = 1).turn)
+        assertEquals(0, gesture.touch(ACTION_POINTER_UP, 160, held, other, index = 1).turn)
+    }
+
+    @Test
+    fun withNothingSelectedEveryFingerIsThePagesAsBefore() {
+        val gesture = Gesture(selecting = false)
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_DOWN, 0, held))
+        assertEquals(
+            SelectionTouch(PageTouch.Whole),
+            gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1),
+        )
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_MOVE, 120, held, right))
+        assertEquals(
+            SelectionTouch(PageTouch.Whole),
+            gesture.touch(ACTION_POINTER_UP, 180, held, right, index = 1),
+        )
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_UP, 200, held))
+        // A single tap, selected or not, is the page's: its tap zones keep working.
+        val selected = Gesture()
+        assertEquals(SelectionTouch(PageTouch.Whole), selected.touch(ACTION_DOWN, 0, right))
+        assertEquals(SelectionTouch(PageTouch.Whole), selected.touch(ACTION_UP, 80, right))
+    }
+
+    @Test
+    fun aPageFingerAddedBesideAKeptOneKeepsItsOwnPlaceInTheEvent() {
+        // Selecting when the second finger lands, not when the third does.
+        val gesture = Gesture()
+        val third = Finger(2, 500f, 500f)
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        gesture.selecting = false
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_POINTER_DOWN, 1, listOf(0, 2))),
+            gesture.touch(ACTION_POINTER_DOWN, 120, held, right, third, index = 2),
+        )
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_MOVE, 0, listOf(0, 2))),
+            gesture.touch(ACTION_MOVE, 130, held, right, third),
+        )
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_POINTER_UP, 1, listOf(0, 2))),
+            gesture.touch(ACTION_POINTER_UP, 140, held, right, third, index = 2),
+        )
+        // The kept finger was a tap, but two fingers came down with it: no turn.
+        assertEquals(0, gesture.touch(ACTION_POINTER_UP, 150, held, right, index = 1).turn)
+    }
+
+    @Test
+    fun theHeldFingerLiftingFirstEndsThePagesTouchThere() {
+        val gesture = Gesture()
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        // The page sees its only finger lift: a plain up, never a pointer up for a finger it
+        // never saw go down.
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_UP, 0, listOf(0))),
+            gesture.touch(ACTION_POINTER_UP, 150, held, right, index = 0),
+        )
+        // Nothing more for the page; the tap still counts, as text is still selected.
+        assertEquals(SelectionTouch(PageTouch.Withheld), gesture.touch(ACTION_MOVE, 160, right))
+        assertEquals(SelectionTouch(PageTouch.Withheld, 1), gesture.touch(ACTION_UP, 190, right))
+        // A finger landing after the page's touch ended is kept from it as well.
+        val again = Gesture()
+        again.touch(ACTION_DOWN, 0, held)
+        again.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        again.touch(ACTION_POINTER_UP, 150, held, right, index = 0)
+        val late = Finger(3, 200f, 200f)
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            again.touch(ACTION_POINTER_DOWN, 170, right, late, index = 1),
+        )
+        assertEquals(
+            SelectionTouch(PageTouch.Withheld),
+            again.touch(ACTION_POINTER_UP, 200, right, late, index = 1),
+        )
+        assertEquals(SelectionTouch(PageTouch.Withheld), again.touch(ACTION_UP, 210, right))
+    }
+
+    @Test
+    fun aCancelReachesThePageWithItsOwnFingersOnly() {
+        val gesture = Gesture()
+        gesture.touch(ACTION_DOWN, 0, held)
+        gesture.touch(ACTION_POINTER_DOWN, 100, held, right, index = 1)
+        assertEquals(
+            SelectionTouch(PageTouch.Only(ACTION_CANCEL, 0, listOf(0))),
+            gesture.touch(ACTION_CANCEL, 120, held, right),
+        )
+        // The next touch starts afresh.
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_DOWN, 500, held))
+        assertEquals(SelectionTouch(PageTouch.Whole), gesture.touch(ACTION_UP, 560, held))
     }
 
     @Test
