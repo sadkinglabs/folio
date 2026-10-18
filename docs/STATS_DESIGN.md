@@ -922,12 +922,13 @@ U0, U1 and U3 start at once: they touch different files. U2 and U4 can run besid
        - core BOOKS 1 → FIRST_FINISH, detail its book's title;
        - core BOOKS 10/25/50/100 → BOOKS, title `stats_milestone_books`, detail `stats_eyebrow_all`;
        - core HOURS 100/500/1000 → HOURS, title `stats_milestone_hours`, detail `stats_milestone_reading_time`;
+       - core STREAK 7/30/100/365 → STREAK, title the `stats_streak_days` plural ("30-day streak"), detail `stats_milestone_streak_reached` "Reached" (new string), date the day it was reached (owner, 2026-10-18: streak badges too);
        - every other threshold and FIRST_READ are not shown (owner, 2026-10-18);
        - `records().longestStreak` of 2+ days → STREAK, detail `stats_share_days`, date its end;
        - `records().fastestFinish` → FASTEST, detail `stats_milestone_fastest_detail(title, days)`;
        - `records().mostInADay` → BIGGEST_DAY, detail the duration;
        - the earliest timeline day with listening, over `books()` → FIRST_LISTEN, detail the title.
-       - YEAR is not produced (the core has no such rule).
+       - YEAR is not produced: the owner dropped the "A full year" milestone (2026-10-18). Remove `MilestoneKind.YEAR` from the UI enum and its preview entry.
      - `years(...)`:
        - the years from `records().booksPerYear` plus first day's year to today's year, newest first;
        - skip `yearInReview(y).isEmpty`;
@@ -1177,7 +1178,7 @@ U0, U1 and U3 start at once: they touch different files. U2 and U4 can run besid
 2. **Calendar:** a book's consecutive days join into one bar, KOReader style, with the title inside (`docs/STATS_UI.md` § 6.2).
 3. **Share card:** follows the phone's theme.
 4. **Year goal pace:** target × the fraction of the year gone.
-5. **Milestones:** books 10/25/50/100; hours 100/500/1000.
+5. **Milestones:** books 10/25/50/100; hours 100/500/1000; streak badges at 7/30/100/365 days as well as the longest-streak card. No "A full year" milestone.
 6. **Dates** read DD/MM/YYYY everywhere in the app.
 
 ## Amendment A1: names for unmatched Kindle books
