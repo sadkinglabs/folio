@@ -44,6 +44,7 @@ import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
 import dev.sadking.folio.reader.ExportActions
+import dev.sadking.folio.ui.stats.BookStatsSlot
 import dev.sadking.folio.ui.stats.StatsRoute
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -781,6 +782,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                     },
                                 ),
                             onNext = { nav.open(Route.Book(it.id)) },
+                            extra = { BookStatsSlot(stats, book.id) },
                         )
                 } else if (catalogue != null) {
                     CatalogueBookDetails(
