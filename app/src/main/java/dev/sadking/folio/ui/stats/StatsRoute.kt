@@ -4,12 +4,17 @@ package dev.sadking.folio.ui.stats
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -20,6 +25,7 @@ import dev.sadking.folio.StatsLoad
 import dev.sadking.folio.StatsViewModel
 import dev.sadking.folio.core.stats.GoalSettings
 import dev.sadking.folio.data.StatsSnapshot
+import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSheet
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.LocalFolioWindow
@@ -27,11 +33,14 @@ import dev.sadking.folio.ui.rememberHaptics
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * The Stats tab with its state: the view model's load, the range, the shown month, the chosen day
- * and the Goals sheet. [onYear] opens a year in review (true: straight to its share image).
+ * and the Goals sheet. [onYear] opens a year in review (true: straight to its share image). [toTop]
+ * counts taps on the Stats tab while it is already shown: each one takes the dashboard back to the
+ * top.
  */
 @Composable
 internal fun StatsRoute(
@@ -39,6 +48,7 @@ internal fun StatsRoute(
     onOpenBook: (String) -> Unit,
     onYear: (year: Int, share: Boolean) -> Unit,
     onLibrary: () -> Unit,
+    toTop: Int = 0,
 ) {
     val load by model.load.collectAsStateWithLifecycle()
     StatsRouteContent(
@@ -48,6 +58,7 @@ internal fun StatsRoute(
         onOpenBook = onOpenBook,
         onYear = onYear,
         onLibrary = onLibrary,
+        toTop = toTop,
     )
 }
 
@@ -64,6 +75,8 @@ internal fun StatsRouteContent(
     onOpenBook: (String) -> Unit,
     onYear: (year: Int, share: Boolean) -> Unit,
     onLibrary: () -> Unit,
+    toTop: Int = 0,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val text = rememberStatsText()
     var rangeName by rememberSaveable { mutableStateOf(StatsRange.MONTH.name) }
@@ -72,6 +85,8 @@ internal fun StatsRouteContent(
     var selectedTrend by rememberSaveable { mutableStateOf<Int?>(null) }
     var dayText by rememberSaveable { mutableStateOf<String?>(null) }
     var showGoals by rememberSaveable { mutableStateOf(false) }
+    // A Year column picked a month: the dashboard goes to the calendar once it shows that month.
+    var calendarMonth by remember { mutableStateOf<YearMonth?>(null) }
     val range = StatsRange.valueOf(rangeName)
     val retry by rememberUpdatedState(onRetry)
 
@@ -101,6 +116,32 @@ internal fun StatsRouteContent(
             }
         }
 
+    val twoPane = LocalFolioWindow.current.twoPane
+    // Tapping the tab again: back to the top, animated unless the system removes animations.
+    val reduced = FolioMotion.reduced
+    var tops by remember { mutableIntStateOf(toTop) }
+    LaunchedEffect(toTop) {
+        if (toTop != tops) {
+            tops = toTop
+            if (reduced) listState.scrollToItem(0) else listState.animateScrollToItem(0)
+        }
+    }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(state, calendarMonth) {
+        val month = calendarMonth ?: return@LaunchedEffect
+        if ((state as? StatsState.Ready)?.month?.yearMonth == month) {
+            calendarMonth = null
+            // Two panes keep the calendar in the left pane, so there is nothing to scroll to.
+            // Clearing the request ends this effect, so the scroll runs in the screen's scope.
+            if (!twoPane)
+                scope.launch {
+                    val index = statsCalendarIndex(showTitle = true)
+                    if (reduced) listState.scrollToItem(index)
+                    else listState.animateScrollToItem(index)
+                }
+        }
+    }
+
     fun showMonth(month: YearMonth) {
         monthText = month.takeIf { it != thisMonth }?.toString()
     }
@@ -115,6 +156,7 @@ internal fun StatsRouteContent(
             onRange = {
                 rangeName = it.name
                 selectedTrend = null
+                calendarMonth = null
             },
             onTrend = { index ->
                 selectedTrend = index
@@ -130,7 +172,10 @@ internal fun StatsRouteContent(
                         StatsRange.YEAR ->
                             YearMonth.of(stats.today.year, index + 1)
                                 .takeIf { it <= YearMonth.from(stats.today) }
-                                ?.let(::showMonth)
+                                ?.let {
+                                    showMonth(it)
+                                    calendarMonth = it
+                                }
                         StatsRange.ALL ->
                             onYear(StatsUi.rangeDates(stats, range).start.year + index, false)
                     }
@@ -152,7 +197,6 @@ internal fun StatsRouteContent(
 
     val snap = snapshot
     val dayDate = dayText?.let { LocalDate.parse(it) }
-    val twoPane = LocalFolioWindow.current.twoPane
     // Two panes show the day under the calendar, while the calendar shows its month.
     val dayDetails =
         if (snap != null && dayDate != null)
@@ -163,7 +207,7 @@ internal fun StatsRouteContent(
     }
 
     Box(Modifier.fillMaxSize().testTag(STATS_TAG)) {
-        StatsTab(state, range, actions, selectedTrend, selectedDay)
+        StatsTab(state, range, actions, selectedTrend, selectedDay, listState)
     }
 
     if (!twoPane && dayDetails != null)

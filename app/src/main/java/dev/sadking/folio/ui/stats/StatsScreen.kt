@@ -6,6 +6,20 @@
 
 package dev.sadking.folio.ui.stats
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +41,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -74,6 +90,13 @@ import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +105,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -94,6 +118,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.RoundedPolygon
 import dev.sadking.folio.R
@@ -103,6 +128,7 @@ import dev.sadking.folio.ui.CoverTile
 import dev.sadking.folio.ui.CoverVariant
 import dev.sadking.folio.ui.EmptyState
 import dev.sadking.folio.ui.FolioIllustration
+import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.LocalContentBottomPadding
 import dev.sadking.folio.ui.LocalFolioWindow
@@ -116,6 +142,7 @@ import dev.sadking.folio.ui.Tooltipped
 import dev.sadking.folio.ui.cappedTextStyle
 import dev.sadking.folio.ui.lift
 import kotlin.math.abs
+import kotlinx.coroutines.delay
 
 /*
  * The Stats tab and its sheets, as the M12 design mockups. Data comes in as the placeholder types
@@ -126,6 +153,19 @@ internal const val STATS_TAG = "stats"
 internal const val STATS_HERO_TAG = "stats-hero"
 internal const val STATS_CALENDAR_TAG = "stats-calendar"
 internal const val STATS_RANGE_TAG = "stats-range"
+
+/** The dashboard's calendar section, so a Year column can scroll to it. */
+internal const val STATS_CALENDAR_KEY = "calendar"
+
+/**
+ * Where the calendar section sits in the dashboard's list: after the title (when shown), the range
+ * toggle and the hero. The one place that counts them, next to the items in [StatsScreen].
+ */
+internal fun statsCalendarIndex(showTitle: Boolean): Int = (if (showTitle) 1 else 0) + 2
+
+/** How many sections enter one after another, and the gap between them. */
+private const val ENTRANCE_SECTIONS = 6
+private const val ENTRANCE_STAGGER_MS = 40L
 
 /** What the Stats screen can be asked to do. One object, so the long parameter list stays short. */
 internal class StatsActions(
@@ -153,6 +193,8 @@ internal fun StatsTab(
     actions: StatsActions,
     selectedTrend: Int? = null,
     selectedDay: DayDetails? = null,
+    listState: LazyListState = rememberLazyListState(),
+    animate: Boolean = true,
 ) {
     val window = LocalFolioWindow.current
     val ready = state as? StatsState.Ready
@@ -173,7 +215,7 @@ internal fun StatsTab(
                 ) {
                     StatsTitle(actions.onGoals)
                     Column(Modifier.padding(horizontal = FolioSpace.page)) {
-                        CalendarCard(ready.month, selectedDay, actions)
+                        CalendarCard(ready.month, selectedDay, actions, animate)
                     }
                     if (selectedDay != null)
                         Column(Modifier.padding(horizontal = FolioSpace.page)) {
@@ -188,7 +230,16 @@ internal fun StatsTab(
                             }
                         }
                 }
-            else StatsScreen(state, range, actions, selectedTrend, calendarInline = true)
+            else
+                StatsScreen(
+                    state,
+                    range,
+                    actions,
+                    selectedTrend,
+                    calendarInline = true,
+                    listState = listState,
+                    animate = animate,
+                )
         },
         detail =
             if (twoPane)
@@ -200,6 +251,8 @@ internal fun StatsTab(
                         selectedTrend,
                         calendarInline = false,
                         showTitle = false,
+                        listState = listState,
+                        animate = animate,
                     )
                 })
             else null,
@@ -241,10 +294,24 @@ internal fun StatsScreen(
     selectedTrend: Int? = null,
     calendarInline: Boolean = true,
     showTitle: Boolean = true,
+    listState: LazyListState = rememberLazyListState(),
+    animate: Boolean = true,
 ) {
     val page = Modifier.padding(horizontal = FolioSpace.page)
+    // The first sections enter once when the data is ready; scrolled back to later, or after a
+    // rotation, they are simply there.
+    var entered by rememberSaveable { mutableStateOf(!animate) }
+    val ready = state is StatsState.Ready
+    LaunchedEffect(ready) {
+        if (ready && !entered) {
+            delay(ENTRANCE_STAGGER_MS * ENTRANCE_SECTIONS + 1000)
+            entered = true
+        }
+    }
+    val play = animate && !entered
     LazyColumn(
         Modifier.fillMaxSize(),
+        state = listState,
         contentPadding =
             PaddingValues(
                 top = 12.dp,
@@ -294,9 +361,15 @@ internal fun StatsScreen(
                     )
                 }
             is StatsState.Ready -> {
-                item("range") { Box(page) { RangeGroup(range, actions.onRange) } }
+                // Each section's place in the entrance order, counted while the items are listed.
+                var section = 0
+                val rangeAt = section++
+                item("range") {
+                    Box(page.entering(rangeAt, play)) { RangeGroup(range, actions.onRange) }
+                }
+                val heroAt = section++
                 item("hero") {
-                    Box(page) {
+                    Box(page.entering(heroAt, play)) {
                         HeroPanel(
                             state.overview,
                             state.goals,
@@ -304,24 +377,40 @@ internal fun StatsScreen(
                             state.phoneOnly,
                             selectedTrend,
                             actions.onTrend,
+                            animate,
                         )
                     }
                 }
-                if (calendarInline)
-                    item("calendar") {
-                        Column(page, verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
+                if (calendarInline) {
+                    val calendarAt = section++
+                    item(STATS_CALENDAR_KEY) {
+                        Column(
+                            page.entering(calendarAt, play),
+                            verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                        ) {
                             SectionHeading(stringResource(R.string.stats_calendar))
-                            CalendarCard(state.month, null, actions)
+                            CalendarCard(state.month, null, actions, animate)
                         }
                     }
+                }
+                val habitsAt = section++
                 item("habits") {
-                    Column(page, verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
+                    Column(
+                        page.entering(habitsAt, play),
+                        verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                    ) {
                         SectionHeading(stringResource(R.string.stats_habits))
-                        HabitsCard(state.habits)
+                        HabitsCard(state.habits, animate)
                     }
                 }
-                item("books") { BooksRow(state.books, actions.onBook) }
-                item("milestones") { MilestonesRow(state.milestones) }
+                val booksAt = section++
+                item("books") {
+                    BooksRow(state.books, actions.onBook, Modifier.entering(booksAt, play))
+                }
+                val milestonesAt = section++
+                item("milestones") {
+                    MilestonesRow(state.milestones, animate, Modifier.entering(milestonesAt, play))
+                }
                 yearsItem(state.years, actions)
                 if (!state.goals.on) item("goals") { Box(page) { GoalsOffer(actions.onGoals) } }
                 item("sources") {
@@ -349,6 +438,29 @@ private fun LazyListScope.yearsItem(years: List<YearSummary>, actions: StatsActi
             SectionHeading(stringResource(R.string.stats_years))
             years.forEach { YearRow(it, actions.onYear, actions.onShareYear) }
         }
+    }
+}
+
+/**
+ * A section entering when the data is ready: it fades in and rises 8 dp, [position] x 40 ms after
+ * the first. Only the first [ENTRANCE_SECTIONS] enter, and only while [play]; with reduced motion
+ * it is a plain fade.
+ */
+@Composable
+private fun Modifier.entering(position: Int, play: Boolean): Modifier {
+    if (!play || position >= ENTRANCE_SECTIONS) return this
+    val reduced = FolioMotion.reduced
+    val progress = remember { Animatable(0f) }
+    val rise = with(LocalDensity.current) { 8.dp.toPx() }
+    val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    LaunchedEffect(Unit) {
+        delay(position * ENTRANCE_STAGGER_MS)
+        progress.animateTo(1f, if (reduced) effects else spatial)
+    }
+    return graphicsLayer {
+        alpha = progress.value.coerceIn(0f, 1f)
+        translationY = if (reduced) 0f else (1f - progress.value) * rise
     }
 }
 
@@ -429,6 +541,7 @@ internal fun HeroPanel(
     phoneOnly: Boolean,
     selectedTrend: Int?,
     onTrend: (Int?) -> Unit,
+    animate: Boolean = true,
 ) {
     Surface(
         Modifier.fillMaxWidth(),
@@ -441,10 +554,24 @@ internal fun HeroPanel(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Eyebrow(eyebrow(overview.range))
+                // On a range change the figure counts from the old total to the new one, a
+                // minute at a time; the first figure is final, and the label reads the final one.
+                val finalText = durationText(overview.totalSeconds)
+                val minutes = ((overview.totalSeconds + 30) / 60).toInt()
+                val counted by
+                    animateIntAsState(
+                        minutes,
+                        if (animate && !FolioMotion.reduced)
+                            MaterialTheme.motionScheme.slowSpatialSpec()
+                        else snap(),
+                        label = "hero total",
+                    )
                 Text(
-                    durationText(overview.totalSeconds),
+                    if (counted == minutes) finalText
+                    else durationText(counted.coerceAtLeast(0) * 60L),
                     style = cappedTextStyle(MaterialTheme.typography.displayMediumEmphasized, 1.3f),
                     maxLines = 1,
+                    modifier = Modifier.semantics { contentDescription = finalText },
                 )
                 Text(
                     stringResource(
@@ -481,7 +608,12 @@ internal fun HeroPanel(
                         )
                     else -> stringResource(R.string.stats_trend_same, overview.previousRangeName)
                 }
-            TrendChart(overview.columns, selected = selectedTrend, onSelect = onTrend)
+            TrendChart(
+                overview.columns,
+                selected = selectedTrend,
+                onSelect = onTrend,
+                animate = animate,
+            )
             ChartLegend(
                 listOf(
                     stringResource(R.string.stats_legend_reading) to StatsPalette.reading(),
@@ -630,9 +762,51 @@ internal fun GoalsProgress(goals: Goals, modifier: Modifier = Modifier) {
     }
 }
 
-/** The month: its name between two chevrons, the grid, and the books as a legend. */
+/**
+ * How the month changes: the old one slides 24 dp out and fades while the new one slides in from
+ * the way it is going and fades in, on the scheme's fast springs. With reduced motion, a fade.
+ */
 @Composable
-internal fun CalendarCard(month: CalendarMonth, selected: DayDetails?, actions: StatsActions) {
+private fun monthTransition(
+    animate: Boolean
+): AnimatedContentTransitionScope<CalendarMonth>.() -> ContentTransform {
+    val motion = MaterialTheme.motionScheme
+    val reduced = FolioMotion.reduced
+    val slide = with(LocalDensity.current) { 24.dp.roundToPx() }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    return {
+        val from = initialState.yearMonth
+        val to = targetState.yearMonth
+        val forward = if (from != null && to != null) to > from else true
+        val fade = motion.fastEffectsSpec<Float>()
+        when {
+            !animate -> EnterTransition.None togetherWith ExitTransition.None
+            reduced -> fadeIn(fade) togetherWith fadeOut(fade)
+            else -> {
+                val way = if (forward != rtl) 1 else -1
+                (slideInHorizontally(motion.fastSpatialSpec()) { way * slide } + fadeIn(fade))
+                    .togetherWith(
+                        slideOutHorizontally(motion.fastSpatialSpec()) { -way * slide } +
+                            fadeOut(fade)
+                    )
+                    .using(SizeTransform(clip = false) { _, _ -> motion.fastSpatialSpec() })
+            }
+        }
+    }
+}
+
+/**
+ * The month: its name between two chevrons, the grid, and the books as a legend. A change of month
+ * slides and fades (see [monthTransition]).
+ */
+@Composable
+internal fun CalendarCard(
+    month: CalendarMonth,
+    selected: DayDetails?,
+    actions: StatsActions,
+    animate: Boolean = true,
+) {
+    val transition = monthTransition(animate)
     Surface(
         Modifier.fillMaxWidth(),
         shape = FolioSpace.panelShape,
@@ -650,32 +824,54 @@ internal fun CalendarCard(month: CalendarMonth, selected: DayDetails?, actions: 
                         Icon(Icons.Outlined.ChevronLeft, previous)
                     }
                 }
-                Text(
-                    month.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f).semantics { heading() },
-                )
+                AnimatedContent(
+                    month,
+                    Modifier.weight(1f),
+                    transitionSpec = transition,
+                    contentAlignment = Alignment.Center,
+                    label = "month title",
+                    contentKey = { it.yearMonth ?: it.title },
+                ) { shown ->
+                    Text(
+                        shown.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().semantics { heading() },
+                    )
+                }
                 Tooltipped(next) {
                     IconButton(onClick = actions.onNextMonth, enabled = month.today == null) {
                         Icon(Icons.Outlined.ChevronRight, next)
                     }
                 }
             }
-            CalendarGrid(month, actions.onDay, selectedDay = selected?.day)
-            if (month.books.isEmpty())
-                Text(
-                    stringResource(R.string.stats_calendar_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-            else
-                CalendarLegend(
-                    month.books,
-                    { actions.onBook(it.book) },
-                    Modifier.padding(horizontal = 4.dp),
-                )
+            AnimatedContent(
+                month,
+                transitionSpec = transition,
+                label = "month",
+                contentKey = { it.yearMonth ?: it.title },
+            ) { shown ->
+                Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
+                    CalendarGrid(
+                        shown,
+                        actions.onDay,
+                        selectedDay = selected?.day.takeIf { shown.title == month.title },
+                    )
+                    if (shown.books.isEmpty())
+                        Text(
+                            stringResource(R.string.stats_calendar_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    else
+                        CalendarLegend(
+                            shown.books,
+                            { actions.onBook(it.book) },
+                            Modifier.padding(horizontal = 4.dp),
+                        )
+                }
+            }
         }
     }
 }
@@ -685,7 +881,23 @@ internal fun CalendarCard(month: CalendarMonth, selected: DayDetails?, actions: 
  * for the typical session, the trend and the share of listening.
  */
 @Composable
-internal fun HabitsCard(habits: Habits) {
+internal fun HabitsCard(habits: Habits, animate: Boolean = true) {
+    // The streak counts up from 0 the first time the card is shown; scrolling away and back, or
+    // rotating, shows it as it is. Reduced motion shows it as it is at once.
+    var counted by rememberSaveable { mutableStateOf(false) }
+    val still = !animate || counted || FolioMotion.reduced
+    var streakTarget by remember { mutableIntStateOf(if (still) habits.streakDays else 0) }
+    LaunchedEffect(habits.streakDays) {
+        counted = true
+        streakTarget = habits.streakDays
+    }
+    val streakShown by
+        animateIntAsState(
+            streakTarget,
+            if (animate && !FolioMotion.reduced) MaterialTheme.motionScheme.slowSpatialSpec()
+            else snap(),
+            label = "streak",
+        )
     Surface(
         Modifier.fillMaxWidth(),
         shape = FolioSpace.panelShape,
@@ -705,7 +917,7 @@ internal fun HabitsCard(habits: Habits) {
                     MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Text(
-                        habits.streakDays.toString(),
+                        streakShown.coerceAtLeast(0).toString(),
                         style =
                             cappedTextStyle(MaterialTheme.typography.headlineSmallEmphasized, 1.3f)
                                 .copy(fontFamily = FontFamily.Default),
@@ -796,8 +1008,12 @@ internal fun HabitsCard(habits: Habits) {
 
 /** The books read in the range as a row of covers with their time, longest first. */
 @Composable
-internal fun BooksRow(books: List<RangeBook>, onBook: (Book) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
+internal fun BooksRow(
+    books: List<RangeBook>,
+    onBook: (Book) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
         Box(Modifier.padding(horizontal = FolioSpace.page)) {
             SectionHeading(
                 stringResource(R.string.stats_books),
@@ -863,10 +1079,17 @@ private fun milestoneIcon(kind: MilestoneKind): ImageVector =
         MilestoneKind.FIRST_LISTEN -> Icons.Outlined.Headphones
     }
 
-/** Milestones as a multi-browse carousel of badge cards, newest first. */
+/**
+ * Milestones as a multi-browse carousel of badge cards, newest first. Each badge morphs from a
+ * circle to its shape the first time it is shown (when [animate]).
+ */
 @Composable
-internal fun MilestonesRow(milestones: List<Milestone>) {
-    Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
+internal fun MilestonesRow(
+    milestones: List<Milestone>,
+    animate: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
         Box(Modifier.padding(horizontal = FolioSpace.page)) {
             SectionHeading(stringResource(R.string.stats_milestones))
         }
@@ -897,6 +1120,7 @@ internal fun MilestonesRow(milestones: List<Milestone>) {
                             milestoneShape(m.kind),
                             56.dp,
                             MaterialTheme.colorScheme.tertiaryContainer,
+                            morphIn = animate,
                         ) {
                             Icon(
                                 milestoneIcon(m.kind),

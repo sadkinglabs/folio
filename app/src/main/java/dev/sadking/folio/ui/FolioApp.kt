@@ -678,6 +678,14 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                 selection = emptySet()
                 pickingListId = null
             }
+            // Tapping the Stats tab while it is shown, with nothing open above it, takes its
+            // dashboard back to the top. Any other tap on the bar or rail is a plain tab choice.
+            var statsToTop by remember { mutableIntStateOf(0) }
+            fun tapTab(i: Int) {
+                if (i == FolioNav.STATS && tab == FolioNav.STATS && nav.stack.isEmpty())
+                    statsToTop++
+                else chooseTab(i)
+            }
             fun continueReading() {
                 currentBook?.let {
                     dev.sadking.folio.reader.ReaderActivity.open(context, it.book.id)
@@ -984,6 +992,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                             nav.open(Route.Year(year))
                                         },
                                         onLibrary = { chooseTab(FolioNav.LIBRARY) },
+                                        toTop = statsToTop,
                                     )
                                 FolioNav.SETTINGS ->
                                     SettingsTab(
@@ -1114,7 +1123,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                         else
                                             FolioBar(
                                                 tab = tab,
-                                                onTab = ::chooseTab,
+                                                onTab = ::tapTab,
                                                 current = currentBook,
                                                 onContinue = ::continueReading,
                                                 onOptions = { showNowReading = true },
@@ -1161,7 +1170,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                         if (!compact && !nav.discovering)
                                             FolioRail(
                                                 tab = tab,
-                                                onTab = ::chooseTab,
+                                                onTab = ::tapTab,
                                                 current = currentBook,
                                                 onContinue = ::continueReading,
                                                 onOptions = { showNowReading = true },

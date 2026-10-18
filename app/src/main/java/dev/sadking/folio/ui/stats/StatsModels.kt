@@ -70,6 +70,8 @@ internal data class CalendarMonth(
     val books: List<CalendarBook>,
     /** 1-based day of month, or null when the month is not the current one. */
     val today: Int?,
+    /** Which month this is, to tell the way a change of month goes; null in sample data. */
+    val yearMonth: java.time.YearMonth? = null,
 ) {
     /** The longest one-book day of the month: a full-width bar. */
     val maxBarSeconds: Long

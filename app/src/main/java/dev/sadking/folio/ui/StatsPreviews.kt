@@ -322,7 +322,7 @@ private val previewActions = StatsActions()
 internal fun StatsPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            StatsTab(sampleStats, StatsRange.MONTH, previewActions)
+            StatsTab(sampleStats, StatsRange.MONTH, previewActions, animate = false)
         }
     }
 }
@@ -337,6 +337,7 @@ internal fun StatsGoalsPreview() {
                 sampleStats.copy(goals = goalsOn),
                 StatsRange.MONTH,
                 previewActions,
+                animate = false,
                 selectedTrend = 10,
             )
         }
@@ -365,6 +366,7 @@ internal fun StatsPhoneOnlyPreview() {
                 ),
                 StatsRange.WEEK,
                 previewActions,
+                animate = false,
             )
         }
     }
@@ -375,7 +377,7 @@ internal fun StatsPhoneOnlyPreview() {
 internal fun StatsEmptyPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            StatsTab(StatsState.Empty(), StatsRange.MONTH, previewActions)
+            StatsTab(StatsState.Empty(), StatsRange.MONTH, previewActions, animate = false)
         }
     }
 }
@@ -390,7 +392,12 @@ internal fun StatsEmptyPreview() {
 internal fun StatsEmptyYearsPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            StatsTab(StatsState.Empty(sampleYears.drop(1)), StatsRange.MONTH, previewActions)
+            StatsTab(
+                StatsState.Empty(sampleYears.drop(1)),
+                StatsRange.MONTH,
+                previewActions,
+                animate = false,
+            )
         }
     }
 }
@@ -400,7 +407,7 @@ internal fun StatsEmptyYearsPreview() {
 internal fun StatsLoadingPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            StatsTab(StatsState.Loading, StatsRange.MONTH, previewActions)
+            StatsTab(StatsState.Loading, StatsRange.MONTH, previewActions, animate = false)
         }
     }
 }
@@ -512,6 +519,7 @@ private fun TabletStats(hinge: Boolean) {
                             sampleStats,
                             StatsRange.MONTH,
                             previewActions,
+                            animate = false,
                             selectedDay = sampleDay,
                         )
                     }

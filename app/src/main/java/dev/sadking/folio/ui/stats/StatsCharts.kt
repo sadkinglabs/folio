@@ -3,6 +3,11 @@
 package dev.sadking.folio.ui.stats
 
 import android.content.res.Resources
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,12 +26,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.toPath
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +47,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
@@ -56,11 +71,18 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.RoundedPolygon
 import dev.sadking.folio.R
+import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSpace
 import kotlin.math.roundToInt
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /*
  * The Stats charts, drawn with Compose Canvas and no chart library. Marks follow one rule set:
@@ -243,10 +265,42 @@ private fun DrawScope.bubble(
 }
 
 /**
+ * The trend's bar heights, one animation per column position, each holding the reading and
+ * listening heights as shares of the plot. A position with no earlier column grows from nothing;
+ * the first chart starts at its final heights.
+ */
+private class BarHeights {
+    private val bars = HashMap<Int, Animatable<Offset, AnimationVector2D>>()
+
+    /** Makes an animation for every position in [targets] that has none. */
+    fun sync(targets: List<Offset>) {
+        val first = bars.isEmpty()
+        targets.forEachIndexed { i, target ->
+            bars.getOrPut(i) {
+                Animatable(if (first) target else Offset.Zero, Offset.VectorConverter)
+            }
+        }
+    }
+
+    fun value(i: Int): Offset? = bars[i]?.value
+
+    suspend fun animateTo(targets: List<Offset>, spec: AnimationSpec<Offset>) = coroutineScope {
+        targets.forEachIndexed { i, target ->
+            val bar = bars[i] ?: return@forEachIndexed
+            launch { bar.animateTo(target, spec) }
+        }
+    }
+}
+
+/**
  * The trend over the range: one column per day, month or year, reading from the baseline and
  * listening stacked above it behind a 2 dp surface gap. A hairline at the top carries the scale's
  * maximum as a short label; the baseline is a hairline too. Tap or drag picks a column and shows
  * its value in a bubble; the Stats screen opens the Day sheet on a tap in Week and Month.
+ *
+ * On a new range the columns grow or shrink from the heights they had (one animation per column
+ * position); the bubble fades in the first time a column is picked. Both snap with reduced motion
+ * or when [animate] is off, and the first draw is always the final one.
  */
 @Composable
 internal fun TrendChart(
@@ -255,6 +309,7 @@ internal fun TrendChart(
     selected: Int? = null,
     onSelect: (Int?) -> Unit = {},
     plotHeight: Dp = 96.dp,
+    animate: Boolean = true,
 ) {
     val reading = StatsPalette.reading()
     val listening = StatsPalette.listening()
@@ -274,6 +329,26 @@ internal fun TrendChart(
             durationText(columns.sumOf { it.listeningSeconds }),
             columns.maxByOrNull { it.totalSeconds }?.label ?: "",
         )
+    val still = !animate || FolioMotion.reduced
+    // One animation per column position, holding the reading and listening heights as shares of
+    // the plot. A position with no earlier column grows from nothing; the first chart is final.
+    val targets = columns.map {
+        Offset(it.readingSeconds / max.toFloat(), it.listeningSeconds / max.toFloat())
+    }
+    val heights = remember { BarHeights() }
+    heights.sync(targets)
+    val heightSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Offset>()
+    LaunchedEffect(targets, still) {
+        heights.animateTo(targets, if (still) snap() else heightSpec)
+    }
+    // The bubble fades in the first time a column is picked; moving between columns keeps it.
+    val picked = selected != null
+    val bubbleAlpha = remember { Animatable(if (picked) 1f else 0f) }
+    val bubbleSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    LaunchedEffect(picked, still) {
+        if (!picked) bubbleAlpha.snapTo(0f)
+        else bubbleAlpha.animateTo(1f, if (still) snap() else bubbleSpec)
+    }
     Canvas(
         modifier
             .fillMaxWidth()
@@ -306,11 +381,13 @@ internal fun TrendChart(
         drawLine(grid, Offset(0f, plotTop), Offset(size.width, plotTop), 1f)
         drawLine(grid, Offset(0f, baseline), Offset(size.width, baseline), 1f)
         drawText(maxLabel, ink, Offset(0f, plotTop + 2.dp.toPx()))
-        val scale = (baseline - plotTop) / max
+        val plot = baseline - plotTop
+        // A bar's current height: its target once the animation has settled.
+        fun shown(i: Int): Offset = heights.value(i) ?: targets[i]
         columns.forEachIndexed { i, c ->
             val left = gutter + slot * i + (slot - barW) / 2
-            val readingH = c.readingSeconds * scale
-            val listeningH = c.listeningSeconds * scale
+            val readingH = shown(i).x.coerceAtLeast(0f) * plot
+            val listeningH = shown(i).y.coerceAtLeast(0f) * plot
             val readingTop = baseline - readingH
             val hasListening = listeningH >= 1f
             dataBar(reading, left, readingTop, barW, baseline, radius, rounded = !hasListening)
@@ -335,15 +412,18 @@ internal fun TrendChart(
             ?.let { i ->
                 val c = columns[i]
                 val top =
-                    baseline - c.totalSeconds * scale - (if (c.listeningSeconds > 0) gapPx else 0f)
+                    baseline -
+                        (shown(i).x + shown(i).y).coerceAtLeast(0f) * plot -
+                        (if (c.listeningSeconds > 0) gapPx else 0f)
+                val alpha = bubbleAlpha.value
                 bubble(
                     measurer,
                     "${c.label} · ${shortDuration(c.totalSeconds)}",
                     bubbleStyle,
                     gutter + slot * i + slot / 2,
                     top - 4.dp.toPx(),
-                    bubbleSurface,
-                    bubbleInk,
+                    bubbleSurface.copy(alpha = bubbleSurface.alpha * alpha),
+                    bubbleInk.copy(alpha = bubbleInk.alpha * alpha),
                     6.dp.toPx(),
                     8.dp.toPx(),
                 )
@@ -1042,17 +1122,52 @@ internal fun MonthBars(
 
 /**
  * A Material shape as a tonal badge: the polygon from [MaterialShapes] filled with [color], with
- * [content] centred on it. Milestones and the streak use it.
+ * [content] centred on it. Milestones and the streak use it. With [morphIn] the badge starts as a
+ * circle and morphs to [polygon] the first time it is shown (once per place in the list, and it
+ * survives the item scrolling away); reduced motion shows the final shape.
  */
 @Composable
 internal fun ShapeBadge(
-    polygon: androidx.graphics.shapes.RoundedPolygon,
+    polygon: RoundedPolygon,
     size: Dp,
     color: Color,
     modifier: Modifier = Modifier,
+    morphIn: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    Surface(modifier.size(size), shape = polygon.toShape(), color = color) {
+    val shape = if (morphIn) morphingShape(polygon) else polygon.toShape()
+    Surface(modifier.size(size), shape = shape, color = color) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+/** [polygon] after a one-time morph from a circle; the plain shape before and after. */
+@Composable
+private fun morphingShape(polygon: RoundedPolygon): Shape {
+    var shown by rememberSaveable { mutableStateOf(false) }
+    val still = FolioMotion.reduced
+    val progress = remember { Animatable(if (shown || still) 1f else 0f) }
+    val spec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    LaunchedEffect(Unit) {
+        // Marked first, so a badge that scrolls away mid-morph comes back finished.
+        shown = true
+        if (progress.value < 1f) progress.animateTo(1f, spec)
+    }
+    val morph = remember(polygon) { Morph(MaterialShapes.Circle, polygon) }
+    val final = polygon.toShape()
+    val p = progress.value
+    return if (p >= 1f) final else MorphShape(morph, p)
+}
+
+/** A [Morph] at [progress], stretched from the unit square to the size it is given. */
+private class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val path = morph.toPath(progress, Path())
+        path.transform(Matrix().apply { scale(size.width, size.height) })
+        return Outline.Generic(path)
     }
 }

@@ -244,6 +244,7 @@ internal object StatsUi {
                     )
                 },
             today = stats.today.dayOfMonth.takeIf { month == YearMonth.from(stats.today) },
+            yearMonth = month,
         )
     }
 
