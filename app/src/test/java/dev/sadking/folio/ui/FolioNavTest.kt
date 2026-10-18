@@ -86,18 +86,30 @@ class FolioNavTest {
     }
 
     @Test
-    fun fourBarItemsWithSettingsLastAndListsInsideTheLibrary() {
-        assertEquals(4, FolioNav.TABS)
+    fun fiveSavedIndicesWithStatsLastAndListsInsideTheLibrary() {
+        assertEquals(5, FolioNav.TABS)
         assertEquals(0, FolioNav.LIBRARY)
-        // The bar's second item still asks for 1, which shows the Library's Lists tab.
+        // 1 is no bar item any more: it shows the Library's Lists tab.
         assertEquals(1, FolioNav.LISTS)
         assertEquals(2, FolioNav.DEVICE)
         assertEquals(3, FolioNav.SETTINGS)
+        assertEquals(4, FolioNav.STATS)
         val nav = FolioNav()
         nav.root(FolioNav.SETTINGS)
         assertEquals(FolioNav.SETTINGS, nav.tab)
+        nav.root(FolioNav.STATS)
+        assertEquals(4, nav.tab)
+        assertFalse(nav.listsRequested)
         nav.root(9)
-        assertEquals(FolioNav.SETTINGS, nav.tab)
+        assertEquals(FolioNav.STATS, nav.tab)
+    }
+
+    @Test
+    fun aSavedStatsTabRestoresToStats() {
+        val restored = FolioNav.saver.restore(listOf("4"))!!
+        assertEquals(FolioNav.STATS, restored.tab)
+        val saved = with(FolioNav.saver) { SaverScope { true }.save(restored) }!!
+        assertEquals(listOf("4"), saved)
     }
 
     @Test

@@ -44,6 +44,7 @@ import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.device.*
 import dev.sadking.folio.reader.ExportActions
+import dev.sadking.folio.ui.stats.StatsRoute
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -61,6 +62,7 @@ fun FolioApp(model: LibraryViewModel) {
 private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
     val discovery: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val devices: DeviceViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val stats: StatsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     var showProfileImport by rememberSaveable { mutableStateOf(false) }
     val nav = rememberFolioNav()
     val catalogueId = nav.recordId
@@ -499,6 +501,11 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                     catalogueProgress = progress
                 }
             }
+            // A book in the Stats tab: the library's, else a catalogue record. A key for a book the
+            // phone doesn't have (a Kindle `doc:` or a Hardcover `hc:` key) opens nothing.
+            fun openStatsBook(key: String) {
+                if (books.any { it.id == key } || wishes.any { it.id == key }) openEntry(key)
+            }
             // The Add sheet's routes; the Want to read tab's "Find a book" uses the lookup one.
             fun addBook(action: AddBookAction) {
                 when (action) {
@@ -838,7 +845,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                 model.managementError.value = null
                 editingShelfId = "new"
             }
-            // The four tabs, each keeping its own saved state while another is shown.
+            // The tabs, each keeping its own saved state while another is shown.
             val tabs: @Composable (Dp) -> Unit = { bottom ->
                 AnimatedContent(
                     tab,
@@ -955,6 +962,13 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                         onSync = ::syncNow,
                                         onSetUp = ::openSetup,
                                         onDecisions = { showDecisions = true },
+                                    )
+                                FolioNav.STATS ->
+                                    StatsRoute(
+                                        stats,
+                                        ::openStatsBook,
+                                        onYear = { _, _ -> },
+                                        onLibrary = { chooseTab(FolioNav.LIBRARY) },
                                     )
                                 FolioNav.SETTINGS ->
                                     SettingsTab(
@@ -1182,6 +1196,8 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                                         tab == FolioNav.SETTINGS &&
                                                             !detailOpen &&
                                                             openListPage == null -> null
+                                                        // Stats lays out its own panes.
+                                                        tab == FolioNav.STATS && !detailOpen -> null
                                                         else -> WIDE_PANE_MAX_WIDTH_DP.dp
                                                     },
                                                 primary = {

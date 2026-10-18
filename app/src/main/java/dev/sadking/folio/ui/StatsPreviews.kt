@@ -3,49 +3,25 @@
 package dev.sadking.folio.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.AutoStories
-import androidx.compose.material.icons.outlined.CollectionsBookmark
-import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import dev.sadking.folio.R
 import dev.sadking.folio.data.Book
 import dev.sadking.folio.data.BookSignals
 import dev.sadking.folio.data.CurrentBook
 import dev.sadking.folio.ui.stats.*
 
 /*
- * M12 Stats mockups: the Stats tab and its sheets with fake data, as the visual reference for the
- * implementation. Nothing here is reachable from the app. The data types are the placeholders in
- * ui/stats/StatsModels.kt until the statistics core lands.
+ * M12 Stats previews: the Stats tab, its sheets and the year in review with fake data, on the UI
+ * models in ui/stats/StatsModels.kt. The screens are reachable in the app (StatsRoute); these
+ * keep the screenshots and the visual reference.
  */
 
 private val statsBooks: List<Book> =
@@ -500,7 +476,7 @@ internal fun YearShareCardPreview() {
 
 /**
  * The Stats tab in the tablet frame: the calendar and the chosen day on the left, the dashboard on
- * the right. The rail shows no selected tab, as the Stats item is not in it yet.
+ * the right. The rail shows Stats selected.
  */
 @Preview(name = "Stats · tablet", widthDp = 840, heightDp = 1280)
 @Preview(name = "Stats · tablet landscape", widthDp = 1280, heightDp = 800)
@@ -524,7 +500,7 @@ private fun TabletStats(hinge: Boolean) {
                 Row(Modifier.fillMaxSize()) {
                     if (window.layout != FolioLayout.BAR)
                         FolioRail(
-                            tab = -1,
+                            tab = FolioNav.STATS,
                             onTab = {},
                             current = CurrentBook(sampleBooks[0], 0.37, PREVIEW_NOW),
                             onContinue = {},
@@ -539,84 +515,6 @@ private fun TabletStats(hinge: Boolean) {
                             selectedDay = sampleDay,
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The phone bar with the Stats tab added: six equal slots, the Now Reading tile over the third. A
- * mock of the proposed layout, not the real [FolioBar], for the owner to judge the tile's position;
- * see STATS_UI.md for the alternative.
- */
-@Preview(name = "Bar with Stats", widthDp = 412, heightDp = 160)
-@Composable
-internal fun StatsBarPreview() {
-    FolioTheme(dynamic = false) {
-        Surface(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val slot = maxWidth / 6
-                    GlassSurface(
-                        null,
-                        Modifier.padding(top = 10.dp).fillMaxWidth(),
-                        shape = FolioSpace.sheetShape,
-                    ) {
-                        NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
-                            val items =
-                                listOf(
-                                    Triple(
-                                        R.string.shell_tab_library,
-                                        Icons.Outlined.AutoStories,
-                                        Icons.Filled.AutoStories,
-                                    ),
-                                    Triple(
-                                        R.string.shell_tab_lists,
-                                        Icons.Outlined.CollectionsBookmark,
-                                        Icons.Filled.CollectionsBookmark,
-                                    ),
-                                    Triple(
-                                        R.string.stats_tab,
-                                        Icons.Outlined.Insights,
-                                        Icons.Filled.Insights,
-                                    ),
-                                    Triple(
-                                        R.string.shell_tab_device,
-                                        Icons.Outlined.Devices,
-                                        Icons.Filled.Devices,
-                                    ),
-                                    Triple(
-                                        R.string.shell_settings,
-                                        Icons.Outlined.Tune,
-                                        Icons.Filled.Tune,
-                                    ),
-                                )
-                            items.forEachIndexed { i, (title, icon, selectedIcon) ->
-                                if (i == 2) Spacer(Modifier.weight(1f))
-                                NavigationBarItem(
-                                    selected = i == 2,
-                                    onClick = {},
-                                    icon = { Icon(if (i == 2) selectedIcon else icon, null) },
-                                    label = {
-                                        Text(
-                                            stringResource(title),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            maxLines = 1,
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    NowReadingTile(
-                        CurrentBook(sampleBooks[0], 0.37, PREVIEW_NOW),
-                        onClick = {},
-                        onOptions = {},
-                        modifier =
-                            Modifier.align(Alignment.TopStart)
-                                .offset(x = slot * 2.5f - nowReadingTileSize / 2),
-                    )
                 }
             }
         }

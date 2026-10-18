@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.core.*
 import dev.sadking.folio.data.*
 import dev.sadking.folio.ui.*
+import dev.sadking.folio.ui.stats.STATS_TAG
 import java.io.File
 import java.util.zip.*
 import kotlinx.coroutines.runBlocking
@@ -348,7 +349,8 @@ class ProductJourneyTest {
             )
         }
         compose.onNodeWithContentDescription("Back").performClick()
-        tab("Lists")
+        tab("Library")
+        compose.onNodeWithTag(LIBRARY_TAB_LISTS_TAG).performClick()
         waitTag(listCardTag("qa-sundays"))
         capture("lists-light")
         // Slow Sundays holds the book added above; its detail is a route over the Lists tab.
@@ -425,6 +427,12 @@ class ProductJourneyTest {
         capture("library-list-dark")
         // The layout is remembered across launches; leave the grid for the tests that follow.
         compose.onNodeWithContentDescription("Show grid").performClick()
+        tab("Stats")
+        waitTag(STATS_TAG)
+        waitFor("the counting to finish") {
+            compose.onAllNodesWithText("Counting…").fetchSemanticsNodes().isEmpty()
+        }
+        capture("stats-light")
         tab("Device")
         // No e-reader is set up in this run: the Device tab opens on the setup card, with the
         // Sync automatically switch below it. Nothing about sending.

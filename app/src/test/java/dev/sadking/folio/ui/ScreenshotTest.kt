@@ -294,6 +294,8 @@ class ScreenshotTest {
 
     @Test fun statsEmpty() = shoot("stats-empty") { StatsEmptyPreview() }
 
+    @Test fun statsEmptyYears() = shoot("stats-empty-years") { StatsEmptyYearsPreview() }
+
     // No shot of StatsLoadingPreview: its LoadingIndicator never stops moving, so the paused
     // looper never goes idle and the capture can hang.
 
@@ -316,6 +318,4 @@ class ScreenshotTest {
         shootAt("tablet-stats-landscape", TABLET_LANDSCAPE) { TabletStatsPreview() }
 
     @Test fun foldableStats() = shootAt("foldable-stats", FOLDABLE) { FoldStatsPreview() }
-
-    @Test fun statsBar() = shoot("stats-bar") { StatsBarPreview() }
 }

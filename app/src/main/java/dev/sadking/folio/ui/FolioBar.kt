@@ -12,14 +12,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.BookmarkAdd
-import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.Tune
@@ -69,16 +69,21 @@ private class BarTab(
     val selectedIcon: ImageVector,
 )
 
+/** The tabs in bar order, each with its [FolioNav] index. Lists is the Library's top tab. */
 private val tabs =
     listOf(
-        BarTab(R.string.shell_tab_library, Icons.Outlined.AutoStories, Icons.Filled.AutoStories),
-        BarTab(
-            R.string.shell_tab_lists,
-            Icons.Outlined.CollectionsBookmark,
-            Icons.Filled.CollectionsBookmark,
-        ),
-        BarTab(R.string.shell_tab_device, Icons.Outlined.Devices, Icons.Filled.Devices),
-        BarTab(R.string.shell_settings, Icons.Outlined.Tune, Icons.Filled.Tune),
+        FolioNav.LIBRARY to
+            BarTab(
+                R.string.shell_tab_library,
+                Icons.Outlined.AutoStories,
+                Icons.Filled.AutoStories,
+            ),
+        FolioNav.STATS to
+            BarTab(R.string.stats_tab, Icons.Outlined.Insights, Icons.Filled.Insights),
+        FolioNav.DEVICE to
+            BarTab(R.string.shell_tab_device, Icons.Outlined.Devices, Icons.Filled.Devices),
+        FolioNav.SETTINGS to
+            BarTab(R.string.shell_settings, Icons.Outlined.Tune, Icons.Filled.Tune),
     )
 
 /** How far the centre tile rises above the bar's top edge. */
@@ -89,10 +94,10 @@ internal const val FOLIO_BAR_TAG = "folio-bar"
 internal const val SELECTION_BAR_TAG = "selection-bar"
 
 /**
- * The bottom bar: four tabs on glass with the Now Reading tile breaking its top edge. The tile is
- * an action, not a tab: tap continues reading, long-press (or the TalkBack action) opens the Now
- * Reading sheet. With no current book the tile is a book glyph and tap opens the sheet's empty
- * form.
+ * The bottom bar: four tabs (Library, Stats, Device, Settings) on glass with the Now Reading tile
+ * breaking its top edge. The tile is an action, not a tab: tap continues reading, long-press (or
+ * the TalkBack action) opens the Now Reading sheet. With no current book the tile is a book glyph
+ * and tap opens the sheet's empty form.
  */
 @Composable
 internal fun FolioBar(
@@ -113,7 +118,7 @@ internal fun FolioBar(
             shape = FolioSpace.sheetShape,
         ) {
             NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
-                tabs.forEachIndexed { i, d ->
+                tabs.forEach { (i, d) ->
                     if (i == FolioNav.DEVICE) Spacer(Modifier.weight(1f))
                     NavigationBarItem(
                         selected = tab == i,
@@ -156,8 +161,8 @@ private fun DeviceBadge() {
 internal const val FOLIO_RAIL_TAG = "folio-rail"
 
 /**
- * The bar's tablet form: the same four tabs down a navigation rail, with the Now Reading tile at
- * the top. Used from 600 dp wide; a phone keeps [FolioBar].
+ * The bar's tablet form: the same four tabs (Library, Stats, Device, Settings) down a navigation
+ * rail, with the Now Reading tile at the top. Used from 600 dp wide; a phone keeps [FolioBar].
  */
 @Composable
 internal fun FolioRail(
@@ -184,7 +189,7 @@ internal fun FolioRail(
         // The frame pads the sides; the rail keeps the status and navigation bars clear.
         windowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Vertical),
     ) {
-        tabs.forEachIndexed { i, d ->
+        tabs.forEach { (i, d) ->
             NavigationRailItem(
                 selected = tab == i,
                 onClick = { onTab(i) },

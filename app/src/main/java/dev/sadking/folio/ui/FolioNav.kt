@@ -177,9 +177,11 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
 
     companion object {
         /**
-         * Four tabs in the bar; the centre item between Lists and Device is an action, not a tab.
+         * Bar order: Library, Stats · tile · Device, Settings. The indices are saved, so they never
+         * change; 1 ([LISTS]) is the Library's Lists top tab. The centre tile is an action, not a
+         * tab.
          */
-        const val TABS = 4
+        const val TABS = 5
         const val LIBRARY = 0
 
         /**
@@ -189,6 +191,7 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
         const val LISTS = 1
         const val DEVICE = 2
         const val SETTINGS = 3
+        const val STATS = 4
 
         val saver: Saver<FolioNav, List<String>> =
             Saver(
