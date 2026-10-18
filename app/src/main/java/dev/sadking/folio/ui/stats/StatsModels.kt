@@ -123,7 +123,6 @@ internal enum class MilestoneKind {
     FASTEST,
     BIGGEST_DAY,
     FIRST_LISTEN,
-    YEAR,
 }
 
 internal data class Milestone(

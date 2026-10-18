@@ -92,10 +92,10 @@
     <string name="stats_milestone_books">%1$d books</string>
     <string name="stats_milestone_hours">%1$d hours</string>
     <string name="stats_milestone_streak">Longest streak</string>
+    <string name="stats_milestone_streak_reached">Reached</string>
     <string name="stats_milestone_fastest">Fastest finish</string>
     <string name="stats_milestone_biggest_day">Biggest day</string>
     <string name="stats_milestone_first_listen">First listen</string>
-    <string name="stats_milestone_year">A full year</string>
     <string name="stats_milestone_reading_time">Reading time</string>
     <string name="stats_milestone_fastest_detail">%1$s in %2$d days</string>
     <string name="stats_milestones_empty">Finish a book or read a week in a row and the first ones show here.</string>

@@ -34,7 +34,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -849,7 +848,6 @@ private fun milestoneShape(kind: MilestoneKind): RoundedPolygon =
         MilestoneKind.FASTEST -> MaterialShapes.Gem
         MilestoneKind.BIGGEST_DAY -> MaterialShapes.VerySunny
         MilestoneKind.FIRST_LISTEN -> MaterialShapes.Clover4Leaf
-        MilestoneKind.YEAR -> MaterialShapes.Cookie12Sided
     }
 
 private fun milestoneIcon(kind: MilestoneKind): ImageVector =
@@ -861,7 +859,6 @@ private fun milestoneIcon(kind: MilestoneKind): ImageVector =
         MilestoneKind.FASTEST -> Icons.Outlined.Bolt
         MilestoneKind.BIGGEST_DAY -> Icons.Outlined.WbSunny
         MilestoneKind.FIRST_LISTEN -> Icons.Outlined.Headphones
-        MilestoneKind.YEAR -> Icons.Outlined.CalendarMonth
     }
 
 /** Milestones as a multi-browse carousel of badge cards, newest first. */
