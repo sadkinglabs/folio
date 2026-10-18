@@ -10,9 +10,11 @@ import dev.sadking.folio.core.stats.GoalSettings
 import dev.sadking.folio.sync.EreaderSync
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,22 +56,24 @@ class StatsRepositoryTest {
         db.close()
     }
 
+    private fun repository(
+        ereaders: List<EreaderSync> = emptyList(),
+        roster: DeviceRoster = DeviceRoster.EMPTY,
+    ) =
+        StatsRepository(
+            db.stats(),
+            db.library(),
+            flowOf(roster),
+            flowOf(ereaders),
+            goals,
+            { zone },
+            { now },
+        )
+
     private fun snapshot(
         ereaders: List<EreaderSync> = emptyList(),
         roster: DeviceRoster = DeviceRoster.EMPTY,
-    ) = runBlocking {
-        StatsRepository(
-                db.stats(),
-                db.library(),
-                flowOf(roster),
-                flowOf(ereaders),
-                goals,
-                { zone },
-                { now },
-            )
-            .snapshot()
-            .first()
-    }
+    ) = runBlocking { repository(ereaders, roster).snapshot().first() }
 
     private fun addBook(id: String, status: String = "Unread", statusAt: Long = 0) = runBlocking {
         db.library()
@@ -199,6 +203,18 @@ class StatsRepositoryTest {
             StatsLabel("Dune", "Frank Herbert", null, null),
             snapshot().labels["doc:d9"],
         )
+    }
+
+    @Test
+    fun aNameThatArrivesOnItsOwnLabelsTheBook() = runBlocking {
+        kindle("k-1", document = "d9")
+        val snapshots = repository().snapshot()
+        assertNull(snapshots.first().labels["doc:d9"])
+
+        val named = async { withTimeout(10_000) { snapshots.first { "doc:d9" in it.labels } } }
+        db.stats().upsertBookNames(listOf(StatsBookNameRow("d9", "Dune", "Frank Herbert", now)))
+
+        assertEquals("Dune", named.await().labels["doc:d9"]?.title)
     }
 
     @Test

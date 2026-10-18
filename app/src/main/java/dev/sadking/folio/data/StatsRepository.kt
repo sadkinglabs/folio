@@ -67,12 +67,14 @@ class StatsRepository(
             ) { wishes, phone, reports, devices, eReaderList ->
                 Linked(wishes, phone, reports, devices, eReaderList)
             }
-        return combine(stored, linked, goals.goals, today()) { s, l, g, day -> Input(s, l, g, day) }
+        return combine(stored, linked, stats.bookNames(), goals.goals, today()) { s, l, n, g, day ->
+                Input(s, l, n, g, day)
+            }
             .mapLatest { build(it) }
             .flowOn(Dispatchers.Default)
     }
 
-    private suspend fun build(input: Input): StatsSnapshot {
+    private fun build(input: Input): StatsSnapshot {
         val zone = zone()
         val stored = input.stored
         val linked = input.linked
@@ -101,7 +103,7 @@ class StatsRepository(
             )
         return StatsSnapshot(
             stats = reading,
-            labels = labels(stored, linked, digestBooks),
+            labels = labels(stored, linked, input.names, digestBooks),
             deviceNames = deviceNames(sessions, linked.roster),
             goals = input.goals,
             waitingForEreader =
@@ -183,9 +185,10 @@ class StatsRepository(
      * when it sent one. Without a name it has no label, and the screens say "A book on your
      * e-reader".
      */
-    private suspend fun labels(
+    private fun labels(
         stored: Stored,
         linked: Linked,
+        names: List<StatsBookNameRow>,
         digestBooks: Map<String, String>,
     ): Map<String, StatsLabel> {
         val labels = HashMap<String, StatsLabel>()
@@ -198,7 +201,7 @@ class StatsRepository(
                 StatsLabel(wish.title, wish.authorLabel, null, wish.coverPath),
             )
         }
-        for (name in stats.allBookNames()) {
+        for (name in names) {
             if (name.digest !in digestBooks) {
                 labels[DOCUMENT_PREFIX + name.digest] =
                     StatsLabel(name.title, name.authors, null, null)
@@ -240,6 +243,8 @@ class StatsRepository(
     private class Input(
         val stored: Stored,
         val linked: Linked,
+        /** The names KOReader sent for books the phone can't match (A1). */
+        val names: List<StatsBookNameRow>,
         val goals: GoalSettings,
         val today: LocalDate,
     )

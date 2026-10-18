@@ -943,6 +943,8 @@ interface StatsDao {
 
     @Query("SELECT * FROM stats_book_names") suspend fun allBookNames(): List<StatsBookNameRow>
 
+    @Query("SELECT * FROM stats_book_names") fun bookNames(): Flow<List<StatsBookNameRow>>
+
     @Upsert suspend fun upsertBookNames(rows: List<StatsBookNameRow>)
 
     @Query("SELECT * FROM book_words") fun words(): Flow<List<BookWordsRow>>
