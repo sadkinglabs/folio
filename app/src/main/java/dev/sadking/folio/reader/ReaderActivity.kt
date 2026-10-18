@@ -1310,7 +1310,6 @@ class ReaderActivity : FragmentActivity() {
         }
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
-        var topBarHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
         val listen = model.listen
         // The natural voice cannot keep up: its sheet replaces any other until answered.
@@ -1523,10 +1522,6 @@ class ReaderActivity : FragmentActivity() {
                         ),
                     onBack = ::closeReader,
                     onPanel = { panel = it },
-                    modifier =
-                        Modifier.onSizeChanged {
-                            topBarHeight = with(density) { it.height.toDp() }
-                        },
                     onListen = if (model.kind == ReaderKind.EPUB) ::startListening else null,
                     bookmarked = pageBookmarked,
                     onBookmark = model::toggleBookmark,
@@ -1622,23 +1617,20 @@ class ReaderActivity : FragmentActivity() {
                 )
             }
             SnackbarHost(snackbar, floating)
-            // Under the top bar while it shows, so the bottom stays free for the page buttons, the
-            // player and messages.
+            // At the bottom, above the page buttons while they show: the word where a highlight
+            // ends is most often at the top of the next page, and the bar must not cover it.
             if (fromHere.active)
                 HighlightFromHereBar(
                     onCancel = ::cancelFromHere,
-                    Modifier.align(Alignment.TopCenter)
+                    Modifier.align(Alignment.BottomCenter)
                         .windowInsetsPadding(
                             if (showBars) WindowInsets(0)
-                            else
-                                WindowInsets.statusBarsIgnoringVisibility.union(
-                                    WindowInsets.displayCutout.only(WindowInsetsSides.Top)
-                                )
+                            else WindowInsets.navigationBarsIgnoringVisibility
                         )
                         .padding(
                             start = 16.dp,
                             end = 16.dp,
-                            top = if (showBars) topBarHeight + 8.dp else 8.dp,
+                            bottom = if (showBars) barHeight + 8.dp else 8.dp,
                         ),
                 )
             // The level while sliding along an edge, then a moment after.
