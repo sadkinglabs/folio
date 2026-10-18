@@ -28,9 +28,11 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -52,6 +54,16 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
  * for real. Also a passage selected across a page turn is saved and drawn as one highlight.
  */
 class ReaderHighlightTapsTest {
+    private companion object {
+        /** Which page the probe is in, asked of the navigator's page. */
+        const val PROBE_ID = "window.__folioTapProbe?window.__folioTapProbe.id:null"
+        /** What a page's probe recorded, with the page's clock now and its file. */
+        const val PROBE_REPORT =
+            "JSON.stringify({probe:window.__folioTapProbe||null," +
+                "now:Math.round(performance.now()),file:location.pathname," +
+                "focused:document.hasFocus()})"
+    }
+
     @get:Rule val compose = createEmptyComposeRule()
 
     private val app = ApplicationProvider.getApplicationContext<FolioApplication>()
@@ -278,6 +290,65 @@ class ReaderHighlightTapsTest {
                 "width:innerWidth,height:innerHeight,dpr:devicePixelRatio};})())"
         ) ?: "no page"
 
+    /**
+     * Records in a page the touches and clicks it gets: on arrival, with the point and whether text
+     * is selected then; and again if they pass on to the window, with whether something prevented
+     * their default. Points and times only, never text. Kept until the page reloads; [id] names the
+     * page so the navigator's own can be told apart.
+     */
+    private fun probeScript(id: Int) =
+        "(function(){var p=window.__folioTapProbe;if(!p){p=window.__folioTapProbe={events:[]};" +
+            "var note=function(s){p.events.push(s+' @'+Math.round(performance.now()));" +
+            "if(p.events.length>24)p.events.shift();};" +
+            "['touchstart','touchend','touchcancel','click'].forEach(function(type){" +
+            "addEventListener(type,function(e){var t=(e.changedTouches&&e.changedTouches[0])||e;" +
+            "note(type+' '+Math.round(t.clientX)+','+Math.round(t.clientY)+" +
+            "(getSelection().isCollapsed?'':' while text is selected'));}," +
+            "{capture:true,passive:true});" +
+            "addEventListener(type,function(e){note(type+' passed'+" +
+            "(e.defaultPrevented?', default prevented':''));},{passive:true});});}" +
+            "p.id=$id;return true;})()"
+
+    /**
+     * Runs a script, given each page's index, in every page WebView in the reader's window, the
+     * navigator's current one or not; each answer follows the view's place on the screen.
+     */
+    private fun ActivityScenario<ReaderActivity>.inEveryPage(
+        script: (Int) -> String
+    ): List<String> {
+        val pages = mutableListOf<Pair<WebView, String>>()
+        onActivity { activity ->
+            fun collect(view: View) {
+                if (view is WebView) {
+                    val at = IntArray(2).also { view.getLocationOnScreen(it) }
+                    val visible = Rect()
+                    val seen = view.isShown && view.getGlobalVisibleRect(visible)
+                    pages +=
+                        view to
+                            "at ${at[0]},${at[1]} ${view.width}x${view.height}" +
+                                if (seen) " showing $visible" else " not showing"
+                } else if (view is ViewGroup)
+                    for (i in 0 until view.childCount) collect(view.getChildAt(i))
+            }
+            collect(activity.window.decorView)
+        }
+        return pages.mapIndexed { index, (web, where) ->
+            val answer = CompletableDeferred<String?>()
+            instrumentation.runOnMainSync {
+                web.evaluateJavascript(script(index)) { answer.complete(it) }
+            }
+            val said = runBlocking { withTimeoutOrNull(5_000) { answer.await() } }
+            "page $index $where: ${said ?: "no answer"}"
+        }
+    }
+
+    /** The reader's own record of where the last touches went; see TapTrace. */
+    private fun ActivityScenario<ReaderActivity>.tapSteps(): List<String> {
+        var steps = emptyList<String>()
+        onActivity { steps = it.tapTrace.steps() }
+        return steps
+    }
+
     private fun tap(x: Int, y: Int) {
         Diagnostics.shell("input tap $x $y")
     }
@@ -394,16 +465,31 @@ class ReaderHighlightTapsTest {
             // toggles the controls and moves the highlight: each try finds the highlight again,
             // once it holds still, and a third miss fails with what the page said about it.
             var taps = 0
+            val tapped = mutableListOf<String>()
             while (!sheetShown() && taps < 3) {
                 val at = scenario.settledHighlight(kindle.id)
+                scenario.inEveryPage(::probeScript)
+                tapped +=
+                    "${at.first},${at.second} on a page at ${scenario.pageOnScreen().toList()}"
                 tap(at.first, at.second)
                 taps++
                 runCatching { compose.waitUntil(5_000) { sheetShown() } }
             }
+            // Where the taps stopped. The reader's steps, in order, for each tap: "touch
+            // ACTION_DOWN/UP" (the window got it), "page touch end" (the page's script got it and
+            // Readium passed it on), then "highlight tapped" (Readium hit the highlight) or "page
+            // tap" (it did not), "highlight sheet asked" and "highlight sheet shown". The pages'
+            // own record says which page got touchstart, touchend and click, and whether text was
+            // selected then (a selection makes Readium ignore the tap).
             if (!sheetShown())
                 fail(
                     "The sheet did not open after $taps taps on the highlight.\n" +
+                        "Taps at: ${tapped.joinToString("; ")}\n" +
                         "Page: ${scenario.highlightState(kindle.id)}\n" +
+                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
+                        "Pages (the navigator's is ${scenario.page(PROBE_ID)}):\n" +
+                        scenario.inEveryPage { PROBE_REPORT }.joinToString("\n") +
+                        "\n" +
                         Diagnostics.state()
                 )
             awaitSheet()

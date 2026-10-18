@@ -72,6 +72,7 @@ import dev.sadking.folio.reader.narration.NarrationStatus
 import dev.sadking.folio.ui.FolioMotion
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.FolioTheme
+import kotlin.math.roundToInt
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -89,6 +90,9 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.css.Length
 import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.image.ImageNavigatorFragment
+import org.readium.r2.navigator.input.DragEvent
+import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
@@ -123,6 +127,9 @@ class ReaderActivity : FragmentActivity() {
     /** The search decorations last drawn on the page; read by the instrumented test. */
     internal var appliedSearch: List<Decoration> = emptyList()
         private set
+
+    /** Where the last touches went, step by step; read by the instrumented test. See [TapTrace]. */
+    internal val tapTrace = TapTrace()
 
     /**
      * Where each highlight was found on its page, by id, once its chapter has been shown: the list
@@ -199,7 +206,11 @@ class ReaderActivity : FragmentActivity() {
                 event: DecorableNavigator.OnActivatedEvent
             ): Boolean {
                 val id = event.decoration.id
-                if (model.highlights.none { it.id == id }) return false
+                if (model.highlights.none { it.id == id }) {
+                    tapTrace.add("decoration tapped, no such highlight")
+                    return false
+                }
+                tapTrace.add("highlight tapped")
                 window.decorView.post { openHighlight(id) }
                 return true
             }
@@ -292,6 +303,15 @@ class ReaderActivity : FragmentActivity() {
                 ev.pointerCount,
                 edgeSwipesOn(),
             )
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL ->
+                tapTrace.add(
+                    "touch ${MotionEvent.actionToString(ev.actionMasked)} at " +
+                        "${ev.rawX.roundToInt()},${ev.rawY.roundToInt()}: $step"
+                )
+        }
         val side = edgeSwipe.side
         when (step) {
             EdgeStep.PASS -> return super.dispatchTouchEvent(ev)
@@ -527,6 +547,22 @@ class ReaderActivity : FragmentActivity() {
         // and page keys; taps go to PageTaps, which follows the owner's tap zones. It compares the
         // tap with the width of Readium's own page view, as the adapter does: comparing tap points
         // with the fragment's pixel width once failed to hide the controls on the emulator.
+        // First, and consuming nothing: notes that the page passed a touch's end or a tap on.
+        nav.addInputListener(
+            object : InputListener {
+                override fun onTap(event: TapEvent): Boolean {
+                    tapTrace.add(
+                        "page tap at ${event.point.x.roundToInt()},${event.point.y.roundToInt()}"
+                    )
+                    return false
+                }
+
+                override fun onDrag(event: DragEvent): Boolean {
+                    if (event.type == DragEvent.Type.End) tapTrace.add("page touch end")
+                    return false
+                }
+            }
+        )
         nav.addInputListener(DirectionalNavigationAdapter(nav, tapEdges = emptySet()))
         nav.addInputListener(
             PageTaps(nav, { model.comfort }, onControls = { controls = !controls })
@@ -865,6 +901,7 @@ class ReaderActivity : FragmentActivity() {
      * busy with a gesture when the sheet takes the screen. Main thread only.
      */
     private fun openHighlight(id: String) {
+        tapTrace.add("highlight sheet asked")
         selectionMode?.finish()
         epubNavigator?.let {
             it.clearSelection()
@@ -1608,6 +1645,7 @@ class ReaderActivity : FragmentActivity() {
             // Deleted (here or by a sync): nothing left to show.
             if (shownHighlightId != null && shown == null) shownHighlightId = null
         }
+        LaunchedEffect(shown?.id) { if (shown != null) tapTrace.add("highlight sheet shown") }
         shown?.let { row ->
             ModalBottomSheet(
                 onDismissRequest = { shownHighlightId = null },
