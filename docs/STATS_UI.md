@@ -300,11 +300,11 @@ All in `app/build/screenshots/` after the render command at the top; each exists
 
 Known limits seen in the renders: in a 360 dp right pane (a tablet in portrait with the list pane at 400 dp) `StatusStrip` tiles are 90 dp wide and "SESSIONS" / "LISTENING" lose their last letters to an ellipsis; the value and the detail stay whole. On a phone every tile fits. If the owner minds, the fix is in `StatusStrip` (stack under 100 dp), not in the Stats screens.
 
-## 11. Open questions for the owner
+## 11. Owner's answers
 
-1. **The bar.** Five tabs plus the centred tile do not fit six equal slots with the tile at the centre. Recommended: tile over the third slot (mockup `stats-bar`), 34 dp left of centre. Alternative: Lists becomes a third top tab inside Library (Library · Want to Read · Lists), the bar stays Library, Stats · tile · Device, Settings, and the tile stays centred. Which?
+1. **The bar.** Answered (2026-10-18): Lists moves into Library as a third top tab (Library · Want to Read · Lists). The bar is Library, Stats · tile · Device, Settings, with the tile centred.
 2. **Streak rule.** Answered: only reading keeps a streak; listening is shown but never counts toward streaks or goals.
 3. **Calendar bars.** Answered: joined across consecutive days, KOReader style, with titles inside when they fit (§ 6.2).
-4. **Share card theme.** Rendered in the phone's current theme (light or dark, dynamic). Or always light, so it looks the same wherever it is posted?
-5. **Goals pace.** "On pace" compares books finished with target × year fraction. Fine, or should the year goal stay a plain count?
-6. **Milestone thresholds.** Books at 10/25/50/100 and hours at 100/500/1000. Change any?
+4. **Share card theme.** Answered: the phone's current theme (light or dark, dynamic colour).
+5. **Goals pace.** Answered: "on pace" compares books finished with target × the fraction of the year gone.
+6. **Milestone thresholds.** Answered: books at 10/25/50/100, hours at 100/500/1000.

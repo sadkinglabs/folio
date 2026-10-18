@@ -762,6 +762,15 @@ Placeholders. Each will name its files, components and strings from `STATS_UI.md
 4. **Bottom bar slots:** left to `STATS_UI.md`.
 5. **Thresholds: keep 1 minute**, as planned.
 
+## Owner's answers on the design (2026-10-18)
+
+1. **Bar:** Lists moves into Library as a third top tab (Library · Want to Read · Lists). The bar is Library, Stats · Now Reading tile · Device, Settings.
+2. **Calendar:** a book's consecutive days join into one bar, KOReader style, with the title inside (`docs/STATS_UI.md` § 6.2).
+3. **Share card:** follows the phone's theme.
+4. **Year goal pace:** target × the fraction of the year gone.
+5. **Milestones:** books 10/25/50/100; hours 100/500/1000.
+6. **Dates** read DD/MM/YYYY everywhere in the app.
+
 ## Amendment A1: names for unmatched Kindle books
 This amends D1, D2, D3, D4, D8 and D9. Workers on those tasks must apply it.
 
