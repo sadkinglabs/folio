@@ -816,7 +816,9 @@ class ReaderHighlightTapsTest {
                         ".find(i=>i.decoration.id==='${made.id}');var rects=[].slice.call(" +
                         "i.range.getClientRects()).filter(r=>r.width>0);" +
                         "return {before:rects.some(r=>r.right<=1)," +
-                        "here:rects.some(r=>r.left>=0&&r.right<=innerWidth)};})())"
+                        "here:rects.some(r=>r.left>=0&&r.right<=innerWidth)," +
+                        "rects:rects.map(r=>[Math.round(r.left),Math.round(r.right)])," +
+                        "scrollLeft:document.scrollingElement.scrollLeft,width:innerWidth};})())"
                 ) as? JSONObject ?: error("No answer about the drawn highlight")
             assertTrue(pages.toString(), pages.getBoolean("before"))
             assertTrue(pages.toString(), pages.getBoolean("here"))
