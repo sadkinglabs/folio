@@ -422,7 +422,7 @@ D3 (Room 14) ───┼─> D4 (sync saves sessions; also needs D1)
                 ├─> D7 (Hardcover read dates)
                 ├─> D8 (backup)
                 └─> D9 (StatsRepository; best after D6 and D7, works without them)
-U0..U7 (UI): after docs/STATS_UI.md. U0 needs only D3 (types); the screens run on fake data until D9.
+U0..U7 (UI): see "U-tasks" below; they build on D3 and D9.
 ```
 D1, D2 and D3 run in parallel. D4–D8 run in parallel after D3. They touch different files, except where noted.
 
@@ -737,20 +737,429 @@ D1, D2 and D3 run in parallel. D4–D8 run in parallel after D3. They touch diff
   - `waitingForEreader` true, then false after a KINDLE session.
 - **Done:** the standard check passes.
 
-### U-tasks (finalised after `docs/STATS_UI.md`)
+### U-tasks: the Stats UI (phase 2, UI half)
 
-Placeholders. Each will name its files, components and strings from `STATS_UI.md`. Every one uses only the `StatsSnapshot` API in (c), never Room. Every one adds previews with fake `ReadingStats` data (c) and renders them with the screenshot check (`./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest' -Pscreenshots`) in light, dark and 200% text.
+The visual spec is `docs/STATS_UI.md`; its § 11 and "Owner's answers on the design (2026-10-18)" above overrule anything older in it (§ 2.1's tab order and six-slot bar are gone).
 
-| Task | Builds | Needs |
-|---|---|---|
-| U0 | The Stats tab in the bar and the rail; a `StatsViewModel` exposing `StatsSnapshot?` (null while loading); loading, "no data yet" and "first sync pending" states; the preview fake-data builder. **Keep saved tab indices:** add `FolioNav.STATS = 4` and `TABS = 5`, and place it visually where `STATS_UI.md` says. Existing indices never change, because the saved state stores the index. | D3 (types). D9 to show real data. |
-| U1 | Overview at the top. | U0 |
-| U2 | Calendar month grid and the day sheet (`FolioSheet`). | U0 |
-| U3 | Habits and trends (charts per `STATS_UI.md`). | U0 |
-| U4 | Per-book list, and the card on the book page (`book(key)`). | U0 |
-| U5 | Milestones, records, year in review, and the shareable image. | U0 |
-| U6 | Goals sign-up and settings (`StatsGoals`). | U0, D9 |
-| U7 | Tablet two-pane layout of the tab (`Panes`). | U1–U5 |
+**How the merged design code meets the real data.** The screens in `ui/stats/` (`StatsScreen.kt`, `StatsCharts.kt`) and `ui/StatsPreviews.kt` stay as they are, on the UI models in `ui/stats/StatsModels.kt`. A thin mapper (U2, `StatsUi`) turns one `StatsSnapshot` into those models. Why a mapper and not the core types:
+- The UI models carry what the core can't: a `Book` for `CoverTile`, formatted strings, the range's columns. The core gives keys, seconds and dates.
+- The shapes differ (per-month slots, one timeline row per day, no "previous range", no per-book device split). Swapping types would mean rewriting every composable, preview, screenshot and `CalendarWeeksTest`.
+- The rules that are UI's own (range dates, trend %, which milestones show, labels for unknown keys) get one pure, tested home.
+
+Previews keep their hand-built fake models. The mapper's tests build a real `ReadingStats` from fake sessions, as in (c).
+
+**Rules for every U-task** (on top of the D-task rules above):
+- Use only the `StatsSnapshot` API in (c) and the U2 mapper. Never Room from a screen.
+- Reuse the merged components and the app's (`FolioSheet`, `SheetHeading`, `StatusStrip`, `EmptyState`, `ResultRow`, `CoverTile`, `Tooltipped`, `FolioSpace`, `Panes`). Invent nothing that looks like them.
+- New copy goes in `res/values/strings_stats.xml`, plain English.
+- A full date shows as `FolioDates.day(date)` ("17/10/2026"). Short day-first forms ("3 Oct", pattern `d MMM`) are fine on axes and short lines.
+- Listening never counts toward goals or streaks.
+- The check, once per task:
+  ```sh
+  ./gradlew --console=plain -q --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false formatKotlin checkFormatting :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+  ```
+- A task that changes what a screen shows also renders the screenshots (`./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest' -Pscreenshots`) and looks at its own shots in light, dark and 200% text. No preview with a running `LoadingIndicator` goes into `ScreenshotTest` (the capture hangs).
+- A task that touches `app/src/androidTest` also runs `./gradlew :app:assembleDebugAndroidTest`, and reports the journey test as compiled only (it runs on CI's emulator).
+
+**Order:**
+```
+U0 (UI models)  ─┐
+U1 (wiring, VM) ─┴─> U2 (mapper) ─> U4 (StatsRoute) ─┐
+U3 (Lists into Library) ─────────────────────────────┴─> U5 (Stats tab) ─> U6 (book card) ─> U7 (year + share)
+```
+U0, U1 and U3 start at once: they touch different files. U2 and U4 can run beside U3. U5, U6 and U7 all edit `FolioApp.kt` (and U5 and U7 `FolioNav.kt`), so they run one after another.
+
+### U0. UI models meet the real data
+- **Model:** Haiku.
+- **Needs:** nothing.
+- **Files:**
+  - `app/src/main/java/dev/sadking/folio/ui/stats/StatsModels.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/stats/StatsScreen.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/stats/StatsCharts.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/StatsPreviews.kt`
+  - `app/src/main/res/values/strings_stats.xml`
+- **Build:**
+  1. `StatsModels.kt`:
+     - Replace the "PLACEHOLDERS" comment with: "The Stats screens' own models. `StatsUi` (StatsUi.kt) fills them from a `StatsSnapshot`; previews fill them by hand."
+     - Make nullable: `StatsOverview.wordsPerMinute: Int?`, `BookStats.wordsPerMinute: Int?`, `BookStats.averageWordsPerMinute: Int?`, `BookStats.days: Int?`, `SessionRow.pages: Int?`, `YearReview.wordsPerMinute: Int?`.
+     - `StatsState.Empty` becomes `data class Empty(val years: List<YearSummary> = emptyList()) : StatsState` (the "Hardcover years only" state). Update every `StatsState.Empty` use to `StatsState.Empty()` and the `when` branch to `is StatsState.Empty`.
+  2. `strings_stats.xml`, add:
+     - `stats_unknown_book` "A book on your e-reader"
+     - `stats_unknown_hardcover_book` "A book from Hardcover"
+     - `stats_source_ereader` "E-reader"
+     - `stats_last_week` "last week"
+     - `stats_no_value` "—"
+     - `stats_milestone_reading_time` "Reading time"
+     - `stats_milestone_fastest_detail` "%1$s in %2$d days"
+     - `stats_record_longest_session` "Longest session"
+     - `stats_first_hours` "First %1$d hours"
+  3. `StatsCharts.kt`:
+     - `StatsPalette.book(slot)`: return `other()` when `slot !in 0 until SLOTS` (the core's `OTHER_SLOT` is 8; today it wrongly takes slot 0's colour).
+     - In `CalendarGrid` and `DayStrip`, replace `slotColors[Math.floorMod(x, StatsPalette.SLOTS)]` with `slotColors.getOrElse(x) { other }`, where `val other = StatsPalette.other()` is read beside `slotColors`.
+     - Fix the `StatsPalette` KDoc: a book's slot is per month, in the order it was first read that month (STATS_DESIGN b3); books past the eighth share the "other" colour.
+     - Add `internal fun formatDuration(res: Resources, seconds: Long): String` with `durationText`'s exact rule, using `res.getString`. `durationText` calls it with `LocalContext.current.resources`.
+  4. `StatsScreen.kt`:
+     - Hero pace tile value: `stats_wpm` when not null, else `stats_no_value`.
+     - Hero sessions tile detail: per session = `overview.readingSeconds / overview.sessions` (sessions count reading only).
+     - `StatsScreen`, Empty branch: after `EmptyState`, when `state.years` is not empty, add the same "years" block the Ready branch has (`SectionHeading(stats_years)` and a `YearRow` per year); then `GoalsOffer`.
+     - `CalendarCard`: the next-month `IconButton` gets `enabled = month.today == null`.
+     - `DayDetailsContent`: add the pages part only when the group's non-null pages sum to more than 0; otherwise the detail is `stats_joined(duration, sources)`.
+     - `BookStatsCard` and `BookStatsContent`:
+       - pace value and the card's a11y: `stats_no_value` when `wordsPerMinute` is null; the pace tile's detail is null when `averageWordsPerMinute` is null;
+       - the line: finished and `days != null` → `stats_book_finished_in`; finished and `days == null` → `stats_book_finished` with `finishedText`; else `secondsLeft` → `stats_book_time_left`; else `stats_book_days_so_far(days ?: 0)`. The sheet heading uses the same choice.
+       - session rows: when `pages` is null or 0, use `stats_joined(source, duration)` instead of `stats_book_session_row`.
+     - `YearShareCard`: pace `stats_no_value` when null.
+  5. `StatsPreviews.kt`:
+     - follow the type changes;
+     - milestone dates as DD/MM/YYYY ("12/08/2026");
+     - add `@Preview(name = "Stats · Hardcover years only") internal fun StatsEmptyYearsPreview()` showing `StatsState.Empty(sampleYears.drop(1))`. U5 adds its shot.
+- **Tests:** `CalendarWeeksTest` still passes. Render the screenshots; every existing stats shot looks the same as before.
+- **Done:** the check passes; the screenshots were looked at.
+
+### U1. Wire the repository and the StatsViewModel
+- **Model:** Haiku.
+- **Needs:** nothing.
+- **Files:**
+  - `app/src/main/java/dev/sadking/folio/FolioApplication.kt`
+  - `app/src/main/java/dev/sadking/folio/data/StatsSnapshot.kt`
+  - `app/src/main/java/dev/sadking/folio/data/StatsRepository.kt`
+  - `app/src/test/java/dev/sadking/folio/data/StatsRepositoryTest.kt`
+  - new `app/src/main/java/dev/sadking/folio/StatsViewModel.kt`
+  - new `app/src/test/java/dev/sadking/folio/StatsViewModelTest.kt`
+- **Build:**
+  1. `StatsSnapshot`: add `val hasEreaderSessions: Boolean` (KDoc: "At least one session came from an e-reader. False: the screens say phone only so far."). In `StatsRepository.build`, set it to `sessions.any { it.source == SessionSource.KINDLE }`. Fix the `labels` KDoc: a missing `doc:` key shows `R.string.stats_unknown_book`, a missing `hc:` key `R.string.stats_unknown_hardcover_book`.
+  2. `FolioApplication`, one instance each:
+     ```kotlin
+     /** The owner's reading goals (M12). */
+     val statsGoals by lazy { StatsGoals(getSharedPreferences(StatsGoals.PREFS, MODE_PRIVATE)) }
+     /** The reading statistics (M12): one repository for the whole app. */
+     val stats by lazy {
+         val sync = dev.sadking.folio.sync.SyncState.of(this)
+         StatsRepository(
+             database.stats(),
+             database.library(),
+             roster = deviceRosterFlow(sync.ereaders, database.library()) { link.settings.phoneDeviceId },
+             ereaders = sync.ereaders.map { it.values.toList() },
+             goals = statsGoals,
+         )
+     }
+     ```
+  3. `StatsViewModel.kt` (package `dev.sadking.folio`, like `DeviceViewModel`):
+     ```kotlin
+     sealed interface StatsLoad {
+         data object Loading : StatsLoad
+         data class Ready(val snapshot: StatsSnapshot) : StatsLoad
+         data object Failed : StatsLoad
+     }
+     /** [snapshots] as loads: Loading, then Ready for each; Failed when the flow throws. Each [retry] emission starts again. */
+     internal fun statsLoads(snapshots: () -> Flow<StatsSnapshot>, retry: Flow<Unit>): Flow<StatsLoad> =
+         retry.onStart { emit(Unit) }.flatMapLatest {
+             snapshots().map<StatsSnapshot, StatsLoad> { StatsLoad.Ready(it) }
+                 .onStart { emit(StatsLoad.Loading) }
+                 .catch { emit(StatsLoad.Failed) }
+         }
+     class StatsViewModel(application: Application) : AndroidViewModel(application) {
+         private val app = application as FolioApplication
+         private val retries = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+         val load: StateFlow<StatsLoad> = statsLoads({ app.stats.snapshot() }, retries)
+             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsLoad.Loading)
+         fun retry() { retries.tryEmit(Unit) }
+         fun saveGoals(settings: GoalSettings) = app.statsGoals.save(settings)
+     }
+     ```
+     Never log a snapshot or an exception's message (it may name a book).
+- **Tests:**
+  - `StatsRepositoryTest`: `hasEreaderSessions` is false with only a PHONE session, true after a KINDLE one.
+  - `StatsViewModelTest` (plain JUnit, `runBlocking`, `take(n).toList()`) on `statsLoads`:
+    - a flow of two snapshots gives Loading, Ready, Ready;
+    - a flow that throws gives Loading, Failed;
+    - after a retry it gives Loading, Ready again.
+- **Done:** the check passes.
+
+### U2. The mapper: StatsSnapshot to the UI models
+- **Model:** Sonnet (most of the rules live here).
+- **Needs:** U0, U1.
+- **Files:**
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/StatsText.kt`
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/StatsUi.kt`
+  - new `app/src/test/java/dev/sadking/folio/ui/stats/StatsUiTest.kt`
+- **Build:**
+  1. `StatsText(res: Resources)`: `locale` (`res.configuration.locales[0]`), `duration(seconds)` (= `formatDuration`), `string(id, vararg args)`, `plural(id, n, vararg args)`. Plus `@Composable internal fun rememberStatsText(): StatsText`, keyed on the resources and the locale.
+  2. `internal object StatsUi`, functions of their inputs only (no clock: today is `snapshot.stats.today`, the zone `snapshot.stats.zone`):
+     - `rangeDates(stats, range): DateRange`:
+       - WEEK: the week from `today.with(previousOrSame(stats.firstDayOfWeek))`, 7 days;
+       - MONTH: this month;
+       - YEAR: this year;
+       - ALL: `overview().firstDay ?: today` to today.
+     - `previousDates(stats, range): DateRange?`: the same number of days elapsed so far, one period back (week −7 days; month: day 1 to the same day of the previous month, clamped to its end; year: 1 Jan to the same day of last year). ALL: null.
+     - `state(snapshot, range, month: YearMonth, text, retry: () -> Unit = {}): StatsState`:
+       - no session (`overview().firstDay == null`): `Empty(years(...))` (years is empty when there are no finishes);
+       - otherwise `Ready(overview, calendar(month), habits, rangeBooks, milestones, years, goals, syncPending = waitingForEreader, phoneOnly = !waitingForEreader && !hasEreaderSessions)`.
+     - `overview(...)`: `habits(rangeDates)` gives reading and listening seconds, `readingDays` and `sessions.count`. `daysInRange` = the range's days. `wordsPerMinute` = `habits.speed?.wordsPerMinute`. Trend % = `round((now − before) × 100 / before)` over reading + listening, null when `before` is 0 or the range is ALL. `previousRangeName`: WEEK `stats_last_week`; MONTH the previous month's full standalone name; YEAR last year's number. Columns:
+       - WEEK: 7 days from `stats.day(date)`, label the narrow weekday name;
+       - MONTH: `stats.month(...)` days, label the day number, `labelled` on days 1, 8, 15, 22, 29;
+       - YEAR: 12 `stats.month(YearMonth.of(year, m))` totals, label the narrow month name;
+       - ALL: one per year from the first day's year, from `yearInReview(y)`, label the year.
+     - `columnDate(stats, range, index): LocalDate?`: the column's day for WEEK and MONTH, null otherwise.
+     - `calendar(snapshot, month, text): CalendarMonth`:
+       - title "October 2026" (`LLLL yyyy`, locale);
+       - `firstWeekday` = Monday-first index of the 1st (the grid stays Monday first);
+       - one `DayBar` per `DayBook` with seconds = reading + listening, `listening = readingSeconds == 0L`;
+       - `books` from `MonthBook`;
+       - `today` = day of month only in the current month.
+     - `day(snapshot, date, text): DayDetails`: title `stats_calendar_today` for today, else "Tuesday 7 October" (`EEEE d MMMM`). One `SessionRow` per `DaySession`: `startHour` = local hour + minutes / 60 of its `startMs`, `pages = session.pages`, `listening` when LISTEN.
+     - `source(snapshot, session, text)`: LISTEN → `stats_source_listening`; `phone:` → `stats_source_phone`; else `deviceNames[deviceKey] ?: stats_source_ereader`.
+     - `label(snapshot, key, text): Book`: `labels[key]?.book`, else `coverStub(title, encode(listOf(authors)) or "[]", coverPath).copy(id = key)`. The title is the label's, else `stats_unknown_hardcover_book` for `hc:` keys, else `stats_unknown_book`. The `id` is always the stats key, so a tap can open it.
+     - `habits(...)`:
+       - streak = `overview().currentStreak?.days ?: 0`;
+       - longest = `overview().longestStreak`, its "when" = the end's `LLLL yyyy`;
+       - `byHour` = `hours`, `byWeekday` = weekday totals (Monday first);
+       - typical session = `sessions.medianSeconds`, longest = `sessions.longest?.durationSec ?: 0`;
+       - trend as in the overview;
+       - listening share = listening × 100 / (reading + listening), 0 when both are 0.
+     - `rangeBooks(...)`: for each `stats.books()`, the seconds of its timeline days inside the range (reading + listening). Keep those over 0, longest first, as `RangeBook(label, seconds)`.
+     - `milestones(...)`, newest first, `whenText = FolioDates.day(date)`:
+       - core BOOKS 1 → FIRST_FINISH, detail its book's title;
+       - core BOOKS 10/25/50/100 → BOOKS, title `stats_milestone_books`, detail `stats_eyebrow_all`;
+       - core HOURS 100/500/1000 → HOURS, title `stats_milestone_hours`, detail `stats_milestone_reading_time`;
+       - every other threshold and FIRST_READ are not shown (owner, 2026-10-18);
+       - `records().longestStreak` of 2+ days → STREAK, detail `stats_share_days`, date its end;
+       - `records().fastestFinish` → FASTEST, detail `stats_milestone_fastest_detail(title, days)`;
+       - `records().mostInADay` → BIGGEST_DAY, detail the duration;
+       - the earliest timeline day with listening, over `books()` → FIRST_LISTEN, detail the title.
+       - YEAR is not produced (the core has no such rule).
+     - `years(...)`:
+       - the years from `records().booksPerYear` plus first day's year to today's year, newest first;
+       - skip `yearInReview(y).isEmpty`;
+       - `books` = finishes count, `seconds` = reading + listening, `longestStreak` = days or 0;
+       - `fromHardcover` = no seconds and every finish is HARDCOVER.
+     - `goals(snapshot): Goals`:
+       - targets from `snapshot.goals`;
+       - `booksSoFar` = `goals(...).books?.finished ?: overview().booksFinishedThisYear`;
+       - `booksOnPace` = `floor(expectedByToday)` (target × fraction of the year gone);
+       - `minutesToday` = `(daily?.todaySeconds ?: overview().todaySeconds) / 60`, reading only.
+       - Plus `fun Goals.toSettings() = GoalSettings(booksPerYear, minutesPerDay)`.
+     - `book(snapshot, key, text): BookStats?`:
+       - null when `stats.book(key)` is null or has no reading or listening seconds;
+       - its day parts = `stats.day(d).sessions.filter { it.session.book == key }` for each timeline day;
+       - sessions = `sessions + listeningSessions`;
+       - `startedText` = first day as `d MMM`;
+       - finished = the last finish when it is on or after `lastDay`; `finishedText` = it as `d MMM`;
+       - `days` = `daysToFinish` when finished, else first day to today inclusive;
+       - wpm = `speed`, average = `stats.speed().reading`;
+       - `secondsLeft` = `timeLeftSeconds`;
+       - timeline = one point per part with `progressEnd`: x = days since the first day's local midnight, listening hollow;
+       - `byDevice` = parts summed by `source(...)`, largest first;
+       - `recent` = the 10 latest parts.
+     - `yearReview(snapshot, year, text): YearReview`:
+       - books = finishes count; `topBooks` from `topBooks`;
+       - `byMonth` = finishes per month, January first;
+       - `favouriteHour` = `hourLabel(peakHour)` or `stats_no_value`;
+       - records, each only when present: `stats_record_longest_session`, `stats_milestone_biggest_day`, `stats_share_streak`, and `stats_milestone_fastest` when `records().fastestFinish` falls in the year (value `stats_joined(title, stats_share_days(n))`);
+       - firsts: that year's milestones under the same thresholds as above, with `stats_milestone_first_finish`, `stats_milestone_books` and `stats_first_hours`, values `stats_joined(title, d MMM)` or `d MMM`.
+- **Tests (`StatsUiTest`, Robolectric for the resources; build `ReadingStats` as in (c), zone `Europe/Madrid`, today 17/10/2026):**
+  - MONTH: totals, 31 days, column labels on 1, 8, 15, 22, 29;
+  - WEEK starts on `firstDayOfWeek`;
+  - the trend compares the same elapsed days, and is null against an empty period;
+  - the calendar keeps the core's slots, with `OTHER_SLOT` as is; October 2026's `firstWeekday` is 3; `today` is set only in the current month;
+  - labels: a library book, a `doc:` key and an `hc:` key;
+  - milestones: hours 1/10/50 hidden and 100 shown; books 1 → FIRST_FINISH; DD/MM/YYYY; newest first;
+  - goals: on pace is floored; listening adds nothing to `minutesToday`; `toSettings` round-trips;
+  - Empty with and without Hardcover years; `phoneOnly` and `syncPending`;
+  - book: null for a finish-only book; a phone session has null pages; `byDevice` names Phone, the roster's name and Listening;
+  - year review: `byMonth`, and records without nulls;
+  - `columnDate` for WEEK and MONTH.
+- **Done:** the check passes.
+
+### U3. Lists becomes the Library's third top tab
+- **Model:** Sonnet (navigation, saved state, journey tests).
+- **Needs:** nothing.
+- **Files:**
+  - `app/src/main/java/dev/sadking/folio/ui/FolioNav.kt`
+  - `app/src/main/java/dev/sadking/folio/data/LibraryTabs.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/LibraryScreen.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/ListsScreen.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/FolioApp.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/Previews.kt` (the two Lists previews)
+  - `app/src/main/java/dev/sadking/folio/ui/TabletPreviews.kt`
+  - `app/src/test/java/dev/sadking/folio/ui/ScreenshotTest.kt`
+  - `app/src/test/java/dev/sadking/folio/ui/FolioNavTest.kt`
+  - `app/src/test/java/dev/sadking/folio/ui/AdaptiveLayoutTest.kt`
+  - `app/src/androidTest/java/dev/sadking/folio/LargeFontUiTest.kt`
+- **Build:**
+  1. `FolioNav`:
+     - Keep `LISTS = 1`. Its KDoc: "Not a tab of its own since M12: the Library's Lists top tab. A saved or requested 1 shows the Library with Lists."
+     - Add `var listsRequested by mutableStateOf(false)`, `private set`, and `fun listsShown() { listsRequested = false }`.
+     - In the constructor and in `root(tab)`: `listsRequested = tab == LISTS`, and `tab` = LIBRARY when it is LISTS, else `coerceIn(0, TABS - 1)` as now.
+     - The saver is unchanged: it saves 0 from then on, and an old saved 1 restores to the Library with Lists.
+     - `TABS` stays 4 here. The bar is unchanged in this task: its Lists item now lands on the Library's Lists tab. U5 swaps it for Stats.
+  2. `LibraryTab`: add `LISTS` last.
+  3. `ListsScreen`: add `showTitle: Boolean = true`. When false, skip the title row (title, Scan, New); the grid stays, with `LISTS_GRID_TAG`.
+  4. `LibraryScreen`:
+     - new parameters `lists: (@Composable () -> Unit)? = null`, `onNewList: () -> Unit = {}`, `onTabChange: (LibraryTab) -> Unit = {}`, `initialTab: LibraryTab = LibraryTab.LIBRARY` (the `rememberSaveable` start value, so previews are deterministic);
+     - call `onTabChange` from a `LaunchedEffect(tab)`;
+     - the third `Tab`, only when `lists != null`: text `shell_tab_lists`, tag `LIBRARY_TAB_LISTS_TAG = "library-tab-lists"`;
+     - on the Lists tab the header keeps the title, with no count, no search and no view toggle, and its filled tonal button is New list (`lists_new_title`, `Icons.Outlined.Add`, tag `LISTS_NEW_TAG`, calls `onNewList`). Add the `LibraryHeader` parameters this needs (`showSearch`, `addLabel`, `addTag`) with defaults that keep today's look;
+     - under the tab row, the Lists tab shows `lists()` in the remaining space, and nothing else (no picking banner, search field, toolbar, filters or pull-to-refresh).
+  5. `FolioApp`:
+     - `var libraryTab by rememberSaveable { mutableStateOf(LibraryTab.LIBRARY.name) }`, set by `onTabChange`. Switching to LISTS clears `selection`.
+     - `var requestedLibraryTab by rememberSaveable { mutableStateOf<String?>(null) }`.
+     - `requestedTab`: LISTS when `nav.listsRequested`; else `requestedLibraryTab`; else today's Want to read rule. `onRequestHandled` clears all three (`nav.listsShown()`).
+     - `onAddFromLibrary` also sets `requestedLibraryTab = LibraryTab.LIBRARY.name`, so picking books never starts on the Lists tab.
+     - Pass `lists = { ListsScreen(…, showTitle = false) }` with today's Lists callbacks, and `onNewList` = today's `onNew`. Remove the `FolioNav.LISTS ->` branch from the tabs `when`.
+     - `twoPane`: `tab == FolioNav.LIBRARY` only. The empty pane's text: `ad6_choose_list` when `libraryTab == LISTS`.
+     - Leave every `nav.root(FolioNav.LISTS)` as it is: it now lands on the Library's Lists tab, with `Route.List` above when one is opened.
+  6. Previews:
+     - the two Lists previews in `Previews.kt` show `LibraryScreen(initialTab = LibraryTab.LISTS, lists = { ListsScreen(…, showTitle = false) })`, same shot names;
+     - `TabletLists` in `TabletPreviews.kt` uses `FolioNav.LIBRARY` and the same Library-with-Lists primary.
+  7. `ScreenshotTest`: no new names needed; re-render.
+- **Tests:**
+  - `FolioNavTest`:
+    - `root(LISTS)` gives tab LIBRARY and `listsRequested`;
+    - `listsShown()` clears it;
+    - restoring `listOf("1", "list:l")` gives tab 0, `listsRequested`, and `Route.List("l")` on top;
+    - update `listDetailIsARouteAboveTheListsTabAndABookAboveIt` and `fourTabsWithSettingsLast` to match.
+  - `AdaptiveLayoutTest`: the asserts on `FolioNav.LISTS` as a tab become LIBRARY plus `listsRequested`. The two-pane list and book behaviour is unchanged.
+  - `LargeFontUiTest`: open Lists with `onNodeWithTag(LIBRARY_TAB_LISTS_TAG)` (the text "Lists" now matches the bar item and the top tab).
+- **Done:** the check passes; screenshots looked at; `assembleDebugAndroidTest` compiles. Report that the journey test runs only on CI.
+
+### U4. StatsRoute: the tab's state and its two sheets
+- **Model:** Sonnet.
+- **Needs:** U2.
+- **Files:**
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/StatsRoute.kt`
+  - new `app/src/test/java/dev/sadking/folio/ui/stats/StatsRouteTest.kt`
+- **Build:**
+  1. `@Composable internal fun StatsRoute(model: StatsViewModel, onOpenBook: (String) -> Unit, onYear: (year: Int, share: Boolean) -> Unit, onLibrary: () -> Unit)` collects `model.load` (`collectAsStateWithLifecycle`). It calls `StatsRouteContent(load, onSaveGoals = model::saveGoals, onRetry = model::retry, onOpenBook, onYear, onLibrary)`, which is testable without a view model.
+  2. `StatsRouteContent`, root `Box(Modifier.fillMaxSize().testTag(STATS_TAG))`:
+     - Saved state (`rememberSaveable`): `range` (enum name, default MONTH), `month` (`"2026-10"`, null = this month), `selectedTrend: Int?` (cleared when the range changes), `dayDate` (ISO string or null), `showGoals`.
+     - `state` via `produceState<StatsState>(StatsState.Loading, load, range, month, text)`:
+       - Ready: `withContext(Dispatchers.Default) { StatsUi.state(…) }`; the old value stays until the new one is ready, so nothing flashes;
+       - Failed: `StatsState.Failed(onRetry)`;
+       - Loading: keep a Ready value if there is one.
+     - `StatsActions`:
+       - `onTrend(i)`: sets `selectedTrend`. WEEK or MONTH: `dayDate = StatsUi.columnDate(...)` unless it is after today. YEAR: `month = YearMonth.of(thisYear, i + 1)`. ALL: `onYear(firstYear + i, false)`;
+       - previous/next month (next never past this month);
+       - `onDay` → `dayDate`;
+       - `onBook` → `onOpenBook(book.id)`;
+       - `onYear` → `onYear(it, false)`; `onShareYear` → `onYear(it, true)`;
+       - `onGoals` → `showGoals`; `onLibrary`.
+     - `StatsTab(state, range, actions, selectedTrend, selectedDay = if (LocalFolioWindow.current.twoPane) dayDetails else null)`.
+     - Day sheet (not two-pane): `FolioSheet(shape = FolioSpace.sheetShape, containerColor = surfaceContainerHigh)` holding `DayDetailsContent(StatsUi.day(…))`. A book row closes it and calls `onOpenBook`.
+     - Goals sheet: the same `FolioSheet` look, holding `GoalsSheetContent(draft, …)`. `draft` starts from `StatsUi.goals(snapshot)` each time it opens. A stepper change calls `rememberHaptics().tick()`. Save calls `confirm()`, `onSaveGoals(draft.toSettings())`, then closes. "Turn goals off" saves `GoalSettings()` and closes.
+- **Tests (`StatsRouteTest`, Robolectric compose; a Ready load from a real `ReadingStats`; never the Loading state):**
+  - the hero shows the month's total;
+  - tapping a calendar day (its content description) opens the Day sheet with that day's title;
+  - Goals: switch Minutes a day on, Save → `onSaveGoals(GoalSettings(minutesPerDay = 20))`;
+  - Failed shows "Try again", and tapping it calls `onRetry`;
+  - a book in the Books row calls `onOpenBook` with its key.
+- **Done:** the check passes.
+
+### U5. Stats in the bar, the rail and the tablet
+- **Model:** Haiku.
+- **Needs:** U3, U4.
+- **Files:**
+  - `app/src/main/java/dev/sadking/folio/ui/FolioNav.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/FolioBar.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/FolioApp.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/StatsPreviews.kt`
+  - `app/src/test/java/dev/sadking/folio/ui/ScreenshotTest.kt`
+  - `app/src/test/java/dev/sadking/folio/ui/FolioNavTest.kt`
+  - `app/src/androidTest/java/dev/sadking/folio/ProductJourneyTest.kt`
+- **Build:**
+  1. `FolioNav`: `STATS = 4`, `TABS = 5`. KDoc: "Bar order: Library, Stats · tile · Device, Settings. The indices are saved, so they never change; 1 (LISTS) is the Library's Lists top tab."
+  2. `FolioBar.kt`: `tabs` becomes `List<Pair<Int, BarTab>>`: LIBRARY, STATS (`stats_tab`, `Icons.Outlined.Insights` / `Icons.Filled.Insights`), DEVICE, SETTINGS. Both `FolioBar` and `FolioRail` loop `forEach { (i, d) -> … }` with the same code. The Spacer stays before DEVICE, so the tile stays centred. Update the KDocs ("four tabs": Library, Stats, Device, Settings).
+  3. `FolioApp`:
+     - `val stats: StatsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()` beside `devices`.
+     - `fun openStatsBook(key: String) { if (books.any { it.id == key } || wishes.any { it.id == key }) openEntry(key) }` (an unknown `doc:` or `hc:` key opens nothing).
+     - The tabs `when`: `FolioNav.STATS -> StatsRoute(stats, ::openStatsBook, onYear = { _, _ -> }, onLibrary = { chooseTab(FolioNav.LIBRARY) })`. U7 fills `onYear`.
+     - Do not add STATS to the `DEVICE || SETTINGS` bottom-padding branch: Stats scrolls under the bar.
+     - Outer `Panes` `maxWidth`: add `tab == FolioNav.STATS && !detailOpen -> null` before the `else` (Stats lays out its own panes).
+  4. `StatsPreviews.kt`: delete `StatsBarPreview` and its now-unused imports. `TabletStats` passes `tab = FolioNav.STATS` to `FolioRail`. Fix the file's header comment (the screens are reachable now).
+  5. `ScreenshotTest`: remove `statsBar`; add `@Test fun statsEmptyYears() = shoot("stats-empty-years") { StatsEmptyYearsPreview() }`.
+  6. `ProductJourneyTest`:
+     - replace `tab("Lists")` with `tab("Library")` then `compose.onNodeWithTag(LIBRARY_TAB_LISTS_TAG).performClick()`;
+     - before `tab("Device")`, add `tab("Stats")`, `waitTag(STATS_TAG)`, a `waitFor` until "Counting…" is gone, then `capture("stats-light")`.
+- **Tests:** `FolioNavTest`:
+  - `TABS` is 5 and `STATS` is 4; LIBRARY, LISTS, DEVICE and SETTINGS keep 0, 1, 2 and 3;
+  - `root(STATS)` gives 4;
+  - a saved `"4"` restores to Stats;
+  - `root(9)` gives 4.
+- **Done:** the check passes; the `bar`, `tablet-*` and `stats*` shots looked at; `assembleDebugAndroidTest` compiles.
+
+### U6. The book page's Reading stats card and its sheet
+- **Model:** Haiku.
+- **Needs:** U5.
+- **Files:**
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/BookStatsSlot.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/FolioApp.kt`
+- **Build:**
+  1. `@Composable internal fun BookStatsSlot(model: StatsViewModel, key: String)`:
+     - collects `model.load`; shows nothing unless it is Ready;
+     - `produceState<BookStats?>(null, snapshot, key) { value = withContext(Dispatchers.Default) { StatsUi.book(snapshot, key, text) } }`; shows nothing while null, so a book without sessions has no card;
+     - `BookStatsCard(stats, onClick = { open = true })`, with `open` in `rememberSaveable(key)`;
+     - while open: `FolioSheet(shape = FolioSpace.sheetShape, containerColor = surfaceContainerHigh, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true))` holding `Column(Modifier.verticalScroll(rememberScrollState())) { BookStatsContent(stats) }`.
+  2. `FolioApp`, in the `BookDetails(…)` call for a book with an EPUB: `extra = { BookStatsSlot(stats, book.id) }`. Catalogue records get no card.
+- **Tests:** the mapping is tested in U2 (`book`). Check that the `details-stats` and `stats-book-sheet` shots are unchanged.
+- **Done:** the check passes. Say the card on a real book is compiled only until the owner opens a book he has read.
+
+### U7. Year in review and the share image
+- **Model:** Sonnet (graphics layer, FileProvider).
+- **Needs:** U6.
+- **Files:**
+  - `app/src/main/java/dev/sadking/folio/ui/FolioNav.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/FolioApp.kt`
+  - `app/src/main/java/dev/sadking/folio/ui/stats/StatsScreen.kt` (`YearReviewScreen` only)
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/YearReviewRoute.kt`
+  - new `app/src/main/java/dev/sadking/folio/ui/stats/ShareImage.kt`
+  - `app/src/main/res/xml/photo_paths.xml`
+  - `app/src/test/java/dev/sadking/folio/ui/FolioNavTest.kt`
+  - new `app/src/test/java/dev/sadking/folio/ui/stats/ShareImageTest.kt`
+- **Build:**
+  1. `FolioNav`:
+     - `data class Year(val year: Int) : Route`, encoded `"year:2026"`; decode only 1900..9999;
+     - `forget` keeps it; it is never a `detail`;
+     - `val yearShown: Int? get() = (top as? Route.Year)?.year`.
+  2. `photo_paths.xml`: add `<cache-path name="share" path="share/" />`.
+  3. `ShareImage.kt`:
+     - `internal fun writeSharePng(bitmap: Bitmap, cacheDir: File, year: Int): File`: writes `cacheDir/share/year-<year>.png` as PNG, creating the folder.
+     - `internal fun shareImageIntent(context: Context, file: File): Intent`:
+       - URI from `FileProvider.getUriForFile(context, "${context.packageName}.photos", file)`;
+       - `ACTION_SEND`, `image/png`, `EXTRA_STREAM`, `clipData`, `FLAG_GRANT_READ_URI_PERMISSION`;
+       - wrapped in `Intent.createChooser(…, null)`.
+     - `@Composable internal fun ShareCardRecorder(review: YearReview, layer: GraphicsLayer)`: per STATS_UI § 7. An offscreen `Box(Modifier.requiredSize(360.dp, 640.dp))` with `LocalDensity provides Density(3f, 1f)`. It records `ScaledShareCard(review, 360.dp)` with `drawWithContent { layer.record { this@drawWithContent.drawContent() }; drawLayer(layer) }` and hides it from view and from TalkBack. If `alpha(0f)` leaves the layer blank, hide it another way (for example, offset it out of the window); the test below decides.
+  4. `YearReviewScreen`: add `sharing: Boolean = false`. While true, the Share button shows `LoadingIndicator(Modifier.size(20.dp))` in place of its icon, and both Share controls are disabled. If a gap shows above its `TopAppBar` inside the app frame, pass `windowInsets = WindowInsets(0)`.
+  5. `YearReviewRoute(model, year, shareNow: Boolean, onShareStarted: () -> Unit, onBack, onOpenBook)`:
+     - `review` via `produceState` on `Dispatchers.Default` with `StatsUi.yearReview`;
+     - `val layer = rememberGraphicsLayer()` and `ShareCardRecorder`;
+     - share: `sharing = true`, show the snackbar `stats_share_preparing` (through `LocalAppMessages.current?.host`); then `layer.toImageBitmap().asAndroidBitmap()`, `writeSharePng` on `Dispatchers.IO`, and `context.startActivity(shareImageIntent(…))`;
+     - on any failure, the snackbar `stats_share_failed`; never log the exception;
+     - `shareNow` starts a share once the review is ready, then calls `onShareStarted`.
+     - The image holds titles and covers only.
+  6. `FolioApp`:
+     - `var shareYear by remember { mutableStateOf<Int?>(null) }`;
+     - StatsRoute's `onYear = { y, share -> if (share) shareYear = y; nav.open(Route.Year(y)) }`;
+     - when `nav.yearShown != null`: no phone bar (as for `discovering`); outer `twoPane` false; `maxWidth` null; `detail` = `YearReviewRoute(stats, year, shareNow = shareYear == year, onShareStarted = { shareYear = null }, onBack = { nav.back() }, onOpenBook = ::openStatsBook)`. The rail stays. Back pops it, as for any route.
+- **Tests:**
+  - `FolioNavTest`: `Route.Year` round-trips through the saver; `"year:abc"` and `"year:12"` are dropped; a year route is not a detail.
+  - `ShareImageTest` (Robolectric, `@GraphicsMode(NATIVE)`):
+    - a 1080 × 1920 bitmap is written to `cache/share/year-2026.png` and decodes at that size;
+    - the intent's stream URI is `content://<package>.photos/share/year-2026.png` with the read grant;
+    - `ShareCardRecorder` in a compose rule gives a 1080 × 1920 bitmap that is not one flat colour. If Robolectric can't render the layer, say so, keep the other two tests, and report the image as compiled only.
+- **Done:** the check passes; the `year-review` and `year-share-card` shots looked at. Sharing to another app is a device check for the owner: say so.
+
+**Not in these tasks** (say so if asked; each is a later slice):
+- the motion in STATS_UI § 8 beyond what the components already do;
+- re-tapping the tab to scroll to the top;
+- scrolling to the calendar after a Year column tap.
+
+**Integration order:**
+1. U0, U1 and U3 in parallel; merge U0 and U1 first.
+2. U2 (on U0 + U1), then U4. They may land before or after U3.
+3. U5, once U3 and U4 are in.
+4. U6.
+5. U7.
+6. After U7: run the full check and the screenshots once more on the merged branch, then push so CI runs the journey test on the emulator.
 
 ---
 
