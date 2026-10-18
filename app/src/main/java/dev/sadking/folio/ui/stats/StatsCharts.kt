@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.sadking.folio.R
@@ -475,10 +478,109 @@ internal fun WeekdayChart(
 }
 
 /**
- * The month grid, KOReader style: seven columns, a row per week, and in each day up to three bars,
- * one per book in the book's colour, as long as that book's time against the month's longest
- * one-book day. A fourth book and later fold into one outline-coloured bar. Listening bars are
- * hollow. Today's number sits on a primary disc. The whole cell is the tap target.
+ * One book's run of consecutive days in a calendar week row, KOReader style: columns [start] to
+ * [end] (0..6) in [lane]. [continuesBefore] and [continuesAfter]: the run goes on in the row above
+ * or below, so that end is drawn square against the edge. [listeningOnly] has one entry per column
+ * from [start]: a day with only listening for this book, drawn hollow.
+ */
+internal data class CalendarRun(
+    val bookId: String,
+    val slot: Int,
+    val start: Int,
+    val end: Int,
+    val lane: Int,
+    val continuesBefore: Boolean,
+    val continuesAfter: Boolean,
+    val listeningOnly: List<Boolean>,
+)
+
+/** A week row of the grid: its [runs], and per column how many books did not fit a lane. */
+internal data class CalendarWeek(val runs: List<CalendarRun>, val hidden: List<Int>)
+
+/**
+ * Lays [month] out in week rows of runs, at most [lanes] deep. A book read on consecutive days is
+ * one run, so it reads as one joined bar. A run that goes on from the row above keeps its lane when
+ * it can; then earlier, longer runs come first. A run with no free lane is left out and counted in
+ * [CalendarWeek.hidden] on each of its days. Pure.
+ */
+internal fun calendarWeeks(month: CalendarMonth, lanes: Int): List<CalendarWeek> {
+    val rows = (month.firstWeekday + month.days.size + 6) / 7
+    fun dayAt(index: Int) = month.days.getOrNull(index)
+    fun readOn(index: Int, bookId: String) =
+        index >= 0 && dayAt(index)?.bars?.any { it.bookId == bookId } == true
+    var lastLanes = emptyMap<String, Int>()
+    return (0 until rows).map { row ->
+        val first = row * 7 - month.firstWeekday
+        val candidates = mutableListOf<CalendarRun>()
+        val books =
+            (0 until 7).flatMap { dayAt(first + it)?.bars.orEmpty() }.distinctBy { it.bookId }
+        for (book in books) {
+            var col = 0
+            while (col < 7) {
+                if (!readOn(first + col, book.bookId)) {
+                    col++
+                    continue
+                }
+                val start = col
+                while (col + 1 < 7 && readOn(first + col + 1, book.bookId)) col++
+                candidates +=
+                    CalendarRun(
+                        book.bookId,
+                        book.slot,
+                        start,
+                        col,
+                        lane = -1,
+                        continuesBefore = start == 0 && readOn(first - 1, book.bookId),
+                        continuesAfter = col == 6 && readOn(first + 7, book.bookId),
+                        listeningOnly =
+                            (start..col).map { c ->
+                                dayAt(first + c)!!
+                                    .bars
+                                    .filter { it.bookId == book.bookId }
+                                    .all {
+                                        it.listening
+                                    }
+                            },
+                    )
+                col++
+            }
+        }
+        val taken = List(lanes) { BooleanArray(7) }
+        val hidden = IntArray(7)
+        val placed = mutableListOf<CalendarRun>()
+        candidates
+            .sortedWith(
+                compareBy<CalendarRun>(
+                    { if (it.continuesBefore && it.bookId in lastLanes) 0 else 1 },
+                    { it.start },
+                    { -(it.end - it.start) },
+                )
+            )
+            .forEach { run ->
+                val preferred = if (run.continuesBefore) lastLanes[run.bookId] else null
+                val lane =
+                    (listOfNotNull(preferred) + (0 until lanes)).firstOrNull { l ->
+                        l < lanes && (run.start..run.end).none { taken[l][it] }
+                    }
+                if (lane == null) {
+                    for (c in run.start..run.end) hidden[c]++
+                } else {
+                    for (c in run.start..run.end) taken[lane][c] = true
+                    placed += run.copy(lane = lane)
+                }
+            }
+        lastLanes = placed.filter { it.continuesAfter }.associate { it.bookId to it.lane }
+        CalendarWeek(placed.sortedBy { it.lane }, hidden.toList())
+    }
+}
+
+/**
+ * The month grid, KOReader style: seven columns, a row per week. A book read on consecutive days is
+ * one bar in the book's colour, joined across those days and on into the next row, with its title
+ * inside when it fits; up to three books stack per row ("+2" by the day number counts the rest,
+ * where it fits). Listening days are hollow. A thin line at the foot of each day is that day's
+ * total time against the month's biggest day. Today's number sits on a primary disc. The whole cell
+ * is the tap target.
  */
 @Composable
 internal fun CalendarGrid(
@@ -487,21 +589,28 @@ internal fun CalendarGrid(
     modifier: Modifier = Modifier,
     selectedDay: Int? = null,
 ) {
-    val large = LocalDensity.current.fontScale > 1.3f
-    val cellHeight = if (large) 76.dp else 54.dp
+    val density = LocalDensity.current
+    val large = density.fontScale > 1.3f
+    val lanes = if (large) 2 else 3
     val weekdays = listOf("M", "T", "W", "T", "F", "S", "S")
     val slotColors = (0 until StatsPalette.SLOTS).map { StatsPalette.book(it) }
-    val other = StatsPalette.other()
-    val surface = MaterialTheme.colorScheme.surfaceContainerLow
     val ink = MaterialTheme.colorScheme.onSurface
     val mutedInk = MaterialTheme.colorScheme.onSurfaceVariant
     val todayDisc = MaterialTheme.colorScheme.primary
     val onToday = MaterialTheme.colorScheme.onPrimary
+    val timeInk = MaterialTheme.colorScheme.primary
     val selectedFill = MaterialTheme.colorScheme.secondaryContainer
     val measurer = rememberTextMeasurer()
     val numberStyle = MaterialTheme.typography.labelMedium
-    val rows = (month.firstWeekday + month.days.size + 6) / 7
-    val max = month.maxBarSeconds.coerceAtLeast(1L)
+    val titleStyle = MaterialTheme.typography.labelSmall
+    val titles = month.books.associate { it.book.id to it.book.title }
+    val weeks = remember(month, lanes) { calendarWeeks(month, lanes) }
+    val maxDay = month.days.maxOfOrNull { it.totalSeconds }?.coerceAtLeast(1L) ?: 1L
+    val numberHeight = with(density) { measurer.measure("0", numberStyle).size.height.toDp() }
+    val titleHeight = with(density) { measurer.measure("Ag", titleStyle).size.height.toDp() }
+    val barHeight = maxOf(14.dp, titleHeight + 2.dp)
+    val laneGap = 2.dp
+    val cellHeight = 4.dp + numberHeight + 4.dp + (barHeight + laneGap) * lanes + 7.dp
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             weekdays.forEach {
@@ -514,104 +623,158 @@ internal fun CalendarGrid(
                 )
             }
         }
-        repeat(rows) { row ->
-            Row(Modifier.fillMaxWidth().height(cellHeight)) {
-                repeat(7) { col ->
-                    val index = row * 7 + col - month.firstWeekday
-                    val day = month.days.getOrNull(index)
-                    if (day == null) {
-                        Box(Modifier.weight(1f))
-                    } else {
+        weeks.forEachIndexed { row, week ->
+            val first = row * 7 - month.firstWeekday
+            Box(Modifier.fillMaxWidth().height(cellHeight)) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val colW = size.width / 7
+                    val inset = 2.dp.toPx()
+                    val pad = 4.dp.toPx()
+                    val barH = barHeight.toPx()
+                    val barsTop = pad + numberHeight.toPx() + 4.dp.toPx()
+                    for (col in 0 until 7) {
+                        val day = month.days.getOrNull(first + col) ?: continue
+                        val x = col * colW
+                        if (selectedDay == day.day)
+                            drawRoundRect(
+                                selectedFill,
+                                Offset(x + 1.dp.toPx(), 1.dp.toPx()),
+                                Size(colW - 2.dp.toPx(), size.height - 2.dp.toPx()),
+                                CornerRadius(12.dp.toPx()),
+                            )
                         val future = month.today != null && day.day > month.today
-                        val description =
-                            if (day.bars.isEmpty())
-                                stringResource(
-                                    R.string.stats_calendar_day_none_a11y,
-                                    day.day.toString(),
+                        val number = measurer.measure(day.day.toString(), numberStyle)
+                        if (month.today == day.day) {
+                            val r = maxOf(10.dp.toPx(), number.size.height / 2 + 2.dp.toPx())
+                            drawCircle(todayDisc, r, Offset(x + pad + r, pad + r))
+                            drawText(
+                                number,
+                                onToday,
+                                Offset(
+                                    x + pad + r - number.size.width / 2,
+                                    pad + r - number.size.height / 2,
+                                ),
+                            )
+                        } else {
+                            val color =
+                                when {
+                                    future -> mutedInk.copy(alpha = 0.38f)
+                                    day.bars.isEmpty() -> mutedInk
+                                    else -> ink
+                                }
+                            drawText(number, color, Offset(x + pad + 2.dp.toPx(), pad))
+                        }
+                        // Only where it fits beside the number; the Day sheet lists every book.
+                        val more =
+                            if (week.hidden[col] > 0)
+                                measurer.measure("+${week.hidden[col]}", titleStyle)
+                            else null
+                        val besideNumber = x + pad + 2.dp.toPx() + number.size.width + 4.dp.toPx()
+                        if (more != null && besideNumber + more.size.width <= x + colW - pad)
+                            drawText(
+                                more,
+                                mutedInk,
+                                Offset(x + colW - pad - more.size.width, pad),
+                            )
+                        if (day.totalSeconds > 0) {
+                            val w = (colW - inset * 2) * day.totalSeconds / maxDay
+                            drawRoundRect(
+                                timeInk,
+                                Offset(x + inset, size.height - pad - 3.dp.toPx()),
+                                Size(w.coerceAtLeast(3.dp.toPx()), 3.dp.toPx()),
+                                CornerRadius(1.5.dp.toPx()),
+                            )
+                        }
+                    }
+                    week.runs.forEach { run ->
+                        val color = slotColors[Math.floorMod(run.slot, StatsPalette.SLOTS)]
+                        val left = run.start * colW + if (run.continuesBefore) 0f else inset
+                        val right = (run.end + 1) * colW - if (run.continuesAfter) 0f else inset
+                        val top = barsTop + run.lane * (barH + laneGap.toPx())
+                        val round = CornerRadius(barH / 2)
+                        val square = CornerRadius.Zero
+                        val rect =
+                            RoundRect(
+                                left,
+                                top,
+                                right,
+                                top + barH,
+                                topLeftCornerRadius = if (run.continuesBefore) square else round,
+                                bottomLeftCornerRadius = if (run.continuesBefore) square else round,
+                                topRightCornerRadius = if (run.continuesAfter) square else round,
+                                bottomRightCornerRadius = if (run.continuesAfter) square else round,
+                            )
+                        val path = Path().apply { addRoundRect(rect) }
+                        // Filled where the book was read, hollow where it was only listened to.
+                        // Each stretch of reading days is one rectangle, so no seam shows
+                        // between days.
+                        clipPath(path) {
+                            var i = 0
+                            while (i < run.listeningOnly.size) {
+                                if (run.listeningOnly[i]) {
+                                    i++
+                                    continue
+                                }
+                                val from = i
+                                while (i < run.listeningOnly.size && !run.listeningOnly[i]) i++
+                                drawRect(
+                                    color,
+                                    Offset((run.start + from) * colW, top),
+                                    Size((i - from) * colW, barH),
                                 )
-                            else
-                                stringResource(
-                                    R.string.stats_calendar_day_a11y,
-                                    day.day.toString(),
-                                    durationText(day.totalSeconds),
-                                    day.bars.size,
-                                )
-                        Canvas(
-                            Modifier.weight(1f)
-                                .fillMaxHeight()
-                                .padding(1.dp)
-                                .clip(FolioSpace.tileShape)
-                                .then(
-                                    if (selectedDay == day.day) Modifier.background(selectedFill)
-                                    else Modifier
-                                )
-                                .clickable(role = Role.Button) { onDay(day) }
-                                .semantics { contentDescription = description }
-                        ) {
-                            val pad = 4.dp.toPx()
-                            val number = measurer.measure(day.day.toString(), numberStyle)
-                            // Below the number, whatever the text size, so bars never cross it.
-                            val barsTop = pad + number.size.height + 4.dp.toPx()
-                            if (month.today == day.day) {
-                                val r = maxOf(10.dp.toPx(), number.size.height / 2 + 2.dp.toPx())
-                                drawCircle(todayDisc, r, Offset(pad + r, pad + r))
-                                drawText(
-                                    number,
-                                    onToday,
-                                    Offset(
-                                        pad + r - number.size.width / 2,
-                                        pad + r - number.size.height / 2,
-                                    ),
-                                )
-                            } else {
-                                val color =
-                                    when {
-                                        future -> mutedInk.copy(alpha = 0.38f)
-                                        day.bars.isEmpty() -> mutedInk
-                                        else -> ink
-                                    }
-                                drawText(number, color, Offset(pad + 2.dp.toPx(), pad))
                             }
-                            val barH = 5.dp.toPx()
-                            val gapPx = gap.toPx()
-                            val maxW = size.width - pad * 2
-                            val shown = day.bars.sortedByDescending { it.seconds }.take(3)
-                            val rest = day.bars.sortedByDescending { it.seconds }.drop(3)
-                            shown.forEachIndexed { i, bar ->
-                                val w =
-                                    (bar.seconds.toFloat() / max * maxW)
-                                        .coerceAtLeast(6.dp.toPx())
-                                        .coerceAtMost(maxW)
-                                val top = barsTop + i * (barH + gapPx)
-                                val color = slotColors[Math.floorMod(bar.slot, StatsPalette.SLOTS)]
-                                val rect =
-                                    RoundRect(pad, top, pad + w, top + barH, CornerRadius(barH / 2))
-                                if (bar.listening)
-                                    drawPath(
-                                        Path().apply { addRoundRect(rect) },
-                                        color,
-                                        style = Stroke(1.dp.toPx()),
+                        }
+                        drawPath(path, color, style = Stroke(1.dp.toPx()))
+                        val room = (right - left - barH).toInt()
+                        val title = titles[run.bookId]
+                        if (title != null && room >= 24.dp.roundToPx()) {
+                            val text =
+                                measurer.measure(
+                                    title,
+                                    titleStyle,
+                                    overflow = TextOverflow.Ellipsis,
+                                    maxLines = 1,
+                                    constraints = Constraints(maxWidth = room),
+                                )
+                            val textInk =
+                                if (run.listeningOnly.first()) ink
+                                else if (color.luminance() > 0.4f) Color.Black.copy(alpha = 0.87f)
+                                else Color.White
+                            drawText(
+                                text,
+                                textInk,
+                                Offset(left + barH / 2, top + (barH - text.size.height) / 2),
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxSize()) {
+                    repeat(7) { col ->
+                        val day = month.days.getOrNull(first + col)
+                        if (day == null) {
+                            Box(Modifier.weight(1f))
+                        } else {
+                            val books = day.bars.distinctBy { it.bookId }.size
+                            val description =
+                                if (books == 0)
+                                    stringResource(
+                                        R.string.stats_calendar_day_none_a11y,
+                                        day.day.toString(),
                                     )
-                                else drawPath(Path().apply { addRoundRect(rect) }, color)
-                            }
-                            if (rest.isNotEmpty() && shown.size == 3) {
-                                // The fold replaces the third bar's row only when it would hide
-                                // more
-                                // than one book; otherwise the third book keeps its colour.
-                                val total = rest.sumOf { it.seconds }
-                                val w =
-                                    (total.toFloat() / max * maxW)
-                                        .coerceAtLeast(6.dp.toPx())
-                                        .coerceAtMost(maxW)
-                                val top = barsTop + 3 * (barH + gapPx)
-                                if (top + barH <= size.height - 2.dp.toPx())
-                                    drawRoundRect(
-                                        other,
-                                        Offset(pad, top),
-                                        Size(w, barH),
-                                        CornerRadius(barH / 2),
+                                else
+                                    stringResource(
+                                        R.string.stats_calendar_day_a11y,
+                                        day.day.toString(),
+                                        durationText(day.totalSeconds),
+                                        books,
                                     )
-                            }
+                            Box(
+                                Modifier.weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(FolioSpace.tileShape)
+                                    .clickable(role = Role.Button) { onDay(day) }
+                                    .semantics { contentDescription = description }
+                            )
                         }
                     }
                 }

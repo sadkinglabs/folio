@@ -294,7 +294,8 @@ class ScreenshotTest {
 
     @Test fun statsEmpty() = shoot("stats-empty") { StatsEmptyPreview() }
 
-    @Test fun statsLoading() = shoot("stats-loading") { StatsLoadingPreview() }
+    // No shot of StatsLoadingPreview: its LoadingIndicator never stops moving, so the paused
+    // looper never goes idle and the capture can hang.
 
     @Test fun statsDay() = shoot("stats-day") { StatsDayPreview() }
 
