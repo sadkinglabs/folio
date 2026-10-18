@@ -1,5 +1,6 @@
 package dev.sadking.folio
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.graphics.Rect
 import android.os.SystemClock
@@ -360,7 +361,49 @@ class ReaderHighlightTapsTest {
      * is the gesture's start; the event's time is now. No shell: a shell command can silently do
      * nothing on CI.
      */
+    /**
+     * The windows of other apps, the system's included, that sit above the app's own at ([x], [y]),
+     * described for a failure message; empty when the app's window is on top there. A heads-up
+     * notification or a system dialog there takes the touch, and injection into it is refused.
+     */
+    private fun coveringWindows(x: Int, y: Int): List<String> {
+        val automation = instrumentation.uiAutomation
+        val info = automation.serviceInfo
+        val retrieve = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        if (info.flags and retrieve == 0) {
+            info.flags = info.flags or retrieve
+            automation.serviceInfo = info
+        }
+        val bounds = Rect()
+        val covering = mutableListOf<String>()
+        for (window in automation.windows.sortedByDescending { it.layer }) {
+            window.getBoundsInScreen(bounds)
+            if (!bounds.contains(x, y)) continue
+            if (window.root?.packageName == app.packageName) break
+            covering +=
+                "${window.title} (package ${window.root?.packageName}, type ${window.type}, " +
+                    "layer ${window.layer}, $bounds)"
+        }
+        return covering
+    }
+
+    /** Waits up to 15 seconds for nothing to cover ([x], [y]); fails naming what still does. */
+    private fun awaitUncovered(x: Int, y: Int) {
+        fun look() = runCatching { coveringWindows(x, y) }.getOrDefault(emptyList())
+        val deadline = SystemClock.uptimeMillis() + 15_000
+        var covering = look()
+        while (covering.isNotEmpty() && SystemClock.uptimeMillis() < deadline) {
+            Thread.sleep(250)
+            covering = look()
+        }
+        if (covering.isNotEmpty())
+            fail("Another window covers the touch at $x,$y:\n" + covering.joinToString("\n"))
+    }
+
     private fun inject(downTime: Long, action: Int, vararg fingers: Pair<Int, Pair<Int, Int>>) {
+        // A gesture starts only where the app's window is on top.
+        if (action == MotionEvent.ACTION_DOWN)
+            fingers.firstOrNull()?.let { (_, at) -> awaitUncovered(at.first, at.second) }
         val properties =
             fingers
                 .map { (id, _) ->
@@ -400,6 +443,13 @@ class ReaderHighlightTapsTest {
             )
         try {
             instrumentation.sendPointerSync(event)
+        } catch (refused: IllegalArgumentException) {
+            val (x, y) = fingers.first().second
+            val covering = runCatching { coveringWindows(x, y) }.getOrDefault(emptyList())
+            fail(
+                "The touch at $x,$y was refused (${refused.message}). Windows above the app " +
+                    "there: ${covering.ifEmpty { listOf("none found") }.joinToString("; ")}"
+            )
         } finally {
             event.recycle()
         }

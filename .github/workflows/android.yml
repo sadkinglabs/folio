@@ -145,9 +145,12 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # The app stays installed after the run so the screenshots it saved can be copied out.
           # System "isn't responding" dialogs take focus and swallow taps and Back: keep them hidden.
+          # Heads-up notifications (the app's own foreground services post some) drop over the top
+          # of the screen and take taps meant for the app: keep them in the shade.
           # The device log goes with the test reports, so a failure can be traced afterwards.
           script: |
             adb shell settings put global hide_error_dialogs 1 || true
+            adb shell settings put global heads_up_notifications_enabled 0 || true
             adb logcat -c || true
             ./gradlew --no-daemon -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest || touch instrumentation-failed
             mkdir -p app/build/reports/androidTests && (adb logcat -d -v time > app/build/reports/androidTests/logcat.txt) || true
