@@ -387,12 +387,27 @@ class ReaderHighlightTapsTest {
         return covering
     }
 
+    /** Presses "Got it" on the system's "Viewing full screen" notice, when it is showing. */
+    private fun acknowledgeFullScreenNotice() {
+        for (window in instrumentation.uiAutomation.windows) {
+            val root = window.root ?: continue
+            if (root.packageName != "com.android.systemui") continue
+            val button =
+                root.findAccessibilityNodeInfosByText("Got it").firstOrNull { it.isClickable }
+                    ?: continue
+            button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        }
+    }
+
     /** Waits up to 15 seconds for nothing to cover ([x], [y]); fails naming what still does. */
     private fun awaitUncovered(x: Int, y: Int) {
         fun look() = runCatching { coveringWindows(x, y) }.getOrDefault(emptyList())
         val deadline = SystemClock.uptimeMillis() + 15_000
         var covering = look()
         while (covering.isNotEmpty() && SystemClock.uptimeMillis() < deadline) {
+            // Android's one-time "Viewing full screen" notice, shown when the reader first hides
+            // the system bars, stays until it is acknowledged: press its button, as a person would.
+            runCatching { acknowledgeFullScreenNotice() }
             Thread.sleep(250)
             covering = look()
         }
