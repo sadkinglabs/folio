@@ -48,22 +48,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
      * old SSH positions), after the owner's names, merges and forgets.
      */
     val directory: StateFlow<DeviceRoster> =
-        combine(
-                syncState.ereaders,
-                dao.kosyncFlow(),
-                dao.everyReading(),
-                dao.deviceProfiles(),
-            ) { ereaders, reports, snapshots, profiles ->
-                DeviceRoster(
-                    deviceSightings(
-                        ereaders.values,
-                        reports,
-                        snapshots,
-                        app.link.settings.phoneDeviceId,
-                    ),
-                    profiles,
-                )
-            }
+        deviceRosterFlow(syncState.ereaders, dao) { app.link.settings.phoneDeviceId }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, DeviceRoster.EMPTY)
 

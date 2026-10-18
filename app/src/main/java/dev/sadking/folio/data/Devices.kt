@@ -1,6 +1,8 @@
 package dev.sadking.folio.data
 
 import dev.sadking.folio.sync.EreaderSync
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 
 /**
  * The keys devices are known by, one namespace per source, so a name, a merge or a forget can point
@@ -83,6 +85,25 @@ fun deviceSightings(
             }
     return live + old
 }
+
+/**
+ * The roster every screen builds from the same sources: the e-readers that sync ([ereaders], by
+ * id), Progress sync reports, the old SSH positions, and the owner's names, merges and forgets. It
+ * emits again when any of them changes. [phoneDeviceId] is read each time the roster is built. No
+ * dispatcher is set here; callers add `flowOn`.
+ */
+fun deviceRosterFlow(
+    ereaders: Flow<Map<String, EreaderSync>>,
+    dao: LibraryDao,
+    phoneDeviceId: () -> String,
+): Flow<DeviceRoster> =
+    combine(ereaders, dao.kosyncFlow(), dao.everyReading(), dao.deviceProfiles()) {
+        all,
+        reports,
+        snapshots,
+        profiles ->
+        DeviceRoster(deviceSightings(all.values, reports, snapshots, phoneDeviceId()), profiles)
+    }
 
 /**
  * One device as Librillo shows it: the devices the owner said are the same one, under one name.
