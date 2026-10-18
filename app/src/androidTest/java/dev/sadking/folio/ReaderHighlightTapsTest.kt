@@ -678,7 +678,8 @@ class ReaderHighlightTapsTest {
     /**
      * A script giving the DOMRect of a whole word (four letters or more) fully on the page on
      * screen: the [which]th such word, counting from the page's first one, or from its last one
-     * when [which] is negative (-1 is the last). It also sets `window.__folioWord` to that word.
+     * when [which] is negative (-1 is the last). It also sets `window.__folioWord` to that word and
+     * `window.__folioWordRange` to its DOM range, so the test knows exactly which copy was pressed.
      */
     private fun visibleWord(which: Int) =
         "(function(){var vis=function(r){return r.width>0&&r.height>0&&r.left>=0&&" +
@@ -687,9 +688,49 @@ class ReaderHighlightTapsTest {
             "while((n=w.nextNode())){var re=/[A-Za-z]{4,}/g;while((m=re.exec(n.data))){" +
             "var r=document.createRange();r.setStart(n,m.index);r.setEnd(n,m.index+m[0].length);" +
             "var rects=[].slice.call(r.getClientRects());" +
-            "if(rects.length===1&&vis(rects[0]))found.push([m[0],rects[0]]);}}" +
+            "if(rects.length===1&&vis(rects[0]))found.push([m[0],rects[0],r]);}}" +
             "var i=$which<0?found.length+($which):$which;var f=found[i];if(!f)return null;" +
-            "window.__folioWord=f[0];return f[1];})()"
+            "window.__folioWord=f[0];window.__folioWordRange=f[2];return f[1];})()"
+
+    /**
+     * What the page says about saved highlight [made] against the words the test pressed
+     * (`window.__folioFirst` and `window.__folioLast`, DOM ranges): whether its stored pointers
+     * start at the first word and end at the pressed one, with at most white space between, and
+     * whether Readium draws it from exactly those pointers. The book repeats one sentence, so text
+     * alone cannot tell one copy of a word from another; these compare places in the page.
+     */
+    private fun ActivityScenario<ReaderActivity>.savedEnds(made: BookAnnotation): JSONObject =
+        json(
+            "JSON.stringify((function(){" +
+                "var item=readium.getDecorations('highlights').items.find(" +
+                "i=>i.decoration.id===${JSONObject.quote(made.id)});" +
+                "function at(p){if(!p)return null;var r=document.createRange();" +
+                "if(p.offset===undefined)r.setStartBefore(p.node);else r.setStart(p.node,p.offset);" +
+                "r.collapse(true);return r;}" +
+                "function point(n,o){var r=document.createRange();r.setStart(n,o);r.collapse(true);" +
+                "return r;}" +
+                "function between(x,y){var a=x,b=y;" +
+                "if(a.compareBoundaryPoints(Range.START_TO_START,b)>0){a=y;b=x;}" +
+                "var r=document.createRange();r.setStart(a.startContainer,a.startOffset);" +
+                "r.setEnd(b.startContainer,b.startOffset);return r.toString();}" +
+                "var s=at(FolioPositions.resolveXPointer(${JSONObject.quote(made.position)},document));" +
+                "var e=at(FolioPositions.resolveXPointer(${JSONObject.quote(made.endPosition)},document));" +
+                "var f=window.__folioFirst,l=window.__folioLast;" +
+                "if(!s||!e||!f||!l||!item)return {missing:{start:!s,end:!e,first:!f,last:!l," +
+                "drawn:!item}};" +
+                "var fs=point(f.startContainer,f.startOffset),le=point(l.endContainer,l.endOffset);" +
+                "var ds=point(item.range.startContainer,item.range.startOffset);" +
+                "var de=point(item.range.endContainer,item.range.endOffset);" +
+                "return {ordered:s.compareBoundaryPoints(Range.START_TO_START,e)<0," +
+                "startAtFirstWord:between(s,fs).trim()===''," +
+                "endAtPressedWord:between(e,le).trim()===''," +
+                "drawnFromStart:between(ds,s)===''," +
+                "drawnToEnd:between(de,e)===''," +
+                "pressedAfterFirst:fs.compareBoundaryPoints(Range.START_TO_START,le)<0," +
+                "pos0:${JSONObject.quote(made.position)},pos1:${JSONObject.quote(made.endPosition)}};" +
+                "})())"
+        )
+            as? JSONObject ?: error("No answer about the saved ends")
 
     @Test
     fun highlightFromHereRunsOverAPageTurnToAWordPressedOnTheNextPage() {
@@ -713,6 +754,8 @@ class ReaderHighlightTapsTest {
             val firstWord =
                 (scenario.json("JSON.stringify(window.__folioWord)") as? String)
                     ?: error("No first word")
+            // That copy of the word, kept: the book repeats its sentences.
+            assertEquals("true", scenario.page("window.__folioFirst=window.__folioWordRange;true"))
             val before = scrolled()
             // Long-press selects it; the menu's "Highlight from here…" keeps it as the start.
             scenario.select(at!!.first, at!!.second)
@@ -729,6 +772,20 @@ class ReaderHighlightTapsTest {
                         ".join('')"
                 ) == "\"$firstWord\""
             }
+            // Under that very copy of the word, not an earlier one with the same text.
+            assertEquals(
+                "true",
+                scenario.page(
+                    "(function(){var i=readium.getDecorations('$FROM_HERE_GROUP').items[0];" +
+                        "var f=window.__folioFirst;if(!i||!f)return false;" +
+                        "var a=document.createRange(),b=document.createRange();" +
+                        "a.setStart(f.startContainer,f.startOffset);" +
+                        "a.setEnd(i.range.startContainer,i.range.startOffset);" +
+                        "b.setStart(i.range.startContainer,i.range.startOffset);" +
+                        "b.setEnd(f.startContainer,f.startOffset);" +
+                        "return a.collapsed&&b.collapsed;})()"
+                ),
+            )
             assertTrue(phoneRows(id).isEmpty())
             // A plain tap near the right edge turns the page, as always.
             var width = 0
@@ -754,6 +811,7 @@ class ReaderHighlightTapsTest {
             val lastWord =
                 (scenario.json("JSON.stringify(window.__folioWord)") as? String)
                     ?: error("No last word")
+            assertEquals("true", scenario.page("window.__folioLast=window.__folioWordRange;true"))
             // The press is tried again only when no selection menu opened: a press that lands
             // before the page takes touches is lost, as in select().
             var presses = 0
@@ -822,6 +880,18 @@ class ReaderHighlightTapsTest {
                 ) as? JSONObject ?: error("No answer about the drawn highlight")
             assertTrue(pages.toString(), pages.getBoolean("before"))
             assertTrue(pages.toString(), pages.getBoolean("here"))
+            // The text checks above pass for any copy of the repeated sentence. The saved pointers
+            // must start at the very word chosen first and end at the very word pressed on this
+            // page, and Readium must draw it from exactly those pointers, not an earlier copy.
+            val ends = scenario.savedEnds(made)
+            val where = "$ends\n$pages"
+            assertTrue(where, !ends.has("missing"))
+            assertTrue(where, ends.getBoolean("pressedAfterFirst"))
+            assertTrue(where, ends.getBoolean("ordered"))
+            assertTrue(where, ends.getBoolean("startAtFirstWord"))
+            assertTrue(where, ends.getBoolean("endAtPressedWord"))
+            assertTrue(where, ends.getBoolean("drawnFromStart"))
+            assertTrue(where, ends.getBoolean("drawnToEnd"))
         }
     }
 }

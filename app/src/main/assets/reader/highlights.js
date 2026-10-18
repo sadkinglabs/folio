@@ -1,7 +1,7 @@
 /* Folio highlights: the selected passage as KOReader pointers, and stored highlights placed as
    Readium text quotes. Needs positions.js. No Android interfaces, credentials or network access. */
 (function () {
-  // Characters of context kept on each side, so Readium finds the right copy of a repeated phrase.
+  // The fewest characters of context kept on each side; more when the passage repeats (see quote).
   const CONTEXT = 32;
   function selector(element) {
     const parts = [];
@@ -14,7 +14,12 @@
     return 'html > ' + parts.join(' > ');
   }
   // The range as Readium anchors a decoration: the smallest element holding it, and the text with
-  // a little context, all taken from that element's text.
+  // enough context, all taken from that element's text.
+  //
+  // Readium draws the first copy of the text whose context matches best. When the same words, with
+  // the same CONTEXT characters around them, come more than once in the element (a repeated line or
+  // refrain), every copy matches as well and the first one is drawn, which may be pages before the
+  // highlight. So the context grows until this copy is the only one with it.
   function quote(range) {
     let root = range.commonAncestorContainer;
     if (root.nodeType !== Node.ELEMENT_NODE) root = root.parentElement;
@@ -28,14 +33,16 @@
     const end = start + range.toString().length;
     const highlight = all.slice(start, end);
     if (!highlight.trim()) return null;
-    return {
-      selector: selector(root),
-      text: {
-        before: all.slice(Math.max(0, start - CONTEXT), start),
-        highlight,
-        after: all.slice(end, end + CONTEXT)
-      }
-    };
+    let context = CONTEXT, before, after;
+    for (;;) {
+      before = all.slice(Math.max(0, start - context), start);
+      after = all.slice(end, end + context);
+      const whole = before + highlight + after;
+      // Unique once it runs from the element's first character to its last, at the latest.
+      if (all.indexOf(whole) === all.lastIndexOf(whole)) break;
+      context *= 2;
+    }
+    return {selector: selector(root), text: {before, highlight, after}};
   }
   function boundary(pointer) {
     if (typeof pointer !== 'string' || !pointer) return null;
