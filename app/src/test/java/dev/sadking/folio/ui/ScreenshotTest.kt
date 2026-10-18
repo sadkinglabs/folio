@@ -250,6 +250,10 @@ class ScreenshotTest {
     fun readerHighlightColour() =
         shoot("reader-highlight-colour") { ReaderHighlightColourPreview() }
 
+    @Test
+    fun readerHighlightFromHere() =
+        shoot("reader-highlight-from-here") { HighlightFromHereBarPreview() }
+
     @Test fun readerDevices() = shoot("reader-devices") { ReaderDevicesPreview() }
 
     @Test fun readerDevicesEmpty() = shoot("reader-devices-empty") { ReaderDevicesEmptyPreview() }

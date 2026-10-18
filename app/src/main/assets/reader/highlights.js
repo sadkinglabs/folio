@@ -57,7 +57,66 @@
     return outer.compareBoundaryPoints(Range.START_TO_START, inner) <= 0 &&
       outer.compareBoundaryPoints(Range.END_TO_END, inner) >= 0;
   }
+  // A DOM range collapsed at one KOReader pointer, or null when it is not in this page.
+  function point(pointer) {
+    const found = boundary(pointer);
+    if (!found) return null;
+    const result = document.createRange();
+    if (found.offset === undefined) result.setStartBefore(found.node);
+    else result.setStart(found.node, found.offset);
+    result.collapse(true);
+    return result;
+  }
+  // Whether [element] starts a line of its own: a paragraph, heading, list item or the like.
+  function block(element) {
+    const display = getComputedStyle(element).display;
+    return display !== 'inline' && display !== 'inline-block' && display !== 'contents';
+  }
+  // The range's text as the page shows it: a line break between paragraphs, like a selection's.
+  function textOf(found) {
+    const walker = document.createTreeWalker(found.commonAncestorContainer.nodeType === Node.TEXT_NODE ?
+      found.commonAncestorContainer.parentNode : found.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+    let text = '', last = null, node;
+    while ((node = walker.nextNode())) {
+      if (!found.intersectsNode(node)) continue;
+      const from = node === found.startContainer ? found.startOffset : 0;
+      const to = node === found.endContainer ? found.endOffset : node.data.length;
+      if (from >= to) continue;
+      let owner = node.parentElement;
+      while (owner && owner !== document.body && !block(owner)) owner = owner.parentElement;
+      if (last && owner !== last) text += '\n';
+      last = owner;
+      text += node.data.slice(from, to);
+    }
+    return text.trim();
+  }
   window.FolioHighlights = {
+    // Which of two KOReader pointers in this page comes first: -1 when [a] is before [b], 0 when
+    // they are the same place, 1 when after; null when either is not in this page. Used by
+    // "Highlight from here…" to order the two ends the owner picked.
+    compare(a, b) {
+      const first = point(a), second = point(b);
+      if (!first || !second) return null;
+      return Math.sign(first.compareBoundaryPoints(Range.START_TO_START, second));
+    },
+    // The passage from KOReader pointer [pos0] to [pos1] in this page, the way selection()
+    // reports a selected one, or null when it is not in this page. [items] as for selection().
+    passage(pos0, pos1, items) {
+      const found = range(pos0, pos1);
+      if (!found) return null;
+      const text = textOf(found);
+      if (!text) return null;
+      const inside = [];
+      for (const item of items || []) {
+        try {
+          const other = range(item.pos0, item.pos1);
+          if (other && contains(other, found)) inside.push(item.id);
+        } catch (e) {
+          // One bad pointer must not stop the others.
+        }
+      }
+      return {pos0, pos1, text, inside};
+    },
     // The selected passage in this page, [index] being its KOReader DocFragment, or null. [items]
     // are this chapter's highlights ({id, pos0, pos1}); `inside` lists the ones that hold the
     // whole selection, so selecting a highlighted passage opens it instead of adding another.
@@ -97,26 +156,6 @@
       let path = location.pathname;
       try { path = decodeURIComponent(path); } catch (e) {}
       return {path, placed};
-    }
-  };
-
-  // Selecting across pages. A chapter is one document laid out in columns, one page per screen,
-  // so a selection can run on into the next page of the same chapter: the reader scrolls to it and
-  // the selection stays. The next chapter is another document; a selection cannot run into it.
-  window.FolioSelection = {
-    // Whether text is selected, and whether this chapter has a page before (earlier) and after
-    // (later) the one on screen, in reading order: a right-to-left book scrolls the other way, so
-    // only the distance scrolled counts.
-    state() {
-      const selection = window.getSelection();
-      const selected = !!selection && selection.rangeCount > 0 && !selection.isCollapsed;
-      const element = document.scrollingElement || document.documentElement;
-      const scrolled = Math.abs(element.scrollLeft);
-      return {
-        selected,
-        earlier: scrolled > 1,
-        later: scrolled + innerWidth < element.scrollWidth - 1
-      };
     }
   };
 })();

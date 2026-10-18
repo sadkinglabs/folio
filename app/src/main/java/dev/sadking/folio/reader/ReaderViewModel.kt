@@ -893,13 +893,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Saves a highlight made on the phone in [colour] (the last one picked when null), or a note
      * when [note] has text. It goes to the e-reader at the next sync. Picking a colour makes it the
-     * one Highlight uses next.
+     * one Highlight uses next. [onSaved] gets the new row's id once it is stored, [onFailed] runs
+     * when it could not be.
      */
     fun addHighlight(
         passage: SelectedPassage,
         note: String,
         chapter: String,
         colour: HighlightColour? = null,
+        onSaved: (String) -> Unit = {},
+        onFailed: () -> Unit = {},
     ) {
         val current = book ?: return
         if (colour != null && colour != highlightColour) {
@@ -909,30 +912,34 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val look = colour ?: highlightColour
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val datetime = annotationDatetime(LocalDateTime.now())
-                    val plainId = annotationId(PHONE_ANNOTATION_DEVICE, datetime, passage.pos0)
-                    dao.annotation(
-                        phoneAnnotation(
-                            current.id,
-                            passage,
-                            note,
-                            chapter,
-                            datetime,
-                            sameStartTaken = dao.annotationById(plainId) != null,
-                            colour = look,
-                        )
-                    )
-                }
+                val id =
+                    withContext(Dispatchers.IO) {
+                        val datetime = annotationDatetime(LocalDateTime.now())
+                        val plainId = annotationId(PHONE_ANNOTATION_DEVICE, datetime, passage.pos0)
+                        val row =
+                            phoneAnnotation(
+                                current.id,
+                                passage,
+                                note,
+                                chapter,
+                                datetime,
+                                sameStartTaken = dao.annotationById(plainId) != null,
+                                colour = look,
+                            )
+                        dao.annotation(row)
+                        row.id
+                    }
                 message =
                     app.getString(
                         if (note.isBlank()) R.string.reader_highlight_saved
                         else R.string.reader_highlight_note_saved
                     )
+                onSaved(id)
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (_: Exception) {
                 message = app.getString(R.string.reader_highlight_save_failed)
+                onFailed()
             }
         }
     }

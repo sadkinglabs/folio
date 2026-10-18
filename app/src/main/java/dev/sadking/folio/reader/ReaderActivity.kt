@@ -13,9 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.ActionMode
-import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -80,8 +78,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
@@ -98,7 +94,6 @@ import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
-import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
@@ -158,20 +153,19 @@ class ReaderActivity : FragmentActivity() {
     }
 
     /**
-     * The menu over selected text: Highlight, Add note, Define and Copy. It replaces the WebView's
-     * own menu, so Copy is offered here too.
+     * The menu over selected text: Highlight, Colour…, Add note, Define, Copy and Highlight from
+     * here…. It replaces the WebView's own menu, so Copy is offered here too. While Highlight from
+     * here… waits for its end, a new selection opens no menu: it is the end (see [endHere]).
      */
     private val selectionActions =
         object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                SELECTION_MENU.forEachIndexed { order, (id, label) ->
+                selectionMode = mode
+                val ending = fromHere.active
+                selectionMenu(ending).forEachIndexed { order, (id, label) ->
                     menu.add(Menu.NONE, id, order, label)
                 }
-                selectionMode = mode
-                // The page opens this menu for selected text: that is its word that text is
-                // selected, until its next answer.
-                selectedOnPage = true
-                watchSelection()
+                if (ending) endHere(mode)
                 return true
             }
 
@@ -184,8 +178,6 @@ class ReaderActivity : FragmentActivity() {
             }
 
             override fun onDestroyActionMode(mode: ActionMode) {
-                // The watch goes on while text is selected: the page may close its menu while a
-                // handle is dragged.
                 if (selectionMode === mode) selectionMode = null
             }
         }
@@ -198,42 +190,16 @@ class ReaderActivity : FragmentActivity() {
         get() = selectionMode?.menu
 
     /**
-     * Asks the page whether text is selected, while a finger is down on the reader's window, the
-     * selection menu is open or text is selected; see [watchSelection].
+     * Highlight from here…: its start while it waits for the end; see ReaderHighlightFromHere.kt.
      */
-    private var selectionWatch: Job? = null
+    private val fromHere = HighlightFromHere()
 
-    /** Whether the page last said text is selected; false while it is not being asked. */
-    private var selectedOnPage = false
+    /** Whether Highlight from here… is waiting for its end; read by the instrumented test. */
+    internal val highlightingFromHere: Boolean
+        get() = fromHere.active
 
-    /** True between a touch's first finger down and its last finger up. */
-    private var touching = false
-
-    /** The other hand's taps and slides while text is selected; see ReaderSelectionTurn.kt. */
-    private val selectionTaps by lazy {
-        val config = ViewConfiguration.get(this)
-        SelectionTaps(
-            slop = config.scaledTouchSlop.toFloat(),
-            swipe =
-                maxOf(
-                    config.scaledPagingTouchSlop.toFloat(),
-                    SELECTION_SWIPE_DP * resources.displayMetrics.density,
-                ),
-        )
-    }
-
-    /** Copies of the touch [selectionTaps] holds back from the page, oldest first. */
-    private val heldTouches = mutableListOf<MotionEvent>()
-
-    /** Gives a held touch that stays down to the page; see [SelectionTaps.expire]. */
-    private val expireHeldTouch = Runnable {
-        val touch = selectionTaps.expire(SystemClock.uptimeMillis()) ?: return@Runnable
-        touch.note?.let(tapTrace::add)
-        replayHeldTouches()
-    }
-
-    /** Turns under a selection, one at a time, so each sees the page the last one left. */
-    private val selectionTurns = Mutex()
+    /** The tint of the start's underline while Highlight from here… waits, from the theme. */
+    private var fromHereTint = android.graphics.Color.YELLOW
 
     /**
      * A tap on a highlight opens its sheet instead of toggling the controls. Readium calls this on
@@ -286,6 +252,7 @@ class ReaderActivity : FragmentActivity() {
     override fun onUserInteraction() {
         super.onUserInteraction()
         interactions++
+        fromHere.touched()
     }
 
     /** Follows edge slides for warmth and brightness; see ReaderEdgeSwipe.kt. */
@@ -307,7 +274,7 @@ class ReaderActivity : FragmentActivity() {
     private var edgeSliding by mutableStateOf(false)
 
     /**
-     * Edge slides work over a page with nothing on top and no text being selected (a selection's
+     * Edge slides work over a page with nothing on top and no selection menu open (a selection's
      * handles may be dragged to the edge).
      */
     private fun edgeSwipesOn() =
@@ -315,25 +282,13 @@ class ReaderActivity : FragmentActivity() {
             navigator != null &&
             !panelOpen &&
             !closing &&
-            selectionMode == null &&
-            !selecting
+            selectionMode == null
 
     /**
      * Every touch on the reader's window passes here first, so an edge slide can be told from a
      * tap, a page swipe or a selection before the page acts on it. See [EdgeSwipeTracker].
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // A long-press can become a drag before the selection menu exists: watch the selection
-        // from the first touch. The watch stops itself once no finger is down here and nothing
-        // is selected.
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                touching = true
-                if (selectionWatch?.isActive != true) watchSelection()
-            }
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> touching = false
-        }
         val step =
             edgeSwipe.onTouch(
                 ev.actionMasked,
@@ -355,7 +310,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val side = edgeSwipe.side
         when (step) {
-            EdgeStep.PASS -> return toPage(ev)
+            EdgeStep.PASS -> return super.dispatchTouchEvent(ev)
             EdgeStep.CLAIM -> {
                 // The page and the controls saw this touch start: end it there as cancelled.
                 val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
@@ -380,135 +335,6 @@ class ReaderActivity : FragmentActivity() {
             }
         }
         return true
-    }
-
-    /**
-     * Hands [ev] to the page, except the other hand's touches while text is selected: those are
-     * held back until [SelectionTaps] knows whether they turn the page. A turn never reaches the
-     * page, so the held finger's drag goes on undisturbed; anything else is given to the page.
-     */
-    private fun toPage(ev: MotionEvent): Boolean {
-        val count = ev.pointerCount
-        val touch =
-            selectionTaps.onTouch(
-                ev.actionMasked,
-                ev.actionIndex,
-                IntArray(count) { ev.getPointerId(it) },
-                FloatArray(count) { ev.getX(it) },
-                FloatArray(count) { ev.getY(it) },
-                ev.eventTime,
-                turnRules(),
-                epubNavigator != null && !model.scrolling && selecting,
-            )
-        touch.note?.let(tapTrace::add)
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-            window.decorView.removeCallbacks(expireHeldTouch)
-            dropHeldTouches()
-        }
-        if (touch.turn != 0) turnUnderSelection(forward = touch.turn > 0)
-        return when (val page = touch.page) {
-            PageTouch.Whole -> super.dispatchTouchEvent(ev)
-            PageTouch.Withheld -> {
-                dropHeldTouches()
-                true
-            }
-            PageTouch.Held -> {
-                heldTouches += MotionEvent.obtain(ev)
-                if (ev.actionMasked == MotionEvent.ACTION_DOWN)
-                    window.decorView.postDelayed(expireHeldTouch, SELECTION_TAP_MS + 1)
-                true
-            }
-            PageTouch.Replay -> {
-                replayHeldTouches()
-                super.dispatchTouchEvent(ev)
-            }
-            is PageTouch.Only -> {
-                val trimmed = ev.only(page)
-                try {
-                    super.dispatchTouchEvent(trimmed)
-                } finally {
-                    trimmed.recycle()
-                }
-            }
-        }
-    }
-
-    /** Where the page is in the window, and how its taps and slides turn. */
-    private fun turnRules(): TurnRules {
-        val view = navigator?.publicationView
-        val at = IntArray(2)
-        view?.getLocationInWindow(at)
-        val width = view?.width?.takeIf { it > 0 } ?: window.decorView.width
-        val comfort = model.comfort
-        return TurnRules(
-            left = if (view != null) at[0].toFloat() else 0f,
-            width = width.toFloat(),
-            zones = comfort.tapZones,
-            leftHanded = comfort.leftHanded,
-            rtl = navigator?.overflow?.value?.readingProgression == ReadingProgression.RTL,
-        )
-    }
-
-    /** Gives the page the touch held back so far, as it came. */
-    private fun replayHeldTouches() {
-        val replay = heldTouches.toList()
-        heldTouches.clear()
-        for (event in replay) {
-            try {
-                super.dispatchTouchEvent(event)
-            } finally {
-                event.recycle()
-            }
-        }
-    }
-
-    /** Forgets the touch held back so far: the page never sees it. */
-    private fun dropHeldTouches() {
-        heldTouches.forEach(MotionEvent::recycle)
-        heldTouches.clear()
-    }
-
-    /**
-     * Turns the page [forward] (or back) under the selection when the chapter has a page there;
-     * else a short buzz, and the page stays. When the selection is already gone, the page turns as
-     * a plain tap would. Waits for the turn to show, so a quick further tap turns on from the new
-     * page.
-     */
-    private fun turnUnderSelection(forward: Boolean) {
-        val nav = epubNavigator ?: return
-        lifecycleScope.launch {
-            selectionTurns.withLock {
-                val raw =
-                    try {
-                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                            nav.bridge("JSON.stringify(FolioSelection.state());")
-                        }
-                    } catch (cancel: CancellationException) {
-                        throw cancel
-                    } catch (_: Exception) {
-                        null
-                    }
-                val state = parseSelectionPage(raw)
-                val way = if (forward) "next page" else "previous page"
-                val animated: Boolean
-                if (state != null && !state.selected) {
-                    tapTrace.add("turn: nothing selected any more, plain $way")
-                    animated = model.comfort.pageAnimation
-                } else if (state?.canTurn(forward) != true) {
-                    tapTrace.add("turn under the selection: no page there in this chapter")
-                    window.decorView.performHapticFeedback(HapticFeedbackConstants.REJECT)
-                    return@withLock
-                } else {
-                    tapTrace.add("turn under the selection: $way")
-                    animated = false
-                }
-                val before = nav.currentLocator.value
-                if (forward) nav.goForward(animated) else nav.goBackward(animated)
-                withTimeoutOrNull(SELECTION_TURN_SETTLE_MS) {
-                    nav.currentLocator.first { it != before }
-                }
-            }
-        }
     }
 
     override fun onResume() {
@@ -636,6 +462,7 @@ class ReaderActivity : FragmentActivity() {
     private fun closeReader() {
         if (closing) return
         closing = true
+        fromHere.cancel()
         lifecycleScope.launch {
             try {
                 savePosition()
@@ -742,6 +569,7 @@ class ReaderActivity : FragmentActivity() {
             lifecycleScope.launch { showHighlights(epub) }
             lifecycleScope.launch { showSearchHit(epub) }
             lifecycleScope.launch { measurePageSpan(epub) }
+            lifecycleScope.launch { showFromHereMark(epub) }
         }
         // The sentence being read: highlight it and keep its page in view. The page turn saves the
         // place through the usual debounced save. On the activity's scope, so WebView calls stay
@@ -1027,15 +855,19 @@ class ReaderActivity : FragmentActivity() {
             val href = selection.locator.href.toString()
             val index = docFragmentIndex(href, model.spine)
             val passage = index?.let {
-                val here =
-                    placeableHighlights(model.highlights, model.spine.size)
-                        .filter { placed -> placed.chapter == it }
-                        .map { placed -> placed.annotation }
-                val raw = withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(selectionCall(it, here)) }
+                val raw =
+                    withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                        nav.bridge(selectionCall(it, chapterHighlights(it)))
+                    }
                 parseSelection(raw, it, model.spine.size)
             }
-            if (passage == null) {
+            if (index == null || passage == null) {
                 navigationError = getString(R.string.reader_highlight_failed)
+                return@launch
+            }
+            if (itemId == SELECTION_FROM_HERE) {
+                // The selection goes; its underline and the bar say where the highlight starts.
+                fromHere.begin(HighlightEnd(index, passage.pos0, passage.pos1))
                 return@launch
             }
             val existing = model.highlightFor(passage)
@@ -1080,45 +912,180 @@ class ReaderActivity : FragmentActivity() {
         shownHighlightId = id
     }
 
+    /** This chapter's highlights (KOReader index [index]), as the page script takes them. */
+    private fun chapterHighlights(index: Int): List<BookAnnotation> =
+        placeableHighlights(model.highlights, model.spine.size)
+            .filter { it.chapter == index }
+            .map { it.annotation }
+
     /**
-     * Asks the page every [SELECTION_POLL_MS] whether text is selected, so the other hand's tap or
-     * slide can turn the page under it (see [toPage] and ReaderSelectionTurn.kt). Runs while a
-     * finger is down on the reader's window, the selection menu is open, or text is selected: the
-     * finger holding a selection may be on a handle, which is a window of its own, so the reader
-     * may see no finger down at all. Internal for tests: a selection made by script opens no menu.
+     * A press and hold while Highlight from here… waits: the word the page selected is the end. No
+     * menu opens for it, so nothing else (Define, Copy) can be chosen by accident. In the start's
+     * chapter, the highlight from start to end is saved like any other and its sheet opens; in
+     * another chapter, a message says why not and the mode waits on. The selection is cleared
+     * either way.
      */
-    internal fun watchSelection() {
-        selectionWatch?.cancel()
+    private fun endHere(mode: ActionMode) {
         val nav = epubNavigator ?: return
-        selectionWatch = lifecycleScope.launch {
-            while (isActive) {
-                selectedOnPage =
-                    if (model.scrolling) false
-                    else {
-                        val raw =
-                            try {
-                                withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                                    nav.bridge("JSON.stringify(FolioSelection.state());")
-                                }
-                            } catch (cancel: CancellationException) {
-                                throw cancel
-                            } catch (_: Exception) {
-                                null
-                            }
-                        parseSelectionPage(raw)?.selected == true
+        lifecycleScope.launch {
+            var open: (() -> Unit)? = null
+            var picked: FromHereEnd.Here? = null
+            try {
+                val selection = nav.currentSelection() ?: return@launch
+                val href = selection.locator.href.toString()
+                val index = docFragmentIndex(href, model.spine)
+                val passage = index?.let {
+                    val raw =
+                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                            nav.bridge(selectionCall(it, emptyList()))
+                        }
+                    parseSelection(raw, it, model.spine.size)
+                }
+                if (index == null || passage == null) {
+                    navigationError = getString(R.string.reader_highlight_failed)
+                    return@launch
+                }
+                when (val end = fromHere.end(HighlightEnd(index, passage.pos0, passage.pos1))) {
+                    null -> return@launch
+                    FromHereEnd.OtherChapter -> {
+                        navigationError = getString(R.string.reader_from_here_other_chapter)
+                        return@launch
                     }
-                if (!touching && selectionMode == null && !selectedOnPage) break
-                delay(SELECTION_POLL_MS)
+                    is FromHereEnd.Here -> picked = end
+                }
+                open = saveFromHere(nav, picked, href)
+            } catch (cancel: CancellationException) {
+                if (picked != null && fromHere.saving) fromHere.failed()
+                throw cancel
+            } catch (_: Exception) {
+                if (picked != null && fromHere.saving) fromHere.failed()
+                navigationError = getString(R.string.reader_highlight_failed)
+            } finally {
+                nav.clearSelection()
+                mode.finish()
+                open?.let { action -> window.decorView.post { action() } }
             }
         }
     }
 
     /**
-     * Whether text is selected: from when the page says so (or opens its selection menu) until it
-     * says it is not. Read by the instrumented test.
+     * Saves the highlight between the two ends of [end], in the chapter at [href], ordered by the
+     * page, the way Highlight saves a selection. Returns what to open once the selection is
+     * cleared: the highlight already there for the same passage, or nothing (a new one's sheet
+     * opens once it is stored and listed). Ends the mode, or sets it waiting again on failure.
      */
-    internal val selecting: Boolean
-        get() = selectedOnPage
+    private suspend fun saveFromHere(
+        nav: EpubNavigatorFragment,
+        end: FromHereEnd.Here,
+        href: String,
+    ): (() -> Unit)? {
+        val index = end.start.chapter
+        val order =
+            parseOrder(
+                withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(orderCall(end.start, end.end)) }
+            )
+        val span = order?.let { (starts, ends) -> highlightSpan(end.start, end.end, starts, ends) }
+        val passage = span?.let {
+            val call = passageCall(it, chapterHighlights(index))
+            parseSelection(
+                withTimeoutOrNull(BRIDGE_WAIT_MS) { nav.bridge(call) },
+                index,
+                model.spine.size,
+            )
+        }
+        if (passage == null) {
+            fromHere.failed()
+            navigationError = getString(R.string.reader_highlight_failed)
+            return null
+        }
+        val existing = model.highlightFor(passage)
+        if (existing != null) {
+            fromHere.finished()
+            return { openHighlight(existing.id) }
+        }
+        val chapter = model.publication?.let { chapterTitle(it, href) }.orEmpty()
+        model.addHighlight(
+            passage,
+            "",
+            chapter,
+            onSaved = { id ->
+                fromHere.finished()
+                lifecycleScope.launch {
+                    // The sheet shows the listed row: wait until the new one is listed.
+                    withTimeoutOrNull(CHAPTER_WAIT_MS) {
+                        snapshotFlow { model.highlights.any { it.id == id } }.first { it }
+                    } ?: return@launch
+                    openHighlight(id)
+                }
+            },
+            onFailed = fromHere::failed,
+        )
+        return null
+    }
+
+    /**
+     * Underlines where Highlight from here… starts while it waits, and removes the underline when
+     * it ends. Readium keeps a decoration with its chapter, so it is there again after page turns.
+     */
+    private suspend fun showFromHereMark(epub: EpubNavigatorFragment) {
+        var drawn = false
+        snapshotFlow { fromHere.start }
+            .collectLatest { start ->
+                if (start == null && !drawn) return@collectLatest
+                val mark = start?.let { fromHereMark(epub, it) }
+                withTimeoutOrNull(HIGHLIGHT_WAIT_MS) {
+                    epub.applyDecorations(
+                        listOfNotNull(
+                            mark?.let {
+                                Decoration(
+                                    FROM_HERE_MARK_ID,
+                                    it,
+                                    Decoration.Style.Underline(tint = fromHereTint),
+                                )
+                            }
+                        ),
+                        FROM_HERE_GROUP,
+                    )
+                }
+                drawn = mark != null
+            }
+    }
+
+    /** Where [start] sits in the page on screen, as a locator; null when it is not there. */
+    private suspend fun fromHereMark(epub: EpubNavigatorFragment, start: HighlightEnd): Locator? {
+        val path = resourcePath(epub.currentLocator.value.href.toString())
+        if (model.spine.indexOf(path) != start.chapter) return null
+        val placement =
+            parsePlacement(withTimeoutOrNull(BRIDGE_WAIT_MS) { epub.bridge(markCall(start)) })
+        if (placement == null || !samePage(placement.path, path)) return null
+        return placement.quotes[FROM_HERE_MARK_ID]?.let { quoteLocator(path, it) }
+    }
+
+    /**
+     * The locator Readium draws [quote] at, in the chapter at [path]; null when not in the book.
+     */
+    private fun quoteLocator(path: String, quote: HighlightQuote): Locator? {
+        val link =
+            model.publication?.readingOrder?.firstOrNull {
+                resourcePath(it.url().toString()) == path
+            } ?: return null
+        return Locator(
+            link.url(),
+            link.mediaType ?: MediaType.XHTML,
+            locations = Locator.Locations(otherLocations = mapOf("cssSelector" to quote.selector)),
+            text =
+                Locator.Text(
+                    before = quote.before,
+                    highlight = quote.highlight,
+                    after = quote.after,
+                ),
+        )
+    }
+
+    /** Ends Highlight from here… without a highlight; its underline goes too. */
+    private fun cancelFromHere() {
+        fromHere.cancel()
+    }
 
     private fun copy(text: String) {
         getSystemService(ClipboardManager::class.java)
@@ -1150,28 +1117,14 @@ class ReaderActivity : FragmentActivity() {
                         .map { it.annotation }
                 if (index >= 0 && wanted.isNotEmpty()) {
                     val quotes = placeChapter(epub, path, wanted)
-                    val link =
-                        model.publication?.readingOrder?.firstOrNull {
+                    val linked =
+                        model.publication?.readingOrder?.any {
                             resourcePath(it.url().toString()) == path
-                        }
-                    if (quotes != null && link != null) {
+                        } == true
+                    if (quotes != null && linked) {
                         tried += wanted.map { it.id }
                         quotes.forEach { (id, quote) ->
-                            placed[id] =
-                                Locator(
-                                    link.url(),
-                                    link.mediaType ?: MediaType.XHTML,
-                                    locations =
-                                        Locator.Locations(
-                                            otherLocations = mapOf("cssSelector" to quote.selector)
-                                        ),
-                                    text =
-                                        Locator.Text(
-                                            before = quote.before,
-                                            highlight = quote.highlight,
-                                            after = quote.after,
-                                        ),
-                                )
+                            quoteLocator(path, quote)?.let { placed[id] = it }
                         }
                     }
                 }
@@ -1354,6 +1307,7 @@ class ReaderActivity : FragmentActivity() {
         }
         val density = LocalDensity.current
         var barHeight by remember { mutableStateOf(0.dp) }
+        var topBarHeight by remember { mutableStateOf(0.dp) }
         val pageDark = model.pageDark(dark)
         val listen = model.listen
         // The natural voice cannot keep up: its sheet replaces any other until answered.
@@ -1408,7 +1362,23 @@ class ReaderActivity : FragmentActivity() {
             onUndo = { model.undoBookmarkRemoval() },
             onSettled = model::settleBookmarkRemoval,
         )
-        BackHandler { if (panel != null) closePanel() else closeReader() }
+        BackHandler {
+            when {
+                panel != null -> closePanel()
+                fromHere.active -> cancelFromHere()
+                else -> closeReader()
+            }
+        }
+        // Highlight from here… stops by itself after a while without a touch.
+        LaunchedEffect(fromHere.active) {
+            while (fromHere.active) {
+                delay(fromHere.untilIdle().coerceAtLeast(FROM_HERE_CHECK_MS))
+                if (fromHere.idle()) {
+                    cancelFromHere()
+                    navigationError = getString(R.string.reader_from_here_stopped)
+                }
+            }
+        }
         LaunchedEffect(model.message, navigationError) {
             val text = navigationError ?: model.message
             if (text != null) {
@@ -1479,9 +1449,11 @@ class ReaderActivity : FragmentActivity() {
         }
         val highlight = MaterialTheme.colorScheme.primary.toArgb()
         val searchHighlight = MaterialTheme.colorScheme.tertiary.toArgb()
+        val markTint = swatchTint(model.highlightColour)
         SideEffect {
             listenTint = highlight
             searchTint = searchHighlight
+            fromHereTint = markTint
             // While listening, volume keys set the speech volume, even in the pause between
             // sentences when nothing is playing and Android would otherwise pick the ringer.
             volumeControlStream =
@@ -1548,6 +1520,10 @@ class ReaderActivity : FragmentActivity() {
                         ),
                     onBack = ::closeReader,
                     onPanel = { panel = it },
+                    modifier =
+                        Modifier.onSizeChanged {
+                            topBarHeight = with(density) { it.height.toDp() }
+                        },
                     onListen = if (model.kind == ReaderKind.EPUB) ::startListening else null,
                     bookmarked = pageBookmarked,
                     onBookmark = model::toggleBookmark,
@@ -1643,6 +1619,25 @@ class ReaderActivity : FragmentActivity() {
                 )
             }
             SnackbarHost(snackbar, floating)
+            // Under the top bar while it shows, so the bottom stays free for the page buttons, the
+            // player and messages.
+            if (fromHere.active)
+                HighlightFromHereBar(
+                    onCancel = ::cancelFromHere,
+                    Modifier.align(Alignment.TopCenter)
+                        .windowInsetsPadding(
+                            if (showBars) WindowInsets(0)
+                            else
+                                WindowInsets.statusBarsIgnoringVisibility.union(
+                                    WindowInsets.displayCutout.only(WindowInsetsSides.Top)
+                                )
+                        )
+                        .padding(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = if (showBars) topBarHeight + 8.dp else 8.dp,
+                        ),
+                )
             // The level while sliding along an edge, then a moment after.
             var levelShown by remember { mutableStateOf(false) }
             LaunchedEffect(edgeSliding) {
@@ -2057,6 +2052,8 @@ class ReaderActivity : FragmentActivity() {
         /** How long a page stays before it is measured for bookmarks. */
         private const val PAGE_SPAN_DELAY_MS = 300L
         private const val SEARCH_DECORATION_ID = "search-hit"
+        /** How often, at least, Highlight from here… checks whether it has gone idle. */
+        private const val FROM_HERE_CHECK_MS = 1_000L
         /** The narrowest window that offers two pages side by side. */
         private const val TWO_PAGES_MIN_WIDTH_DP = 600
         /** The Devices row for the SSH snapshot, which has no Folio Link device ID. */
@@ -2086,57 +2083,3 @@ private fun flattenContents(links: List<Link>, depth: Int = 0): List<Pair<Link, 
     links.flatMap {
         listOf(it to depth) + flattenContents(it.children, (depth + 1).coerceAtMost(5))
     }
-
-/**
- * A copy of this event with only the pointers [PageTouch.Only.ids], as its action, for the page:
- * the same times, positions (with their history, so a drag stays smooth) and device. Recycle it.
- */
-private fun MotionEvent.only(touch: PageTouch.Only): MotionEvent {
-    val indices = touch.ids.map(::findPointerIndex)
-    val properties =
-        Array(indices.size) { i ->
-            MotionEvent.PointerProperties().also { getPointerProperties(indices[i], it) }
-        }
-    // A sample's coordinates: a historical one, or the current one when [sample] is -1.
-    fun coords(sample: Int) =
-        Array(indices.size) { i ->
-            MotionEvent.PointerCoords().also {
-                if (sample < 0) getPointerCoords(indices[i], it)
-                else getHistoricalPointerCoords(indices[i], sample, it)
-            }
-        }
-    val action =
-        when (touch.action) {
-            MotionEvent.ACTION_POINTER_DOWN,
-            MotionEvent.ACTION_POINTER_UP ->
-                touch.action or (touch.actionIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
-            else -> touch.action
-        }
-    val history = if (touch.action == MotionEvent.ACTION_MOVE) historySize else 0
-    val event =
-        MotionEvent.obtain(
-            downTime,
-            if (history > 0) getHistoricalEventTime(0) else eventTime,
-            action,
-            indices.size,
-            properties,
-            coords(if (history > 0) 0 else -1),
-            metaState,
-            buttonState,
-            xPrecision,
-            yPrecision,
-            deviceId,
-            edgeFlags,
-            source,
-            flags,
-        )
-    if (history > 0) {
-        for (sample in 1 until history) event.addBatch(
-            getHistoricalEventTime(sample),
-            coords(sample),
-            metaState,
-        )
-        event.addBatch(eventTime, coords(-1), metaState)
-    }
-    return event
-}

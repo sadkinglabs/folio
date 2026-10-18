@@ -31,4 +31,10 @@
     <string name="bookmark_rename_save">Save</string>
     <string name="bookmark_rename_cancel">Cancel</string>
     <string name="reader_bookmark_failed">The bookmark could not be changed. Try again.</string>
+    <!-- M11: Highlight from here…, a highlight over as many pages as needed. -->
+    <string name="reader_highlight_from_here_action">Highlight from here…</string>
+    <string name="reader_from_here_bar">Turn pages, then press and hold the word where the highlight ends.</string>
+    <string name="reader_from_here_cancel">Cancel highlight</string>
+    <string name="reader_from_here_other_chapter">A highlight must end in the chapter where it starts. Go back to that chapter, or cancel.</string>
+    <string name="reader_from_here_stopped">Highlight cancelled after 2 minutes without a touch.</string>
 </resources>

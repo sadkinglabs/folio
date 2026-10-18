@@ -15,16 +15,21 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.sadking.folio.data.Book
 import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.PhoneReading
+import dev.sadking.folio.reader.FROM_HERE_BAR_TAG
+import dev.sadking.folio.reader.FROM_HERE_GROUP
 import dev.sadking.folio.reader.HIGHLIGHT_SHEET_TAG
 import dev.sadking.folio.reader.PHONE_ANNOTATION_DEVICE
 import dev.sadking.folio.reader.ReaderActivity
 import dev.sadking.folio.reader.ReaderDefaults
+import dev.sadking.folio.reader.ReaderViewModel
+import dev.sadking.folio.reader.SELECTION_FROM_HERE
 import dev.sadking.folio.reader.SELECTION_HIGHLIGHT
 import dev.sadking.folio.reader.xpointerSpineIndex
 import java.io.File
@@ -55,10 +60,9 @@ import org.readium.r2.navigator.epub.EpubNavigatorFragment
  * (touch events sent with `sendPointerSync`, not the shell), as a finger's does, to the window on
  * top; Compose's performClick would skip that path, which is where the owner's taps were lost. Both
  * ways to the sheet are covered: tapping a drawn highlight, and selecting a highlighted passage
- * again from the selection menu, itself tapped for real. Also a passage selected across a page turn
- * is saved and drawn as one highlight: one injected finger holds the selection while a second
- * finger's injected tap turns the page, and then a separate one-finger tap turns it again, as the
- * other hand's tap arrives while the held finger is on a selection handle.
+ * again from the selection menu, itself tapped for real. Also Highlight from here…: a word chosen
+ * as the start, a plain tap that turns the page, and a press and hold on a word of the next page
+ * save one highlight over both pages, drawn on both.
  */
 class ReaderHighlightTapsTest {
     private companion object {
@@ -471,9 +475,6 @@ class ReaderHighlightTapsTest {
         }
     }
 
-    /** The second finger's [action] (pointer down or up), for an event's second pointer. */
-    private fun second(action: Int) = action or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
-
     private fun tap(x: Int, y: Int) {
         val downTime = SystemClock.uptimeMillis()
         inject(downTime, MotionEvent.ACTION_DOWN, 0 to (x to y))
@@ -661,151 +662,132 @@ class ReaderHighlightTapsTest {
         }
     }
 
+    /**
+     * A script giving the DOMRect of a whole word (four letters or more) fully on the page on
+     * screen: the [which]th such word, counting from the page's first one, or from its last one
+     * when [which] is negative (-1 is the last). It also sets `window.__folioWord` to that word.
+     */
+    private fun visibleWord(which: Int) =
+        "(function(){var vis=function(r){return r.width>0&&r.height>0&&r.left>=0&&" +
+            "r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight};var found=[];" +
+            "var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),n,m;" +
+            "while((n=w.nextNode())){var re=/[A-Za-z]{4,}/g;while((m=re.exec(n.data))){" +
+            "var r=document.createRange();r.setStart(n,m.index);r.setEnd(n,m.index+m[0].length);" +
+            "var rects=[].slice.call(r.getClientRects());" +
+            "if(rects.length===1&&vis(rects[0]))found.push([m[0],rects[0]]);}}" +
+            "var i=$which<0?found.length+($which):$which;var f=found[i];if(!f)return null;" +
+            "window.__folioWord=f[0];return f[1];})()"
+
     @Test
-    fun aSecondFingersTapTurnsThePageUnderAHeldSelectionAndItIsSavedAndDrawnWhole() {
+    fun highlightFromHereRunsOverAPageTurnToAWordPressedOnTheNextPage() {
         // Long paragraphs: chapter two runs over several pages.
         val filler = " The rows ran down to the river and back up the hill again.".repeat(6)
         val id = book(paragraphs = 40, filler = filler)
         open(id).use { scenario ->
-            var at: Pair<Int, Int>? = null
-            compose.waitUntil(30_000) {
-                at = runCatching { scenario.onScreen(word(1, "enough")) }.getOrNull()
-                at != null
-            }
-            val held = at!!
             fun scrolled() =
                 (scenario.page("Math.abs(document.scrollingElement.scrollLeft)") ?: "0").toDouble()
-            fun selecting(): Boolean {
-                var known = false
-                scenario.onActivity { known = it.selecting }
-                return known && scenario.page("getSelection().isCollapsed") == "false"
+            fun fromHere(): Boolean {
+                var on = false
+                scenario.onActivity { on = it.highlightingFromHere }
+                return on
             }
+            // A word near the end of the first page: the third-last whole word on it.
+            var at: Pair<Int, Int>? = null
+            compose.waitUntil(30_000) {
+                at = runCatching { scenario.onScreen(visibleWord(-3)) }.getOrNull()
+                at != null
+            }
+            val firstWord =
+                (scenario.json("JSON.stringify(window.__folioWord)") as? String)
+                    ?: error("No first word")
             val before = scrolled()
-            // One finger long-presses a word on the first page and stays down: the page selects
-            // the word, and the reader learns that text is selected. A press that lands before the
-            // page takes touches is lost: it is cancelled (never a tap) and tried again.
-            var downTime = 0L
-            // The first finger stays still for [ms] or until [done], reporting moves in place
-            // every 300 ms with real times, as a resting finger does.
-            fun holdUntil(ms: Long, done: () -> Boolean): Boolean {
-                val end = SystemClock.uptimeMillis() + ms
-                while (SystemClock.uptimeMillis() < end) {
-                    if (done()) return true
-                    Thread.sleep(300)
-                    inject(downTime, MotionEvent.ACTION_MOVE, 0 to held)
-                }
-                return done()
+            // Long-press selects it; the menu's "Highlight from here…" keeps it as the start.
+            scenario.select(at!!.first, at!!.second)
+            scenario.chooseFromSelectionMenu(SELECTION_FROM_HERE)
+            compose.waitUntil(15_000) { fromHere() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithTag(FROM_HERE_BAR_TAG).fetchSemanticsNodes().isNotEmpty()
             }
-            var tries = 0
-            while (true) {
-                downTime = SystemClock.uptimeMillis()
-                inject(downTime, MotionEvent.ACTION_DOWN, 0 to held)
-                tries++
-                if (holdUntil(5_000) { selecting() }) break
-                inject(downTime, MotionEvent.ACTION_CANCEL, 0 to held)
-                if (tries == 3)
-                    fail(
-                        "No selection under a held finger after 3 tries.\n" +
-                            "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
-                            Diagnostics.state()
-                    )
-            }
-            // Its end is dragged to the last character on the page, still under the held finger.
-            val extended =
+            // The selection is gone, and the start is underlined.
+            compose.waitUntil(15_000) { scenario.page("getSelection().isCollapsed") == "true" }
+            compose.waitUntil(30_000) {
                 scenario.page(
-                    """(function(){var s=getSelection();var w=document.createTreeWalker(""" +
-                        """document.body,NodeFilter.SHOW_TEXT);var last=null,n;""" +
-                        """var vis=function(r){return r.width>0&&r.height>0&&r.right>1&&""" +
-                        """r.left<innerWidth-1&&r.bottom>1&&r.top<innerHeight-1};""" +
-                        """while((n=w.nextNode())){for(var i=0;i<n.data.length;i++){""" +
-                        """if(!/\S/.test(n.data[i]))continue;var r=document.createRange();""" +
-                        """r.setStart(n,i);r.setEnd(n,i+1);""" +
-                        """if([].some.call(r.getClientRects(),vis))last=[n,i];}}""" +
-                        """if(!last)return false;s.extend(last[0],last[1]+1);return true;})()"""
-                )
-            assertEquals("true", extended)
-            // Held there, the page stays: only a tap turns it.
-            holdUntil(900) { false }
-            assertEquals(before, scrolled(), 1.0)
-            // A second finger taps the right half, the way an English book reads, while the first
-            // stays down.
+                    "readium.getDecorations('$FROM_HERE_GROUP').items.map(i=>i.range.toString())" +
+                        ".join('')"
+                ) == "\"$firstWord\""
+            }
+            assertTrue(phoneRows(id).isEmpty())
+            // A plain tap near the right edge turns the page, as always.
             var width = 0
             var height = 0
             scenario.onActivity {
                 width = it.window.decorView.width
                 height = it.window.decorView.height
             }
-            val tap = width * 3 / 4 to height / 2
-            inject(downTime, second(MotionEvent.ACTION_POINTER_DOWN), 0 to held, 1 to tap)
-            Thread.sleep(60)
-            inject(downTime, second(MotionEvent.ACTION_POINTER_UP), 0 to held, 1 to tap)
-            // The page turns, and the selection is still there.
+            tap(width * 9 / 10, height / 2)
             if (runCatching { compose.waitUntil(10_000) { scrolled() > before + 1 } }.isFailure)
                 fail(
-                    "The page did not turn after a second finger's tap.\n" +
+                    "The page did not turn while Highlight from here… waited.\n" +
                         "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
                         Diagnostics.state()
                 )
-            assertEquals("false", scenario.page("getSelection().isCollapsed"))
-            // The end goes on onto the new page: a few words into its first full line.
-            val further =
-                scenario.page(
-                    """(function(){var s=getSelection();var w=document.createTreeWalker(""" +
-                        """document.body,NodeFilter.SHOW_TEXT);var n,seen=0;""" +
-                        """var vis=function(r){return r.width>0&&r.height>0&&r.right>1&&""" +
-                        """r.left<innerWidth-1&&r.bottom>1&&r.top<innerHeight-1};""" +
-                        """while((n=w.nextNode())){for(var i=0;i<n.data.length;i++){""" +
-                        """var r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);""" +
-                        """if([].some.call(r.getClientRects(),vis)&&++seen>40){""" +
-                        """s.extend(n,i);return true;}}}return false;})()"""
-                )
-            assertEquals("true", further)
-            // The first finger lifts; the selection stays.
-            inject(downTime, MotionEvent.ACTION_UP, 0 to held)
-            assertEquals("false", scenario.page("getSelection().isCollapsed"))
-            // The other hand taps again, now as a touch of its own: the way it reaches the reader
-            // when the held finger is on a selection handle, which is a window of its own. No
-            // finger is down on the reader's window, and it still knows text is selected.
-            if (runCatching { compose.waitUntil(5_000) { selecting() } }.isFailure)
+            assertTrue(fromHere())
+            // A word on the new page: pressed and held, it is the end. No menu, no Define.
+            var end: Pair<Int, Int>? = null
+            compose.waitUntil(30_000) {
+                end = runCatching { scenario.onScreen(visibleWord(10)) }.getOrNull()
+                end != null
+            }
+            val lastWord =
+                (scenario.json("JSON.stringify(window.__folioWord)") as? String)
+                    ?: error("No last word")
+            var presses = 0
+            while (phoneRows(id).isEmpty() && presses < 3) {
+                longPress(end!!.first, end!!.second)
+                presses++
+                runCatching { compose.waitUntil(10_000) { phoneRows(id).isNotEmpty() } }
+            }
+            if (phoneRows(id).isEmpty())
                 fail(
-                    "The reader forgot the selection once no finger was down on its window.\n" +
-                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}"
-                )
-            val turnedOnce = scrolled()
-            // Low on the page, clear of the selection's menu and handles near its top.
-            tap(width * 3 / 4, height * 3 / 4)
-            if (runCatching { compose.waitUntil(10_000) { scrolled() > turnedOnce + 1 } }.isFailure)
-                fail(
-                    "The page did not turn after the other hand's own tap.\n" +
+                    "No highlight after $presses presses on the second page.\n" +
                         "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
                         Diagnostics.state()
                 )
-            // The tap never reached the page: the selection is still there.
-            assertEquals("false", scenario.page("getSelection().isCollapsed"))
-            val steps = scenario.tapSteps()
-            assertTrue(
-                steps.joinToString("\n"),
-                steps.any { it.endsWith("other-hand tap: next page") },
-            )
-            scenario.onActivity { it.selectionAction(SELECTION_HIGHLIGHT) }
-            compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() }
+            // The press opened no menu and no definition: it was only the end.
+            var defined: String? = null
+            scenario.onActivity {
+                defined = ViewModelProvider(it)[ReaderViewModel::class.java].defineText
+            }
+            assertEquals(null, defined)
             val made = phoneRows(id).single()
-            // One highlight, in chapter two, from the first page's paragraph to a later one.
+            // One highlight in chapter two, from the first word to the end of the last one.
             assertEquals(2, xpointerSpineIndex(made.position, 3))
             assertEquals(2, xpointerSpineIndex(made.endPosition, 3))
-            val start = Regex("""/p\[(\d+)]""").find(made.position)!!.groupValues[1].toInt()
-            val end = Regex("""/p\[(\d+)]""").find(made.endPosition)!!.groupValues[1].toInt()
-            assertEquals(2, start)
-            assertTrue("$start..$end", end > start)
-            assertTrue(made.text, made.text.startsWith("enough text."))
-            // Drawn over the same words, on both pages.
+            assertNotEquals(made.position, made.endPosition)
+            assertTrue(made.text, made.text.startsWith(firstWord))
+            assertTrue(made.text, made.text.endsWith(lastWord))
+            // The mode is over, its underline gone, and the new highlight's sheet is open.
+            compose.waitUntil(15_000) { !fromHere() }
+            awaitSheet()
+            compose.waitUntil(30_000) {
+                scenario.page("readium.getDecorations('$FROM_HERE_GROUP').items.length") == "0"
+            }
+            // Drawn over the same words, on both pages: some of it before this page, some on it.
             compose.waitUntil(30_000) {
                 runCatching { made.id in scenario.drawn() }.getOrDefault(false)
             }
-            // Paragraph breaks are a line break in the saved text and nothing in the drawn range.
             val squash = { text: String -> text.replace(Regex("\\s+"), "") }
             assertEquals(squash(made.text), squash(scenario.drawn().getValue(made.id)))
-            assertNotEquals(made.position, made.endPosition)
+            val pages =
+                scenario.json(
+                    "JSON.stringify((function(){var i=readium.getDecorations('highlights').items" +
+                        ".find(i=>i.decoration.id==='${made.id}');var rects=[].slice.call(" +
+                        "i.range.getClientRects()).filter(r=>r.width>0);" +
+                        "return {before:rects.some(r=>r.right<=1)," +
+                        "here:rects.some(r=>r.left>=0&&r.right<=innerWidth)};})())"
+                ) as? JSONObject ?: error("No answer about the drawn highlight")
+            assertTrue(pages.toString(), pages.getBoolean("before"))
+            assertTrue(pages.toString(), pages.getBoolean("here"))
         }
     }
 }

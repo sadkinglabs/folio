@@ -49,6 +49,7 @@ class ReaderM6SheetsTest {
                 SELECTION_NOTE,
                 SELECTION_DEFINE,
                 SELECTION_COPY,
+                SELECTION_FROM_HERE,
             ),
             SELECTION_MENU.map { it.first },
         )

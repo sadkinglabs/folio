@@ -77,10 +77,13 @@ internal const val SELECTION_NOTE = 0x5f02
 internal const val SELECTION_COPY = 0x5f03
 internal const val SELECTION_DEFINE = 0x5f04
 internal const val SELECTION_COLOUR = 0x5f05
+internal const val SELECTION_FROM_HERE = 0x5f06
 
 /**
  * The selection menu in order, as item id and label: Highlight (in the last colour picked),
- * Colour…, Add note, Define, Copy.
+ * Colour…, Add note, Define, Copy, then Highlight from here… (ReaderHighlightFromHere.kt). The
+ * newest item comes last, so on a narrow screen it is the one that goes into the menu's overflow,
+ * never Define.
  */
 internal val SELECTION_MENU =
     listOf(
@@ -89,6 +92,7 @@ internal val SELECTION_MENU =
         SELECTION_NOTE to R.string.reader_highlight_note_action,
         SELECTION_DEFINE to R.string.rd6_define_action,
         SELECTION_COPY to R.string.reader_highlight_copy_action,
+        SELECTION_FROM_HERE to R.string.reader_highlight_from_here_action,
     )
 
 /**
@@ -214,7 +218,7 @@ internal fun parseSelection(raw: String?, index: Int, spineSize: Int): SelectedP
  * highlights) hold it.
  */
 internal fun selectionCall(index: Int, rows: List<BookAnnotation>): String =
-    "JSON.stringify(FolioHighlights.selection($index, ${items(rows)}));"
+    "JSON.stringify(FolioHighlights.selection($index, ${highlightItems(rows)}));"
 
 /**
  * The live highlight the owner meant when selecting [passage], or null for a new one: the one with
@@ -254,9 +258,10 @@ internal fun placeableHighlights(
 
 /** The page call that places [rows] in the chapter on screen. */
 internal fun placementCall(rows: List<BookAnnotation>): String =
-    "JSON.stringify(FolioHighlights.place(${items(rows)}));"
+    "JSON.stringify(FolioHighlights.place(${highlightItems(rows)}));"
 
-private fun items(rows: List<BookAnnotation>): JSONArray {
+/** [rows] as the page script takes them: id, pos0 and pos1. */
+internal fun highlightItems(rows: List<BookAnnotation>): JSONArray {
     val items = JSONArray()
     rows.forEach {
         items.put(
