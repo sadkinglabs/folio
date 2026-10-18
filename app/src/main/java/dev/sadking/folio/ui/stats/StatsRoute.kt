@@ -161,23 +161,28 @@ internal fun StatsRouteContent(
             onTrend = { index ->
                 selectedTrend = index
                 val snap = snapshot
-                if (index != null && snap != null) {
+                // The columns belong to the chart on screen: right after a range change it can
+                // still be the old range's chart until the new one is ready.
+                val shown = (state as? StatsState.Ready)?.overview?.range
+                if (index != null && snap != null && shown != null) {
                     val stats = snap.stats
-                    when (range) {
+                    when (shown) {
                         StatsRange.WEEK,
                         StatsRange.MONTH ->
-                            StatsUi.columnDate(stats, range, index)
+                            StatsUi.columnDate(stats, shown, index)
                                 ?.takeIf { !it.isAfter(stats.today) }
                                 ?.let(::showDay)
                         StatsRange.YEAR ->
-                            YearMonth.of(stats.today.year, index + 1)
-                                .takeIf { it <= YearMonth.from(stats.today) }
+                            (index + 1)
+                                .takeIf { it in 1..12 }
+                                ?.let { YearMonth.of(stats.today.year, it) }
+                                ?.takeIf { it <= YearMonth.from(stats.today) }
                                 ?.let {
                                     showMonth(it)
                                     calendarMonth = it
                                 }
                         StatsRange.ALL ->
-                            onYear(StatsUi.rangeDates(stats, range).start.year + index, false)
+                            onYear(StatsUi.rangeDates(stats, shown).start.year + index, false)
                     }
                 }
             },

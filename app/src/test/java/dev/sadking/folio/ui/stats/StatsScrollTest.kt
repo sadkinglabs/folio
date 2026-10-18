@@ -181,13 +181,20 @@ class StatsScrollTest {
     fun aYearColumnOpensItsMonthAndScrollsToTheCalendar() {
         show()
         compose.onNodeWithText("Year").performClick()
+        // The year's chart is mapped off the main thread: wait until it is on screen.
+        compose.waitUntil(30_000) {
+            compose
+                .onAllNodes(androidx.compose.ui.test.hasText("This year", ignoreCase = true))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(0, list.firstVisibleItemIndex) }
         // September: the ninth of twelve equal slots.
         compose.onNode(trendChart).performTouchInput {
             click(Offset(width * 8.5f / 12f, height / 2f))
         }
-        compose.waitUntil(10_000) {
+        compose.waitUntil(30_000) {
             compose
                 .onAllNodes(androidx.compose.ui.test.hasText("September 2026"))
                 .fetchSemanticsNodes()
