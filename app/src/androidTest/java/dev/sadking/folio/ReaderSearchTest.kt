@@ -185,6 +185,12 @@ class ReaderSearchTest {
                         .isNotEmpty()
                 }
                 assertEquals(1, model().searchResults.hits.size)
+                // The rebuilt reader draws the match again, as after the first rotation. Closing
+                // the search while that is still in flight races the page: the removal can reach
+                // the page before the match has been drawn there, and the match is then left on it.
+                compose.waitUntil(30_000) {
+                    runCatching { searchDecorations() == 1 }.getOrDefault(false)
+                }
                 // Back through the reader's own Back handling, which closes the open sheet. A key
                 // or
                 // accessibility Back right after a rotation can reach a window that has no focus

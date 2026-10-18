@@ -236,6 +236,48 @@ class ReaderHighlightTapsTest {
             "var i=t.data.indexOf('$word');var r=document.createRange();" +
             "r.setStart(t,i);r.setEnd(t,i+${word.length});return r.getBoundingClientRect();})()"
 
+    /**
+     * Where the page draws highlight [id], on the screen: the middle of the element the page itself
+     * tests a tap against, or null while the highlight has none on the page.
+     */
+    private fun ActivityScenario<ReaderActivity>.highlightOnScreen(id: String): Pair<Int, Int>? =
+        runCatching {
+                onScreen(
+                    "(function(){var i=readium.getDecorations('highlights').items.find(" +
+                        "i=>i.decoration.id==='$id');" +
+                        "return i&&i.clickableElements&&i.clickableElements.length" +
+                        "?i.clickableElements[0].getBoundingClientRect():null;})()"
+                )
+            }
+            .getOrNull()
+
+    /** The place of highlight [id] once it has held still for a moment; fails if it never does. */
+    private fun ActivityScenario<ReaderActivity>.settledHighlight(id: String): Pair<Int, Int> {
+        var settled: Pair<Int, Int>? = null
+        var last: Pair<Int, Int>? = null
+        compose.waitUntil(30_000) {
+            val now = highlightOnScreen(id)
+            if (now != null && now == last) settled = now
+            last = now
+            Thread.sleep(250)
+            settled != null
+        }
+        return settled!!
+    }
+
+    /** What the page says about highlight [id] and its selection, for a failure message. */
+    private fun ActivityScenario<ReaderActivity>.highlightState(id: String): String =
+        page(
+            "JSON.stringify((function(){var i=readium.getDecorations('highlights').items.find(" +
+                "i=>i.decoration.id==='$id');var c=i&&i.clickableElements;" +
+                "return {found:!!i,clickable:c?c.length:null," +
+                "clickRect:c&&c.length?c[0].getBoundingClientRect():null," +
+                "textRect:i?i.range.getBoundingClientRect():null," +
+                "selectionCollapsed:getSelection().isCollapsed," +
+                "scrollLeft:document.scrollingElement.scrollLeft," +
+                "width:innerWidth,height:innerHeight,dpr:devicePixelRatio};})())"
+        ) ?: "no page"
+
     private fun tap(x: Int, y: Int) {
         Diagnostics.shell("input tap $x $y")
     }
@@ -347,19 +389,23 @@ class ReaderHighlightTapsTest {
             compose.waitUntil(30_000) {
                 runCatching { kindle.id in scenario.drawn() }.getOrDefault(false)
             }
-            // The highlight's first line, tapped like a finger.
-            val at =
-                scenario.onScreen(
-                    "readium.getDecorations('highlights').items.find(" +
-                        "i => i.decoration.id === '${kindle.id}').range.getClientRects()[0]"
-                ) ?: error("The highlight has no place on the page.")
-            // A tap that lands before the page takes touches is lost: tap again, up to 3 times.
+            // The drawn highlight, tapped like a finger. A tap that lands before the page takes
+            // touches is lost, and a tap the page does not take as a highlight's turns the page or
+            // toggles the controls and moves the highlight: each try finds the highlight again,
+            // once it holds still, and a third miss fails with what the page said about it.
             var taps = 0
             while (!sheetShown() && taps < 3) {
+                val at = scenario.settledHighlight(kindle.id)
                 tap(at.first, at.second)
                 taps++
                 runCatching { compose.waitUntil(5_000) { sheetShown() } }
             }
+            if (!sheetShown())
+                fail(
+                    "The sheet did not open after $taps taps on the highlight.\n" +
+                        "Page: ${scenario.highlightState(kindle.id)}\n" +
+                        Diagnostics.state()
+                )
             awaitSheet()
             scenario.recolourAndDelete(kindle.id)
         }
