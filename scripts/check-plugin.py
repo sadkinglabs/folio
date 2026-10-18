@@ -1286,6 +1286,29 @@ with tempfile.TemporaryDirectory(prefix='folio-main-') as tmp:
     plugin:onCloseDocument()
     assert(#scheduled == count + 2 and scheduled[#scheduled].seconds == 3)
     ''')
+    main_lua.execute(r'''
+    -- After a sync, the open book asks Progress sync for the phone's place, as when a book opens:
+    -- not interactive, so Progress sync's own "ask before jumping" applies. A sync the person
+    -- started skips Progress sync's 25-second wait; an automatic one keeps it.
+    local pulls = {}
+    local kosync = { pull_timestamp = 99 }
+    function kosync:getProgress(ensure, interactive) pulls[#pulls + 1] = { ensure = ensure, interactive = interactive, at = self.pull_timestamp } end
+    package.loaded["apps/reader/readerui"] = { instance = { document = { file = "/mnt/us/Books/a.epub" }, kosync = kosync } }
+    plugin.pullPosition(true)
+    assert(#pulls == 1 and pulls[1].ensure == false and pulls[1].interactive == false and pulls[1].at == 0)
+    kosync.pull_timestamp = 99
+    plugin.pullPosition(false)
+    assert(#pulls == 2 and pulls[2].at == 99, "an automatic sync keeps the wait")
+    -- No book open, or no Progress sync: nothing happens.
+    package.loaded["apps/reader/readerui"] = { instance = nil }
+    plugin.pullPosition(true)
+    package.loaded["apps/reader/readerui"] = { instance = { document = { file = "/mnt/us/Books/a.epub" } } }
+    plugin.pullPosition(true)
+    assert(#pulls == 2)
+    package.loaded["apps/reader/readerui"] = nil
+    ''')
+    print('Position after a sync: the open book asks Progress sync for the phone\'s place (its ask-first rule applies); a sync by hand skips the 25-second wait; nothing without an open book.')
+
     cfg=plugin.syncConfig()
     assert cfg['server']=='http://192.168.1.42:8765' and cfg['username']=='folio' and cfg['key']=='abc123'
     assert cfg['device']=='dev1' and cfg['name']=='Paperwhite' and cfg['home']==str(books) and cfg['root']=='Kindle Books'

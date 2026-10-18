@@ -407,6 +407,18 @@ local function sync_deps(progress)
     }
 end
 
+-- After a sync, the open book checks the phone for a newer place, as Progress sync does when a
+-- book opens: Progress sync itself asks the phone and, as Librillo set it up, asks before jumping
+-- forward or back. Without this the open book only moved after "Pull position" by hand.
+-- `manual`: the person asked for the sync, so Progress sync's 25-second wait is skipped.
+function Folio.pullPosition(manual)
+    local reader = open_reader()
+    local kosync = reader and reader.kosync
+    if type(kosync) ~= "table" or type(kosync.getProgress) ~= "function" then return end
+    if manual and type(kosync.pull_timestamp) == "number" then kosync.pull_timestamp = 0 end
+    pcall(kosync.getProgress, kosync, false, false)
+end
+
 -- One sync at a time, shared by every KOReader screen (the plugin is loaded once per screen).
 local Runner = { busy = false, ticking = false, misses = 0 }
 local function plain(err) return (tostring(err):gsub("^.-:%d+: ", "")) end
@@ -457,6 +469,7 @@ function Runner.run(automatic, look)
             local text = Sync.summary(result, automatic)
             if text ~= "" then message(text) end
         end
+        if ran then Folio.pullPosition(not automatic) end
     end)
 end
 -- Sync now: the person asked, so KOReader may offer to turn Wi-Fi on.
