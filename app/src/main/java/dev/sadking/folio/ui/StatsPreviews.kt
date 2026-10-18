@@ -194,26 +194,26 @@ internal val sampleRangeBooks = octoberBooks.map { RangeBook(it.book, it.seconds
 internal val sampleMilestones =
     listOf(
         Milestone(MilestoneKind.STREAK, "Longest streak", "23 days", "March 2026"),
-        Milestone(MilestoneKind.HOURS, "100 hours", "Reading time", "12 August 2026"),
-        Milestone(MilestoneKind.BIGGEST_DAY, "Biggest day", "4 h 10 min", "11 October 2026"),
-        Milestone(MilestoneKind.BOOKS, "10 books", "This year", "3 July 2026"),
+        Milestone(MilestoneKind.HOURS, "100 hours", "Reading time", "12/08/2026"),
+        Milestone(MilestoneKind.BIGGEST_DAY, "Biggest day", "4 h 10 min", "11/10/2026"),
+        Milestone(MilestoneKind.BOOKS, "10 books", "This year", "03/07/2026"),
         Milestone(
             MilestoneKind.FASTEST,
             "Fastest finish",
             "Salt and Iron in 3 days",
-            "13 October 2026",
+            "13/10/2026",
         ),
         Milestone(
             MilestoneKind.FIRST_LISTEN,
             "First listen",
             "A Field Guide to Elsewhere",
-            "4 October 2026",
+            "04/10/2026",
         ),
         Milestone(
             MilestoneKind.FIRST_FINISH,
             "First book finished",
             "The Orchard",
-            "9 February 2026",
+            "09/02/2026",
         ),
     )
 
@@ -399,7 +399,22 @@ internal fun StatsPhoneOnlyPreview() {
 internal fun StatsEmptyPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            StatsTab(StatsState.Empty, StatsRange.MONTH, previewActions)
+            StatsTab(StatsState.Empty(), StatsRange.MONTH, previewActions)
+        }
+    }
+}
+
+@Preview(
+    name = "Stats · Hardcover years only",
+    showBackground = true,
+    widthDp = 412,
+    heightDp = 892,
+)
+@Composable
+internal fun StatsEmptyYearsPreview() {
+    FolioTheme(dynamic = false) {
+        Surface(Modifier.fillMaxSize()) {
+            StatsTab(StatsState.Empty(sampleYears.drop(1)), StatsRange.MONTH, previewActions)
         }
     }
 }

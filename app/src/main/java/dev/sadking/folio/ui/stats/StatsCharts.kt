@@ -2,6 +2,7 @@
 
 package dev.sadking.folio.ui.stats
 
+import android.content.res.Resources
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -73,8 +75,8 @@ import kotlin.math.roundToInt
  * palette checks against the app's fallback surfaces (#F7F6F0 and #121410): every adjacent pair
  * clears colour-blind separation (worst 9.1 light, 8.4 dark) and normal-vision separation (19.6
  * light, 19.3 dark). Four light slots sit under 3:1 on the surface, so a legend with the book's
- * title always accompanies the bars. A book keeps its slot for good; the slot is never reassigned
- * when the month's book count changes.
+ * title always accompanies the bars. A book's slot is per month, in the order it was first read
+ * that month (STATS_DESIGN b3); books past the eighth share the "other" colour.
  */
 internal object StatsPalette {
     private val light =
@@ -104,8 +106,9 @@ internal object StatsPalette {
 
     @Composable
     fun book(slot: Int): Color {
+        if (slot !in 0 until SLOTS) return other()
         val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-        return (if (isDark) dark else light)[Math.floorMod(slot, SLOTS)]
+        return (if (isDark) dark else light)[slot]
     }
 
     /** Reading: the theme's primary. */
@@ -137,14 +140,18 @@ private val axisBand = 18.dp
 
 /** "4 h 12 min", "4 h", "48 min". Seconds under a minute read as 1 min, never "0 min". */
 @Composable
-internal fun durationText(seconds: Long): String {
+internal fun durationText(seconds: Long): String =
+    formatDuration(LocalContext.current.resources, seconds)
+
+/** [durationText] without Compose, for callers that already hold the resources. */
+internal fun formatDuration(res: Resources, seconds: Long): String {
     val minutes = ((seconds + 30) / 60).coerceAtLeast(if (seconds > 0) 1 else 0)
     val h = minutes / 60
     val m = minutes % 60
     return when {
-        h > 0 && m > 0 -> stringResource(R.string.stats_hours_minutes, h, m)
-        h > 0 -> stringResource(R.string.stats_hours, h)
-        else -> stringResource(R.string.stats_minutes, m)
+        h > 0 && m > 0 -> res.getString(R.string.stats_hours_minutes, h, m)
+        h > 0 -> res.getString(R.string.stats_hours, h)
+        else -> res.getString(R.string.stats_minutes, m)
     }
 }
 
@@ -594,6 +601,7 @@ internal fun CalendarGrid(
     val lanes = if (large) 2 else 3
     val weekdays = listOf("M", "T", "W", "T", "F", "S", "S")
     val slotColors = (0 until StatsPalette.SLOTS).map { StatsPalette.book(it) }
+    val other = StatsPalette.other()
     val ink = MaterialTheme.colorScheme.onSurface
     val mutedInk = MaterialTheme.colorScheme.onSurfaceVariant
     val todayDisc = MaterialTheme.colorScheme.primary
@@ -687,7 +695,7 @@ internal fun CalendarGrid(
                         }
                     }
                     week.runs.forEach { run ->
-                        val color = slotColors[Math.floorMod(run.slot, StatsPalette.SLOTS)]
+                        val color = slotColors.getOrElse(run.slot) { other }
                         val left = run.start * colW + if (run.continuesBefore) 0f else inset
                         val right = (run.end + 1) * colW - if (run.continuesAfter) 0f else inset
                         val top = barsTop + run.lane * (barH + laneGap.toPx())
@@ -833,6 +841,7 @@ internal fun CalendarLegend(
 @Composable
 internal fun DayStrip(sessions: List<SessionRow>, modifier: Modifier = Modifier) {
     val slotColors = (0 until StatsPalette.SLOTS).map { StatsPalette.book(it) }
+    val other = StatsPalette.other()
     // A tint, not a container step: the strip sits on a sheet or a panel of any tier.
     val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val ink = MaterialTheme.colorScheme.onSurfaceVariant
@@ -849,7 +858,7 @@ internal fun DayStrip(sessions: List<SessionRow>, modifier: Modifier = Modifier)
         sessions.forEach { s ->
             val left = s.startHour * perHour
             val w = (s.seconds / 3600f * perHour).coerceAtLeast(6.dp.toPx())
-            val color = slotColors[Math.floorMod(s.slot, StatsPalette.SLOTS)]
+            val color = slotColors.getOrElse(s.slot) { other }
             val rect = RoundRect(left, 0f, (left + w).coerceAtMost(size.width), h, r)
             if (s.listening)
                 drawPath(Path().apply { addRoundRect(rect) }, color, style = Stroke(1.5.dp.toPx()))

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -267,7 +268,7 @@ internal fun StatsScreen(
                         )
                     }
                 }
-            StatsState.Empty -> {
+            is StatsState.Empty -> {
                 item("empty") {
                     EmptyState(
                         title = stringResource(R.string.stats_empty_title),
@@ -278,6 +279,7 @@ internal fun StatsScreen(
                         actionLabel = stringResource(R.string.stats_empty_action),
                     )
                 }
+                if (state.years.isNotEmpty()) yearsItem(state.years, actions)
                 item("goals") { Box(page) { GoalsOffer(actions.onGoals) } }
             }
             is StatsState.Failed ->
@@ -319,12 +321,7 @@ internal fun StatsScreen(
                 }
                 item("books") { BooksRow(state.books, actions.onBook) }
                 item("milestones") { MilestonesRow(state.milestones) }
-                item("years") {
-                    Column(page, verticalArrangement = Arrangement.spacedBy(FolioSpace.gap)) {
-                        SectionHeading(stringResource(R.string.stats_years))
-                        state.years.forEach { YearRow(it, actions.onYear, actions.onShareYear) }
-                    }
-                }
+                yearsItem(state.years, actions)
                 if (!state.goals.on) item("goals") { Box(page) { GoalsOffer(actions.onGoals) } }
                 item("sources") {
                     Text(
@@ -335,6 +332,21 @@ internal fun StatsScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * The years list: a heading, then a row per year. The dashboard and the Empty state both show it.
+ */
+private fun LazyListScope.yearsItem(years: List<YearSummary>, actions: StatsActions) {
+    item("years") {
+        Column(
+            Modifier.padding(horizontal = FolioSpace.page),
+            verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+        ) {
+            SectionHeading(stringResource(R.string.stats_years))
+            years.forEach { YearRow(it, actions.onYear, actions.onShareYear) }
         }
     }
 }
@@ -490,7 +502,7 @@ internal fun HeroPanel(
                     Text(trend, style = MaterialTheme.typography.labelLarge)
                 }
             val perSession =
-                if (overview.sessions > 0) overview.totalSeconds / overview.sessions else 0L
+                if (overview.sessions > 0) overview.readingSeconds / overview.sessions else 0L
             StatusStrip(
                 tiles =
                     listOf(
@@ -514,7 +526,7 @@ internal fun HeroPanel(
                         StatusTile(
                             Icons.Outlined.Speed,
                             stringResource(R.string.stats_tile_pace),
-                            stringResource(R.string.stats_wpm, overview.wordsPerMinute),
+                            paceText(overview.wordsPerMinute),
                             stringResource(
                                 if (phoneOnly) R.string.stats_tile_pace_phone
                                 else R.string.stats_tile_pace_detail
@@ -644,7 +656,7 @@ internal fun CalendarCard(month: CalendarMonth, selected: DayDetails?, actions: 
                     modifier = Modifier.weight(1f).semantics { heading() },
                 )
                 Tooltipped(next) {
-                    IconButton(onClick = actions.onNextMonth) {
+                    IconButton(onClick = actions.onNextMonth, enabled = month.today == null) {
                         Icon(Icons.Outlined.ChevronRight, next)
                     }
                 }
@@ -1048,22 +1060,23 @@ internal fun DayDetailsContent(day: DayDetails, onBook: (Book) -> Unit) {
                 .forEach { group ->
                     val first = group.first()
                     val sources = group.map { it.source }.distinct().joinToString(" · ")
+                    val duration = durationText(group.sumOf { it.seconds })
+                    val pages = group.sumOf { it.pages ?: 0 }
                     ResultRow(
                         first.book.title,
                         decode(first.book.authors).joinToString(", "),
                         detail =
-                            stringResource(
-                                R.string.stats_joined,
-                                durationText(group.sumOf { it.seconds }),
+                            if (pages > 0)
                                 stringResource(
                                     R.string.stats_joined,
-                                    sources,
+                                    duration,
                                     stringResource(
-                                        R.string.stats_day_pages,
-                                        group.sumOf { it.pages },
+                                        R.string.stats_joined,
+                                        sources,
+                                        stringResource(R.string.stats_day_pages, pages),
                                     ),
-                                ),
-                            ),
+                                )
+                            else stringResource(R.string.stats_joined, duration, sources),
                         onClick = { onBook(first.book) },
                         trailing = {
                             Box(
@@ -1197,6 +1210,30 @@ private fun MiniStat(value: String, label: String, modifier: Modifier = Modifier
     }
 }
 
+/** "248 wpm", or the dash when there is no pace yet. */
+@Composable
+private fun paceText(wordsPerMinute: Int?): String =
+    wordsPerMinute?.let { stringResource(R.string.stats_wpm, it) }
+        ?: stringResource(R.string.stats_no_value)
+
+/**
+ * The line on a book's progress: the days it took, the time left at your pace, or the days so far.
+ * The card and the sheet heading both show it.
+ */
+@Composable
+private fun bookProgressLine(stats: BookStats): String {
+    val finished = stats.finishedText
+    val days = stats.days
+    val secondsLeft = stats.secondsLeft
+    return when {
+        finished != null && days != null -> stringResource(R.string.stats_book_finished_in, days)
+        finished != null -> stringResource(R.string.stats_book_finished, finished)
+        secondsLeft != null ->
+            stringResource(R.string.stats_book_time_left, durationText(secondsLeft))
+        else -> stringResource(R.string.stats_book_days_so_far, days ?: 0)
+    }
+}
+
 /**
  * The card on the book page: three numbers, the progress timeline, and the time left at your pace
  * or the days it took. The whole card opens the book's stats sheet.
@@ -1208,7 +1245,7 @@ internal fun BookStatsCard(stats: BookStats, onClick: () -> Unit, modifier: Modi
             R.string.stats_book_card_a11y,
             durationText(stats.totalSeconds),
             stats.sessions,
-            stringResource(R.string.stats_wpm, stats.wordsPerMinute),
+            paceText(stats.wordsPerMinute),
         )
     val stacked = LocalDensity.current.fontScale > 1.3f
     Surface(
@@ -1237,8 +1274,7 @@ internal fun BookStatsCard(stats: BookStats, onClick: () -> Unit, modifier: Modi
                     durationText(stats.totalSeconds) to
                         stringResource(R.string.stats_book_tile_time),
                     stats.sessions.toString() to stringResource(R.string.stats_book_tile_sessions),
-                    stringResource(R.string.stats_wpm, stats.wordsPerMinute) to
-                        stringResource(R.string.stats_book_tile_pace),
+                    paceText(stats.wordsPerMinute) to stringResource(R.string.stats_book_tile_pace),
                 )
             if (stacked)
                 Column(verticalArrangement = Arrangement.spacedBy(FolioSpace.small)) {
@@ -1255,16 +1291,7 @@ internal fun BookStatsCard(stats: BookStats, onClick: () -> Unit, modifier: Modi
                 endLabel = stats.finishedText ?: stringResource(R.string.stats_calendar_today),
             )
             Text(
-                when {
-                    stats.finishedText != null ->
-                        stringResource(R.string.stats_book_finished_in, stats.days)
-                    stats.secondsLeft != null ->
-                        stringResource(
-                            R.string.stats_book_time_left,
-                            durationText(stats.secondsLeft),
-                        )
-                    else -> stringResource(R.string.stats_book_days_so_far, stats.days)
-                },
+                bookProgressLine(stats),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1303,9 +1330,7 @@ internal fun BookStatsContent(stats: BookStats) {
             stringResource(
                 R.string.stats_joined,
                 durationText(stats.totalSeconds),
-                if (stats.finishedText != null)
-                    stringResource(R.string.stats_book_finished_in, stats.days)
-                else stringResource(R.string.stats_book_days_so_far, stats.days),
+                bookProgressLine(stats),
             ),
         )
         val side = Modifier.padding(horizontal = FolioSpace.section)
@@ -1329,11 +1354,10 @@ internal fun BookStatsContent(stats: BookStats) {
                     StatusTile(
                         Icons.Outlined.Speed,
                         stringResource(R.string.stats_book_tile_pace),
-                        stringResource(R.string.stats_wpm, stats.wordsPerMinute),
-                        stringResource(
-                            R.string.stats_book_pace_detail,
-                            stats.averageWordsPerMinute,
-                        ),
+                        paceText(stats.wordsPerMinute),
+                        stats.averageWordsPerMinute?.let {
+                            stringResource(R.string.stats_book_pace_detail, it)
+                        },
                         "book-stats-pace",
                     ),
                 ),
@@ -1381,13 +1405,21 @@ internal fun BookStatsContent(stats: BookStats) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
+                        val pages = s.pages
                         Text(
-                            stringResource(
-                                R.string.stats_book_session_row,
-                                s.source,
-                                durationText(s.seconds),
-                                s.pages,
-                            ),
+                            if (pages != null && pages > 0)
+                                stringResource(
+                                    R.string.stats_book_session_row,
+                                    s.source,
+                                    durationText(s.seconds),
+                                    pages,
+                                )
+                            else
+                                stringResource(
+                                    R.string.stats_joined,
+                                    s.source,
+                                    durationText(s.seconds),
+                                ),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -1591,7 +1623,7 @@ internal fun YearShareCard(review: YearReview, modifier: Modifier = Modifier) {
                         stringResource(R.string.stats_share_streak),
                     )
                     MiniStat(
-                        stringResource(R.string.stats_wpm, review.wordsPerMinute),
+                        paceText(review.wordsPerMinute),
                         stringResource(R.string.stats_share_pace),
                     )
                 }

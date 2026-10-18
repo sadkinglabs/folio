@@ -3,10 +3,8 @@ package dev.sadking.folio.ui.stats
 import dev.sadking.folio.data.Book
 
 /*
- * PLACEHOLDERS for the M12 design mockups. The statistics core (core/.../stats, written in
- * parallel) defines the real types; when it lands, the screens in this package take those types
- * and this file goes. Every field here is one the screens need, so the core's types should carry
- * them or something they can be derived from.
+ * The Stats screens' own models. `StatsUi` (StatsUi.kt) fills them from a `StatsSnapshot`; previews
+ * fill them by hand.
  */
 
 /** The range the hero and the habits scope to. The calendar pages by month on its own. */
@@ -37,7 +35,8 @@ internal data class StatsOverview(
     val daysRead: Int,
     val daysInRange: Int,
     val sessions: Int,
-    val wordsPerMinute: Int,
+    /** Null when no pace is known yet. */
+    val wordsPerMinute: Int?,
     /** Change against the previous range, in percent; null when there is nothing to compare. */
     val trendPercent: Int?,
     val previousRangeName: String,
@@ -83,7 +82,8 @@ internal data class SessionRow(
     val slot: Int,
     val startHour: Float,
     val seconds: Long,
-    val pages: Int,
+    /** Null when no page count is known. */
+    val pages: Int?,
     val source: String,
     val listening: Boolean = false,
 )
@@ -151,9 +151,12 @@ internal data class BookStats(
     val sessions: Int,
     val startedText: String,
     val finishedText: String?,
-    val days: Int,
-    val wordsPerMinute: Int,
-    val averageWordsPerMinute: Int,
+    /** Null when the number of days is not known. */
+    val days: Int?,
+    /** Null when no pace is known yet. */
+    val wordsPerMinute: Int?,
+    /** Null when there is no average to show. */
+    val averageWordsPerMinute: Int?,
     val secondsLeft: Long?,
     val progress: Float,
     val timeline: List<TimelinePoint>,
@@ -186,7 +189,8 @@ internal data class YearReview(
     val byMonth: List<Int>,
     val longestStreak: Int,
     val favouriteHour: String,
-    val wordsPerMinute: Int,
+    /** Null when no pace is known yet. */
+    val wordsPerMinute: Int?,
     val records: List<Pair<String, String>>,
     val firsts: List<Pair<String, String>>,
 )
@@ -195,7 +199,8 @@ internal data class YearReview(
 internal sealed interface StatsState {
     data object Loading : StatsState
 
-    data object Empty : StatsState
+    /** No reading on the phone or e-reader. Hardcover years, if any, still show. */
+    data class Empty(val years: List<YearSummary> = emptyList()) : StatsState
 
     data class Failed(val retry: () -> Unit) : StatsState
 

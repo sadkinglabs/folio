@@ -44,6 +44,12 @@
     <string name="stats_trend_same">Same as %1$s</string>
     <string name="stats_sources_line">Kindle, phone and listening. Earlier years from Hardcover.</string>
 
+    <!-- A value or name that is not known yet. -->
+    <string name="stats_no_value">—</string>
+    <string name="stats_unknown_book">A book on your e-reader</string>
+    <string name="stats_unknown_hardcover_book">A book from Hardcover</string>
+    <string name="stats_last_week">last week</string>
+
     <!-- Calendar. -->
     <string name="stats_calendar">Calendar</string>
     <string name="stats_previous_month">Previous month</string>
@@ -90,6 +96,8 @@
     <string name="stats_milestone_biggest_day">Biggest day</string>
     <string name="stats_milestone_first_listen">First listen</string>
     <string name="stats_milestone_year">A full year</string>
+    <string name="stats_milestone_reading_time">Reading time</string>
+    <string name="stats_milestone_fastest_detail">%1$s in %2$d days</string>
     <string name="stats_milestones_empty">Finish a book or read a week in a row and the first ones show here.</string>
 
     <!-- Years and the year in review. -->
@@ -106,6 +114,8 @@
     <string name="stats_year_by_month_a11y">%1$d books this year, most in %2$s.</string>
     <string name="stats_year_records">Records</string>
     <string name="stats_year_firsts">Firsts</string>
+    <string name="stats_record_longest_session">Longest session</string>
+    <string name="stats_first_hours">First %1$d hours</string>
     <string name="stats_share_eyebrow">Librillo · year in review</string>
     <string name="stats_share_footer">Librillo</string>
     <string name="stats_share_streak">Longest streak</string>
@@ -154,6 +164,7 @@
     <!-- Day sheet. -->
     <string name="stats_day_sessions_a11y">Sessions through the day</string>
     <string name="stats_source_phone">Phone</string>
+    <string name="stats_source_ereader">E-reader</string>
     <string name="stats_source_listening">Listening</string>
     <string name="stats_day_pages">%1$d pages</string>
 
