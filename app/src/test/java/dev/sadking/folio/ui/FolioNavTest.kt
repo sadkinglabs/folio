@@ -125,6 +125,40 @@ class FolioNavTest {
     }
 
     @Test
+    fun aYearInReviewIsARouteThatSurvivesRestoreAndIsNotADetail() {
+        val nav = FolioNav(tab = FolioNav.STATS)
+        nav.open(Route.Year(2026))
+        assertEquals(2026, nav.yearShown)
+        assertNull(nav.detail)
+        assertNull(nav.bookId)
+        assertEquals("year:2026", Route.Year(2026).encode())
+        val saved = with(FolioNav.saver) { SaverScope { true }.save(nav) }!!
+        assertEquals(listOf("4", "year:2026"), saved)
+        val restored = FolioNav.saver.restore(saved)!!
+        assertEquals(FolioNav.STATS, restored.tab)
+        assertEquals(listOf<Route>(Route.Year(2026)), restored.stack.toList())
+        nav.forget(setOf("2026", "anything"))
+        assertEquals(2026, nav.yearShown)
+        // A book opened from the review sits above it; back returns to the review.
+        nav.open(Route.Book("a"))
+        assertNull(nav.yearShown)
+        assertTrue(nav.back())
+        assertEquals(2026, nav.yearShown)
+        assertTrue(nav.back())
+        assertNull(nav.yearShown)
+    }
+
+    @Test
+    fun aYearRouteWithoutARealYearIsDropped() {
+        val restored =
+            FolioNav.saver.restore(listOf("4", "year:abc", "year:12", "year:", "year:10000"))!!
+        assertTrue(restored.stack.isEmpty())
+        assertNull(Route.decode("year:1899"))
+        assertEquals(Route.Year(1900), Route.decode("year:1900"))
+        assertEquals(Route.Year(9999), Route.decode("year:9999"))
+    }
+
+    @Test
     fun scanACoverIsARouteThatSurvivesRestoreAndBackLeavesIt() {
         val nav = FolioNav()
         nav.open(Route.Discover)

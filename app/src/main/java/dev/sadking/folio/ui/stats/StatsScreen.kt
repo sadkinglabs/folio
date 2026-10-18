@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1459,7 +1460,8 @@ internal fun YearReviewScreen(
                         Icon(Icons.Outlined.Share, share)
                     }
                 }
-            },
+            }, // The app frame already pads for the status bar.
+            windowInsets = WindowInsets(0),
         )
         Column(
             Modifier.fillMaxSize()

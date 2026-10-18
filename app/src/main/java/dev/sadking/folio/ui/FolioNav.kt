@@ -29,6 +29,9 @@ sealed interface Route {
     /** Scan a cover: camera or photo, recognised text, matches. */
     data object Discover : Route
 
+    /** A year in review, opened from the Stats tab. */
+    data class Year(val year: Int) : Route
+
     fun encode(): String =
         when (this) {
             is Book -> "book:$id"
@@ -37,6 +40,7 @@ sealed interface Route {
             is List -> "list:$id"
             is Search -> "search:$query"
             Discover -> "discover"
+            is Year -> "year:$year"
         }
 
     companion object {
@@ -49,6 +53,7 @@ sealed interface Route {
                 "list" -> List(id).takeIf { id.isNotEmpty() }
                 "search" -> Search(id)
                 "discover" -> Discover
+                "year" -> id.toIntOrNull()?.takeIf { it in 1900..9999 }?.let(::Year)
                 // "settings" was a route before Settings became a tab; it is dropped on restore.
                 else -> null
             }
@@ -98,6 +103,10 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
     /** The scan-a-cover screen is on top. */
     val discovering: Boolean
         get() = top is Route.Discover
+
+    /** The year in review on screen: it fills the window beside the rail, never a detail pane. */
+    val yearShown: Int?
+        get() = (top as? Route.Year)?.year
 
     /**
      * With two panes, the screen in the right pane: the top screen when it is a book, a record, an
@@ -171,6 +180,7 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
                 is Route.List -> it.id in ids
                 is Route.Search -> false
                 Route.Discover -> false
+                is Route.Year -> false
             }
         }
     }

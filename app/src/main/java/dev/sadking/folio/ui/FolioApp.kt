@@ -46,6 +46,10 @@ import dev.sadking.folio.device.*
 import dev.sadking.folio.reader.ExportActions
 import dev.sadking.folio.ui.stats.BookStatsSlot
 import dev.sadking.folio.ui.stats.StatsRoute
+import dev.sadking.folio.ui.stats.StatsUi
+import dev.sadking.folio.ui.stats.YearReview
+import dev.sadking.folio.ui.stats.YearReviewRoute
+import dev.sadking.folio.ui.stats.rememberStatsText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -66,6 +70,8 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
     val stats: StatsViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     var showProfileImport by rememberSaveable { mutableStateOf(false) }
     val nav = rememberFolioNav()
+    // The year whose share image was asked for in the Stats tab: its review shares once ready.
+    var shareYear by remember { mutableStateOf<Int?>(null) }
     val catalogueId = nav.recordId
     var catalogueProgress by rememberSaveable { mutableStateOf(false) }
     var catalogueEditorId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -540,7 +546,11 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
             val detailOpen = book != null || catalogue != null
             // The Library and Lists show a list beside the chosen item; Device and Settings lay
             // themselves out. The scan screen always fills the window.
-            val twoPane = frame.twoPane && tab == FolioNav.LIBRARY && !nav.discovering
+            val twoPane =
+                frame.twoPane &&
+                    tab == FolioNav.LIBRARY &&
+                    !nav.discovering &&
+                    nav.yearShown == null
             // A list stays on the left while one of its books is open on the right.
             val listBeside =
                 if (twoPane && detailOpen)
@@ -969,7 +979,10 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                     StatsRoute(
                                         stats,
                                         ::openStatsBook,
-                                        onYear = { _, _ -> },
+                                        onYear = { year, share ->
+                                            if (share) shareYear = year
+                                            nav.open(Route.Year(year))
+                                        },
                                         onLibrary = { chooseTab(FolioNav.LIBRARY) },
                                     )
                                 FolioNav.SETTINGS ->
@@ -1065,7 +1078,12 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                 // here.
                                 if (!compact) {
                                     if (selection.isNotEmpty() && !nav.discovering) selectionBar()
-                                } else if (book == null && catalogue == null && !nav.discovering)
+                                } else if (
+                                    book == null &&
+                                        catalogue == null &&
+                                        !nav.discovering &&
+                                        nav.yearShown == null
+                                )
                                     AnimatedContent(
                                         selection.isNotEmpty(),
                                         transitionSpec = {
@@ -1185,11 +1203,14 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                                     )
                                                 else PaddingValues(bottom = bottom)
                                             val openListPage = openList
+                                            val yearOpen = nav.yearShown
                                             Panes(
                                                 twoPane = twoPane,
                                                 maxWidth =
                                                     when {
-                                                        compact || nav.discovering -> null
+                                                        compact ||
+                                                            nav.discovering ||
+                                                            nav.yearShown != null -> null
                                                         layout == FolioLayout.RAIL ->
                                                             PANE_MAX_WIDTH_DP.dp
                                                         // Settings shows its groups beside the
@@ -1246,6 +1267,23 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                                                                 .name
                                                                     },
                                                                     contentPadding = pagePadding,
+                                                                )
+                                                            }
+                                                        }
+                                                        yearOpen != null -> {
+                                                            {
+                                                                YearReviewHost(
+                                                                    stats,
+                                                                    yearOpen,
+                                                                    shareNow =
+                                                                        shareYear == yearOpen,
+                                                                    onShareStarted = {
+                                                                        shareYear = null
+                                                                    },
+                                                                    onBack = { nav.back() },
+                                                                    onOpenBook = {
+                                                                        openStatsBook(it.id)
+                                                                    },
                                                                 )
                                                             }
                                                         }
@@ -1898,4 +1936,28 @@ private object SaveBookCopy : ActivityResultContracts.CreateDocument("applicatio
     override fun createIntent(context: android.content.Context, input: String) =
         super.createIntent(context, input)
             .setType(dev.sadking.folio.data.bookMimeType(input.substringAfterLast('.')))
+}
+
+/**
+ * The year in review for [year]: the review is made off the main thread from the statistics
+ * snapshot, and the page shows its loading state until then.
+ */
+@Composable
+private fun YearReviewHost(
+    model: StatsViewModel,
+    year: Int,
+    shareNow: Boolean,
+    onShareStarted: () -> Unit,
+    onBack: () -> Unit,
+    onOpenBook: (Book) -> Unit,
+) {
+    val load by model.load.collectAsStateWithLifecycle()
+    val text = rememberStatsText()
+    val review by
+        produceState<YearReview?>(null, load, year, text) {
+            val ready = load as? StatsLoad.Ready ?: return@produceState
+            value =
+                withContext(Dispatchers.Default) { StatsUi.yearReview(ready.snapshot, year, text) }
+        }
+    YearReviewRoute(review, year, shareNow, onShareStarted, onBack, onOpenBook)
 }
