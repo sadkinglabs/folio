@@ -59,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -1566,89 +1567,99 @@ internal fun ScaledShareCard(review: YearReview, width: Dp, modifier: Modifier =
 internal fun YearShareCard(review: YearReview, modifier: Modifier = Modifier) {
     val glow = MaterialTheme.colorScheme.primaryContainer
     val surface = MaterialTheme.colorScheme.surface
-    Box(modifier.size(shareCardWidth, shareCardHeight).background(surface)) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(
-                androidx.compose.ui.graphics.Brush.radialGradient(
-                    listOf(glow.copy(alpha = 0.85f), glow.copy(alpha = 0f)),
-                    center = Offset(size.width * 0.2f, size.height * 0.12f),
-                    radius = size.width * 0.9f,
-                ),
-                radius = size.width * 0.9f,
-                center = Offset(size.width * 0.2f, size.height * 0.12f),
-            )
-        }
-        Column(
-            Modifier.fillMaxSize().padding(28.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Eyebrow(stringResource(R.string.stats_share_eyebrow))
-                Text(
-                    review.year.toString(),
-                    style =
-                        MaterialTheme.typography.displayLarge.copy(fontFamily = FontFamily.Serif),
-                )
-                Text(
-                    stringResource(
-                        R.string.stats_year_hero_line,
-                        review.books,
-                        ((review.readingSeconds + review.listeningSeconds) / 3600).toInt(),
+    // Text on the card is onSurface wherever it is drawn, including offscreen for the image.
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        Box(modifier.size(shareCardWidth, shareCardHeight).background(surface)) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(glow.copy(alpha = 0.85f), glow.copy(alpha = 0f)),
+                        center = Offset(size.width * 0.2f, size.height * 0.12f),
+                        radius = size.width * 0.9f,
                     ),
-                    style = MaterialTheme.typography.titleLarge,
+                    radius = size.width * 0.9f,
+                    center = Offset(size.width * 0.2f, size.height * 0.12f),
                 )
             }
-            Box(Modifier.fillMaxWidth().height(190.dp), contentAlignment = Alignment.Center) {
-                val top = review.topBooks.take(3)
-                val angles = listOf(-10f, 0f, 10f)
-                val offsets = listOf((-72).dp, 0.dp, 72.dp)
-                val lifts = listOf(12.dp, 0.dp, 12.dp)
-                // The middle cover is drawn last, so it sits in front.
-                listOf(0, 2, 1).forEach { i ->
-                    top.getOrNull(i)?.let { entry ->
-                        CoverTile(
-                            entry.book,
-                            Modifier.width(104.dp)
-                                .offset(x = offsets[i], y = lifts[i])
-                                .rotate(angles[i]),
+            Column(
+                Modifier.fillMaxSize().padding(28.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Eyebrow(stringResource(R.string.stats_share_eyebrow))
+                    Text(
+                        review.year.toString(),
+                        style =
+                            MaterialTheme.typography.displayLarge.copy(
+                                fontFamily = FontFamily.Serif
+                            ),
+                    )
+                    Text(
+                        stringResource(
+                            R.string.stats_year_hero_line,
+                            review.books,
+                            ((review.readingSeconds + review.listeningSeconds) / 3600).toInt(),
+                        ),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                }
+                Box(Modifier.fillMaxWidth().height(190.dp), contentAlignment = Alignment.Center) {
+                    val top = review.topBooks.take(3)
+                    val angles = listOf(-10f, 0f, 10f)
+                    val offsets = listOf((-72).dp, 0.dp, 72.dp)
+                    val lifts = listOf(12.dp, 0.dp, 12.dp)
+                    // The middle cover is drawn last, so it sits in front.
+                    listOf(0, 2, 1).forEach { i ->
+                        top.getOrNull(i)?.let { entry ->
+                            CoverTile(
+                                entry.book,
+                                Modifier.width(104.dp)
+                                    .offset(x = offsets[i], y = lifts[i])
+                                    .rotate(angles[i]),
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.item)) {
+                    Column(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                    ) {
+                        MiniStat(
+                            pluralStringResource(
+                                R.plurals.stats_share_days,
+                                review.longestStreak,
+                                review.longestStreak,
+                            ),
+                            stringResource(R.string.stats_share_streak),
+                        )
+                        MiniStat(
+                            paceText(review.wordsPerMinute),
+                            stringResource(R.string.stats_share_pace),
+                        )
+                    }
+                    Column(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
+                    ) {
+                        MiniStat(review.favouriteHour, stringResource(R.string.stats_share_hour))
+                        MiniStat(
+                            durationText(review.listeningSeconds),
+                            stringResource(R.string.stats_share_listening),
                         )
                     }
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(FolioSpace.item)) {
-                Column(
-                    Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
-                ) {
-                    MiniStat(
-                        pluralStringResource(R.plurals.stats_share_days, review.longestStreak, review.longestStreak),
-                        stringResource(R.string.stats_share_streak),
-                    )
-                    MiniStat(
-                        paceText(review.wordsPerMinute),
-                        stringResource(R.string.stats_share_pace),
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Eyebrow(stringResource(R.string.stats_year_by_month))
+                    MonthBars(review.byMonth, plotHeight = 56.dp)
                 }
-                Column(
-                    Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(FolioSpace.gap),
-                ) {
-                    MiniStat(review.favouriteHour, stringResource(R.string.stats_share_hour))
-                    MiniStat(
-                        durationText(review.listeningSeconds),
-                        stringResource(R.string.stats_share_listening),
-                    )
-                }
+                Text(
+                    stringResource(R.string.stats_share_footer),
+                    style =
+                        MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Eyebrow(stringResource(R.string.stats_year_by_month))
-                MonthBars(review.byMonth, plotHeight = 56.dp)
-            }
-            Text(
-                stringResource(R.string.stats_share_footer),
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

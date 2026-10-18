@@ -7,8 +7,6 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -49,12 +47,7 @@ internal fun shareImageIntent(context: Context, file: File): Intent {
  */
 @Composable
 internal fun ShareCardRecorder(review: YearReview, layer: GraphicsLayer) {
-    // No Surface sits above the hidden card, so the text colour is set here: without it the card's
-    // text is black on the dark theme's surface.
-    CompositionLocalProvider(
-        LocalDensity provides Density(3f, 1f),
-        LocalContentColor provides MaterialTheme.colorScheme.onSurface,
-    ) {
+    CompositionLocalProvider(LocalDensity provides Density(3f, 1f)) {
         Box(
             Modifier.requiredSize(shareCardWidth, shareCardHeight)
                 .clearAndSetSemantics {}
@@ -64,7 +57,8 @@ internal fun ShareCardRecorder(review: YearReview, layer: GraphicsLayer) {
                     drawLayer(layer)
                 }
         ) {
-            ScaledShareCard(review, shareCardWidth)
+            // The card unclipped: the image is a full rectangle, with no transparent corners.
+            YearShareCard(review)
         }
     }
 }

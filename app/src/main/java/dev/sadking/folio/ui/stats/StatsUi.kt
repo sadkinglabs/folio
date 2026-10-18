@@ -561,7 +561,11 @@ internal object StatsUi {
                         text.string(
                             R.string.stats_joined,
                             label(snapshot, it.book, text).title,
-                            text.plural(R.plurals.stats_share_days, it.value.toInt(), it.value.toInt()),
+                            text.plural(
+                                R.plurals.stats_share_days,
+                                it.value.toInt(),
+                                it.value.toInt(),
+                            ),
                         )
                 },
             )
