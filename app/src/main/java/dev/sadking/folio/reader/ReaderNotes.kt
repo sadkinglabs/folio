@@ -40,6 +40,7 @@ import dev.sadking.folio.data.BookAnnotation
 import dev.sadking.folio.data.HighlightColour
 import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.data.UNDERSCORE
+import dev.sadking.folio.ui.FolioDates
 import dev.sadking.folio.ui.FolioSearchBar
 import dev.sadking.folio.ui.FolioSpace
 import dev.sadking.folio.ui.Tooltipped
@@ -48,7 +49,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import java.util.Locale
 
 /**
@@ -172,13 +172,9 @@ internal fun filterNotes(
     }
 }
 
-/** "Oct 16, 2026", in the phone's language, from KOReader's time; the text itself otherwise. */
-internal fun noteDay(date: String, locale: Locale = Locale.getDefault()): String =
-    runCatching {
-            LocalDate.parse(date.trim().take(10))
-                .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
-        }
-        .getOrDefault(date.trim())
+/** "16/10/2026" from KOReader's time; the text itself otherwise. */
+internal fun noteDay(date: String): String =
+    runCatching { FolioDates.day(LocalDate.parse(date.trim().take(10))) }.getOrDefault(date.trim())
 
 /** What a row can do. Every highlight change goes through part A's view-model functions. */
 internal class NotesActions(

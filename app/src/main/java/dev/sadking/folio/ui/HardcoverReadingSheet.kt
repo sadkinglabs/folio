@@ -38,8 +38,6 @@ import dev.sadking.folio.data.*
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import kotlin.math.roundToInt
 
 internal const val HARDCOVER_SHEET_TAG = "hardcover-sheet"
@@ -285,10 +283,7 @@ internal fun DateField(
 ) {
     var picking by remember { mutableStateOf(false) }
     val locale = LocalConfiguration.current.locales[0]
-    val shown =
-        remember(date, locale) {
-            date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
-        }
+    val shown = remember(date) { FolioDates.day(date) }
     OutlinedButton(
         onClick = { picking = true },
         enabled = enabled,
@@ -300,8 +295,10 @@ internal fun DateField(
     }
     if (picking) {
         val today = LocalDate.now()
-        val state =
-            rememberDatePickerState(
+        // Built with the day-first locale so the typed field reads DD/MM/YYYY.
+        val state = remember {
+            DatePickerState(
+                locale = FolioDates.pickerLocale(locale),
                 initialSelectedDateMillis = date.utcMillis(),
                 selectableDates =
                     object : SelectableDates {
@@ -314,6 +311,7 @@ internal fun DateField(
                         override fun isSelectableYear(year: Int) = year <= today.year
                     },
             )
+        }
         DatePickerDialog(
             onDismissRequest = { picking = false },
             confirmButton = {

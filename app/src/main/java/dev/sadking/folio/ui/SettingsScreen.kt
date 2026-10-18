@@ -1016,11 +1016,7 @@ internal fun ReadingTimeContent(readingTime: ReadingTime) {
         Text(
             stringResource(
                 R.string.reading_time_updated,
-                java.text.DateFormat.getDateTimeInstance(
-                        java.text.DateFormat.MEDIUM,
-                        java.text.DateFormat.SHORT,
-                    )
-                    .format(java.util.Date(readingTime.updatedAt * 1000)),
+                FolioDates.dayAndTime(readingTime.updatedAt * 1000),
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1049,13 +1045,9 @@ internal fun ReadingTimeContent(readingTime: ReadingTime) {
         }
         if (readingTime.days.isNotEmpty())
             ReadingTimeSection(stringResource(R.string.reading_time_recent)) {
-                val format =
-                    java.time.format.DateTimeFormatter.ofLocalizedDate(
-                        java.time.format.FormatStyle.MEDIUM
-                    )
                 readingTime.days.take(30).forEach { (date, seconds) ->
                     ReadingTimeLine(
-                        runCatching { java.time.LocalDate.parse(date).format(format) }
+                        runCatching { FolioDates.day(java.time.LocalDate.parse(date)) }
                             .getOrDefault(date),
                         duration(seconds),
                         Modifier.testTag(READING_TIME_DAY_TAG),

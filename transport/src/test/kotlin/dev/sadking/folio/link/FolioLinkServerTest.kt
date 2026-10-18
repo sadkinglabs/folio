@@ -67,14 +67,15 @@ class FolioLinkServerTest {
         assertEquals(0.25, JSONObject(get.body()).getDouble("percentage"), 0.0)
 
         // The log says what happened without the book's key or any credential. The server logs a
-        // request after answering it, so the last entry can land a moment after the response.
+        // request after answering it, so an entry can land a moment after the response, and two
+        // quick requests can be logged in either order.
         val deadline = System.nanoTime() + 5_000_000_000L
         while (synchronized(events) { events.size } < 3 && System.nanoTime() < deadline) Thread
             .sleep(10)
         val logged = synchronized(events) { events.toList() }
         assertEquals(
-            listOf("/users/auth", "/syncs/progress", "/syncs/progress/…"),
-            logged.map { it.route },
+            listOf("/users/auth", "/syncs/progress", "/syncs/progress/…").sorted(),
+            logged.map { it.route }.sorted(),
         )
         assertEquals(listOf(200, 200, 200), logged.map { it.status })
         assertTrue(logged.none { "0b4b0f1c" in it.route })

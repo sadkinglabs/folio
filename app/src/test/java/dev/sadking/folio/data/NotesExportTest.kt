@@ -120,11 +120,11 @@ class NotesExportTest {
         assertFalse(md.contains("Old revision"))
         // Reading order, not date or id order; KOReader's purple is the phone's pink.
         assertTrue(md.indexOf("> Earlier passage") < md.indexOf("> Later passage"))
-        assertTrue(md.contains("> Earlier passage\n\nA thought\n\n2026-10-12\n"))
-        assertTrue(md.contains("#highlight/pink · 2026-10-14"))
+        assertTrue(md.contains("> Earlier passage\n\nA thought\n\n12/10/2026\n"))
+        assertTrue(md.contains("#highlight/pink · 14/10/2026"))
         val marks = md.substringAfter("## Bookmarks\n\n")
         assertEquals(
-            "- Chapter 3 · 2026-10-13\n  Kindle mark\n- Chapter 3 · 50% · 1970-01-01\n",
+            "- Chapter 3 · 13/10/2026\n  Kindle mark\n- Chapter 3 · 50% · 01/01/1970\n",
             marks.replace(Regex("1970-01-01|1969-12-31"), "1970-01-01"),
         )
     }

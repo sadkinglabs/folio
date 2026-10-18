@@ -16,7 +16,6 @@ import dev.sadking.folio.data.HighlightColour
 import dev.sadking.folio.data.PhoneBookmark
 import dev.sadking.folio.ui.FolioTheme
 import java.time.ZoneOffset
-import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -131,8 +130,8 @@ class ReaderNotesTest {
 
     @Test
     fun aDayIsShownInThePhonesLanguage() {
-        assertEquals("Oct 16, 2026", noteDay("2026-10-16 08:41:12", Locale.US))
-        assertEquals("sometime", noteDay("sometime", Locale.US))
+        assertEquals("16/10/2026", noteDay("2026-10-16 08:41:12"))
+        assertEquals("sometime", noteDay("sometime"))
     }
 
     @Test
@@ -145,7 +144,7 @@ class ReaderNotesTest {
         }
         compose.onNodeWithText("Ada pruned the old trees.").assertIsDisplayed()
         compose.onNodeWithText("Like the vineyard").assertIsDisplayed()
-        compose.onAllNodesWithText("Chapter 2 · Oct 16, 2026").assertCountEquals(2)
+        compose.onAllNodesWithText("Chapter 2 · 16/10/2026").assertCountEquals(2)
         compose.onNodeWithText("All · 5").assertIsSelected()
         compose.onNodeWithContentDescription("Green", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("In March the pruning began.").performClick()

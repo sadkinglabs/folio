@@ -50,7 +50,7 @@ class NotesMarkdownTest {
 
             Like the vineyard.
 
-            #highlight/green · 2026-10-16
+            #highlight/green · 16/10/2026
 
             """
                 .trimIndent(),
@@ -89,7 +89,7 @@ class NotesMarkdownTest {
         val quote =
             md.substringAfter("## Chapter one\n\n")
                 .substringBefore("\n\n#highlight")
-                .substringBefore("\n\n2026")
+                .substringBefore("\n\n16/10/2026")
         val lines = quote.lines()
         // Every line is part of the one quote; blank runs became one quoted blank line.
         assertTrue(lines.all { it == ">" || it.startsWith("> ") })
@@ -209,8 +209,8 @@ class NotesMarkdownTest {
                 day,
             )
         assertTrue(md.contains("> Plain\n\n> Pink"))
-        assertTrue(md.contains("> Pink\n\n#highlight/pink · 2026-10-16\n"))
-        assertTrue(md.contains("#highlight/underline · 2026-10-16"))
+        assertTrue(md.contains("> Pink\n\n#highlight/pink · 16/10/2026\n"))
+        assertTrue(md.contains("#highlight/underline · 16/10/2026"))
         assertNull(NotesMarkdown.tag(""))
         assertEquals("#highlight/red", NotesMarkdown.tag(" Red "))
     }
@@ -251,7 +251,7 @@ class NotesMarkdownTest {
         assertTrue(md.indexOf("> A passage") < md.indexOf("## Bookmarks"))
         // Kindle bookmarks (a known chapter) first, then the phone's, by place.
         assertEquals(
-            "- Chapter two · 2026-10-14\n  Come back\n  \\- here\n- Chapter one · 4% · 2026-10-15\n",
+            "- Chapter two · 14/10/2026\n  Come back\n  \\- here\n- Chapter one · 4% · 15/10/2026\n",
             marks,
         )
     }

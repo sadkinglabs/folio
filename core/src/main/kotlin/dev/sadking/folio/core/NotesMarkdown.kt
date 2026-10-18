@@ -214,8 +214,11 @@ object NotesMarkdown {
         return if (name.isEmpty()) null else "#highlight/$name"
     }
 
-    /** The day of KOReader's `YYYY-MM-DD HH:MM:SS`, or null when it is not one. */
-    private fun day(date: String): String? = Regex("^\\d{4}-\\d{2}-\\d{2}").find(date.trim())?.value
+    /** The day of KOReader's `YYYY-MM-DD HH:MM:SS` as DD/MM/YYYY, or null when it is not one. */
+    private fun day(date: String): String? =
+        Regex("^(\\d{4})-(\\d{2})-(\\d{2})").find(date.trim())?.destructured?.let { (y, m, d) ->
+            "$d/$m/$y"
+        }
 
     /**
      * Text split into lines: line breaks of every kind become one, blank runs become a single empty

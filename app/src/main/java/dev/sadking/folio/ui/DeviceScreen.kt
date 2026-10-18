@@ -3,7 +3,6 @@
 package dev.sadking.folio.ui
 
 import android.content.Intent
-import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -571,9 +570,6 @@ private fun ActivitySheet(
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val timeFormat = remember { DateFormat.getTimeFormat(context) }
-    val dateFormat = remember { DateFormat.getDateFormat(context) }
     FolioSheet(
         onDismissRequest = onDismiss,
         shape = FolioSpace.sheetShape,
@@ -614,11 +610,10 @@ private fun ActivitySheet(
                     )
                 }
             items(entries) { entry ->
-                val date = java.util.Date(entry.time)
                 Text(
                     stringResource(
                         R.string.link_log_line,
-                        "${dateFormat.format(date)} ${timeFormat.format(date)}",
+                        FolioDates.dayAndTime(entry.time),
                         describe(entry),
                     ),
                     style = MaterialTheme.typography.bodyMedium,

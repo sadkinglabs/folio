@@ -169,12 +169,7 @@ internal fun lift(shape: Shape, elevation: Dp = 6.dp): Modifier {
     )
 }
 
-internal fun observationDate(time: Long): String =
-    java.text.DateFormat.getDateTimeInstance(
-            java.text.DateFormat.SHORT,
-            java.text.DateFormat.SHORT,
-        )
-        .format(java.util.Date(time))
+internal fun observationDate(time: Long): String = FolioDates.dayAndTime(time)
 
 /**
  * [style] grown with the font scale only up to [cap]: for short labels under icons, where the icon
