@@ -168,12 +168,18 @@ class ReaderHighlightFromHereTest {
     }
 
     @Test
-    fun aOneWordSelectionStillOffersDefineButTheEndOfAHighlightOffersNothing() {
+    fun aOneWordSelectionStillOffersDefineButTheEndOfAHighlightOffersOnlyEndHere() {
         // Outside the mode, a long-pressed word gets the whole menu, Define included.
         assertEquals(SELECTION_MENU, selectionMenu(endingHighlight = false))
         assertTrue(selectionMenu(endingHighlight = false).any { it.first == SELECTION_DEFINE })
-        // While the mode waits, the press is the end: no Define, no menu at all.
-        assertEquals(emptyList<Pair<Int, Int>>(), selectionMenu(endingHighlight = true))
+        assertTrue(selectionMenu(endingHighlight = false).none { it.first == SELECTION_END_HERE })
+        // While the mode waits, the menu has one item: End highlight here. No Define, no Copy.
+        assertEquals(
+            listOf(SELECTION_END_HERE to dev.sadking.folio.R.string.reader_from_here_end_action),
+            selectionMenu(endingHighlight = true),
+        )
+        // Its id is no other item's, so choosing it can never run Highlight, Define or the rest.
+        assertTrue(SELECTION_MENU.none { it.first == SELECTION_END_HERE })
     }
 
     @Test

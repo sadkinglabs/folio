@@ -29,6 +29,7 @@ import dev.sadking.folio.reader.PHONE_ANNOTATION_DEVICE
 import dev.sadking.folio.reader.ReaderActivity
 import dev.sadking.folio.reader.ReaderDefaults
 import dev.sadking.folio.reader.ReaderViewModel
+import dev.sadking.folio.reader.SELECTION_END_HERE
 import dev.sadking.folio.reader.SELECTION_FROM_HERE
 import dev.sadking.folio.reader.SELECTION_HIGHLIGHT
 import dev.sadking.folio.reader.xpointerSpineIndex
@@ -519,6 +520,18 @@ class ReaderHighlightTapsTest {
         return open
     }
 
+    /** The open selection menu's items, by title, for a failure message; null when none is open. */
+    private fun ActivityScenario<ReaderActivity>.menuItems(): List<String>? {
+        var items: List<String>? = null
+        onActivity { activity ->
+            items =
+                activity.openSelectionMenu?.let { menu ->
+                    (0 until menu.size()).map { menu.getItem(it).title.toString() }
+                }
+        }
+        return items
+    }
+
     /**
      * Long-presses ([x], [y]) until the selection menu opens, up to 3 times: a press that lands
      * before the page takes touches is lost, as in ReaderUiTest.
@@ -732,7 +745,7 @@ class ReaderHighlightTapsTest {
                         Diagnostics.state()
                 )
             assertTrue(fromHere())
-            // A word on the new page: pressed and held, it is the end. No menu, no Define.
+            // A word on the new page: pressed and held, its menu's only item ends the highlight.
             var end: Pair<Int, Int>? = null
             compose.waitUntil(30_000) {
                 end = runCatching { scenario.onScreen(visibleWord(10)) }.getOrNull()
@@ -741,19 +754,38 @@ class ReaderHighlightTapsTest {
             val lastWord =
                 (scenario.json("JSON.stringify(window.__folioWord)") as? String)
                     ?: error("No last word")
+            // The press is tried again only when no selection menu opened: a press that lands
+            // before the page takes touches is lost, as in select().
             var presses = 0
-            while (phoneRows(id).isEmpty() && presses < 3) {
+            var menu: List<String>? = null
+            while (presses < 3) {
                 longPress(end!!.first, end!!.second)
                 presses++
-                runCatching { compose.waitUntil(10_000) { phoneRows(id).isNotEmpty() } }
+                if (
+                    runCatching { compose.waitUntil(5_000) { scenario.menuItems() != null } }
+                        .isSuccess
+                ) {
+                    // The menu may open a moment before its item can be found; wait for it.
+                    runCatching {
+                        compose.waitUntil(5_000) { scenario.menuOffers(SELECTION_END_HERE) }
+                    }
+                    menu = scenario.menuItems()
+                    break
+                }
             }
-            if (phoneRows(id).isEmpty())
-                fail(
-                    "No highlight after $presses presses on the second page.\n" +
-                        "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
-                        Diagnostics.state()
-                )
-            // The press opened no menu and no definition: it was only the end.
+            fun endFailure(what: String) =
+                "$what after $presses press(es) on the second page.\n" +
+                    "Selection menu: ${menu?.let { "open, items $it" } ?: "none"}\n" +
+                    "Reader steps:\n${scenario.tapSteps().joinToString("\n")}\n" +
+                    Diagnostics.state()
+            if (menu == null) fail(endFailure("No selection menu"))
+            // Exactly one item, End highlight here: no Define, Copy or Highlight.
+            assertEquals(endFailure("Not only End highlight here"), 1, menu!!.size)
+            if (!scenario.menuOffers(SELECTION_END_HERE)) fail(endFailure("No End highlight here"))
+            scenario.chooseFromSelectionMenu(SELECTION_END_HERE)
+            if (runCatching { compose.waitUntil(30_000) { phoneRows(id).isNotEmpty() } }.isFailure)
+                fail(endFailure("No highlight after End highlight here"))
+            // It opened no definition: it was only the end.
             var defined: String? = null
             scenario.onActivity {
                 defined = ViewModelProvider(it)[ReaderViewModel::class.java].defineText

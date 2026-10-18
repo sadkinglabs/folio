@@ -80,6 +80,11 @@ internal const val SELECTION_COLOUR = 0x5f05
 internal const val SELECTION_FROM_HERE = 0x5f06
 
 /**
+ * The one item offered while Highlight from here… waits for its end (ReaderHighlightFromHere.kt).
+ */
+internal const val SELECTION_END_HERE = 0x5f07
+
+/**
  * The selection menu in order, as item id and label: Highlight (in the last colour picked),
  * Colour…, Add note, Define, Copy, then Highlight from here… (ReaderHighlightFromHere.kt). The
  * newest item comes last, so on a narrow screen it is the one that goes into the menu's overflow,

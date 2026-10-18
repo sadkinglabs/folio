@@ -155,25 +155,30 @@ class ReaderActivity : FragmentActivity() {
     /**
      * The menu over selected text: Highlight, Colour…, Add note, Define, Copy and Highlight from
      * here…. It replaces the WebView's own menu, so Copy is offered here too. While Highlight from
-     * here… waits for its end, a new selection opens no menu: it is the end (see [endHere]).
+     * here… waits for its end, a new selection's menu offers only End highlight here (see
+     * [endHere]).
      */
     private val selectionActions =
         object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                 selectionMode = mode
-                val ending = fromHere.active
-                selectionMenu(ending).forEachIndexed { order, (id, label) ->
+                selectionMenu(fromHere.active).forEachIndexed { order, (id, label) ->
                     menu.add(Menu.NONE, id, order, label)
                 }
-                if (ending) endHere(mode)
                 return true
             }
 
             override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
 
             override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-                if (SELECTION_MENU.none { it.first == item.itemId }) return false
-                selectionAction(item.itemId).invokeOnCompletion { mode.finish() }
+                val job =
+                    when {
+                        item.itemId == SELECTION_END_HERE -> endHere()
+                        SELECTION_MENU.any { it.first == item.itemId } ->
+                            selectionAction(item.itemId)
+                        else -> return false
+                    }
+                job.invokeOnCompletion { mode.finish() }
                 return true
             }
 
@@ -919,52 +924,50 @@ class ReaderActivity : FragmentActivity() {
             .map { it.annotation }
 
     /**
-     * A press and hold while Highlight from here… waits: the word the page selected is the end. No
-     * menu opens for it, so nothing else (Define, Copy) can be chosen by accident. In the start's
-     * chapter, the highlight from start to end is saved like any other and its sheet opens; in
-     * another chapter, a message says why not and the mode waits on. The selection is cleared
-     * either way.
+     * End highlight here, the only item of the menu over a selection made while Highlight from
+     * here… waits: the selected passage is the end. In the start's chapter, the highlight from
+     * start to end is saved like any other and its sheet opens; in another chapter, a message says
+     * why not and the mode waits on. The selection is cleared either way, and the menu closes when
+     * the returned job completes.
      */
-    private fun endHere(mode: ActionMode) {
-        val nav = epubNavigator ?: return
-        lifecycleScope.launch {
-            var open: (() -> Unit)? = null
-            var picked: FromHereEnd.Here? = null
-            try {
-                val selection = nav.currentSelection() ?: return@launch
-                val href = selection.locator.href.toString()
-                val index = docFragmentIndex(href, model.spine)
-                val passage = index?.let {
-                    val raw =
-                        withTimeoutOrNull(BRIDGE_WAIT_MS) {
-                            nav.bridge(selectionCall(it, emptyList()))
-                        }
-                    parseSelection(raw, it, model.spine.size)
-                }
-                if (index == null || passage == null) {
-                    navigationError = getString(R.string.reader_highlight_failed)
+    private fun endHere(): Job = lifecycleScope.launch {
+        val nav = epubNavigator ?: return@launch
+        var open: (() -> Unit)? = null
+        var picked: FromHereEnd.Here? = null
+        try {
+            val selection = nav.currentSelection() ?: return@launch
+            val href = selection.locator.href.toString()
+            val index = docFragmentIndex(href, model.spine)
+            val passage = index?.let {
+                val raw =
+                    withTimeoutOrNull(BRIDGE_WAIT_MS) {
+                        nav.bridge(selectionCall(it, emptyList()))
+                    }
+                parseSelection(raw, it, model.spine.size)
+            }
+            if (index == null || passage == null) {
+                navigationError = getString(R.string.reader_highlight_failed)
+                return@launch
+            }
+            when (val end = fromHere.end(HighlightEnd(index, passage.pos0, passage.pos1))) {
+                null -> return@launch
+                FromHereEnd.OtherChapter -> {
+                    navigationError = getString(R.string.reader_from_here_other_chapter)
                     return@launch
                 }
-                when (val end = fromHere.end(HighlightEnd(index, passage.pos0, passage.pos1))) {
-                    null -> return@launch
-                    FromHereEnd.OtherChapter -> {
-                        navigationError = getString(R.string.reader_from_here_other_chapter)
-                        return@launch
-                    }
-                    is FromHereEnd.Here -> picked = end
-                }
-                open = saveFromHere(nav, picked, href)
-            } catch (cancel: CancellationException) {
-                if (picked != null && fromHere.saving) fromHere.failed()
-                throw cancel
-            } catch (_: Exception) {
-                if (picked != null && fromHere.saving) fromHere.failed()
-                navigationError = getString(R.string.reader_highlight_failed)
-            } finally {
-                nav.clearSelection()
-                mode.finish()
-                open?.let { action -> window.decorView.post { action() } }
+                is FromHereEnd.Here -> picked = end
             }
+            open = saveFromHere(nav, picked, href)
+        } catch (cancel: CancellationException) {
+            if (picked != null && fromHere.saving) fromHere.failed()
+            throw cancel
+        } catch (_: Exception) {
+            if (picked != null && fromHere.saving) fromHere.failed()
+            navigationError = getString(R.string.reader_highlight_failed)
+        } finally {
+            nav.clearSelection()
+            // The menu closes when this job completes; what it asked for opens after that.
+            open?.let { action -> window.decorView.post { action() } }
         }
     }
 

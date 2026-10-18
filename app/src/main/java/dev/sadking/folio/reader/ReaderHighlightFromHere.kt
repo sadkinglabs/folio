@@ -46,12 +46,15 @@ import org.json.JSONObject
  *    and a bar says what to do next.
  * 2. Page turns work as always: tap zones, swipes, the bottom bar, the contents.
  * 3. The owner presses and holds the word where the highlight ends. The page selects that word, as
- *    a long-press always does, but no menu opens: the highlight runs from the first word to the end
- *    of that one, whichever comes first in the book ([highlightSpan]), and is saved like any other
- *    (the last colour, synced to KOReader). Its sheet opens.
+ *    a long-press always does, and the selection menu offers one item only: "End highlight here"
+ *    ([selectionMenu]). Choosing it runs the highlight from the first word to the end of that one,
+ *    whichever comes first in the book ([highlightSpan]), and saves it like any other (the last
+ *    colour, synced to KOReader). Its sheet opens.
  *
  * A press and hold, not a tap, ends it: a tap still turns the page or shows the controls, as the
- * owner's tap zones say, so turning pages and ending the highlight can never be confused.
+ * owner's tap zones say, so turning pages and ending the highlight can never be confused. The end
+ * is read when its menu item is chosen, as Highlight from here… reads the start, not when the menu
+ * opens: a menu with no items (the first design) never ended a highlight on the emulator.
  *
  * Both ends must be in one chapter. A chapter is one document; the next is another, which the
  * reader never had on screen together with this one, so it cannot build the pointers and text of a
@@ -127,13 +130,16 @@ internal fun markCall(start: HighlightEnd): String =
 
 /**
  * The items the selection menu offers for a new selection: all of [SELECTION_MENU] (a one-word
- * selection offers Define, as always), or none while Highlight from here… waits for its end, as
- * that selection is the end and must not open Define or anything else by accident.
+ * selection offers Define, as always), or only End highlight here while Highlight from here… waits
+ * for its end, so that selection cannot open Define or anything else by accident.
  */
 internal fun selectionMenu(endingHighlight: Boolean): List<Pair<Int, Int>> =
-    if (endingHighlight) emptyList() else SELECTION_MENU
+    if (endingHighlight) FROM_HERE_END_MENU else SELECTION_MENU
 
-/** What a press and hold means while the mode waits for the end. */
+/** The selection menu while Highlight from here… waits for its end. */
+internal val FROM_HERE_END_MENU = listOf(SELECTION_END_HERE to R.string.reader_from_here_end_action)
+
+/** What End highlight here means while the mode waits for the end. */
 internal sealed interface FromHereEnd {
     /** In the start's chapter: the highlight runs between [start] and [end]. */
     data class Here(val start: HighlightEnd, val end: HighlightEnd) : FromHereEnd
@@ -160,7 +166,7 @@ internal class HighlightFromHere(
 
     private var lastTouch = 0L
 
-    /** Whether the mode is on: the bar shows, and a press and hold ends the highlight. */
+    /** Whether the mode is on: the bar shows, and a press and hold offers End highlight here. */
     val active: Boolean
         get() = start != null
 
@@ -183,7 +189,7 @@ internal class HighlightFromHere(
     fun idle(): Boolean = active && !saving && untilIdle() == 0L
 
     /**
-     * A press and hold picked [end]. Null when the mode is off or already saving (a second press
+     * End highlight here picked [end]. Null when the mode is off or already saving (a second choice
      * meanwhile does nothing). [FromHereEnd.Here] starts saving.
      */
     fun end(end: HighlightEnd): FromHereEnd? {
