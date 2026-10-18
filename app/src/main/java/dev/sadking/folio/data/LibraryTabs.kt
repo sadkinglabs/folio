@@ -1,11 +1,13 @@
 package dev.sadking.folio.data
 
-/** The two tabs at the top of the Library screen. */
+/** The tabs at the top of the Library screen. */
 enum class LibraryTab {
     /** Books you own: every entry with an EPUB, plus records you are reading or have read. */
     LIBRARY,
     /** Books you intend to get, with or without an EPUB, newest first. */
     WANT_TO_READ,
+    /** The reading lists and your own lists. It shows no books itself. */
+    LISTS,
 }
 
 /** The Library screen's contents, split once from one list of entries. */

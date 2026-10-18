@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -60,7 +61,14 @@ sealed interface Route {
  * choosing a tab clears the screens. Survives rotation and process death via [rememberFolioNav].
  */
 class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
-    var tab by mutableIntStateOf(tab.coerceIn(0, TABS - 1))
+    var tab by mutableIntStateOf(if (tab == LISTS) LIBRARY else tab.coerceIn(0, TABS - 1))
+        private set
+
+    /**
+     * The Library should show its Lists top tab: set when [LISTS] is asked for or restored, cleared
+     * by [listsShown] once the Library has switched. Not saved; a saved 1 sets it again.
+     */
+    var listsRequested by mutableStateOf(tab == LISTS)
         private set
 
     val stack = mutableStateListOf<Route>().apply { addAll(routes) }
@@ -141,10 +149,16 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
         while (stack.size > keep) stack.removeAt(stack.lastIndex)
     }
 
-    /** Shows a tab with nothing above it. */
+    /** Shows a tab with nothing above it. [LISTS] shows the Library, on its Lists top tab. */
     fun root(tab: Int) {
         stack.clear()
-        this.tab = tab.coerceIn(0, TABS - 1)
+        listsRequested = tab == LISTS
+        this.tab = if (tab == LISTS) LIBRARY else tab.coerceIn(0, TABS - 1)
+    }
+
+    /** The Library has switched to its Lists tab. */
+    fun listsShown() {
+        listsRequested = false
     }
 
     /** Drops every screen for books or lists that no longer exist. */
@@ -167,6 +181,11 @@ class FolioNav(tab: Int = 0, routes: List<Route> = emptyList()) {
          */
         const val TABS = 4
         const val LIBRARY = 0
+
+        /**
+         * Not a tab of its own since M12: the Library's Lists top tab. A saved or requested 1 shows
+         * the Library with Lists.
+         */
         const val LISTS = 1
         const val DEVICE = 2
         const val SETTINGS = 3

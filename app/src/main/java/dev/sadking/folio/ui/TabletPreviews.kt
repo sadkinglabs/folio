@@ -38,6 +38,7 @@ private fun PreviewFrame(
     twoPane: Boolean = true,
     wideMaxWidth: Int? = WIDE_PANE_MAX_WIDTH_DP,
     detail: (@Composable () -> Unit)? = null,
+    chooseList: Boolean = false,
     primary: @Composable () -> Unit,
 ) {
     val window = previewWindow(hinge)
@@ -67,7 +68,7 @@ private fun PreviewFrame(
                         empty = {
                             EmptyPane(
                                 stringResource(
-                                    if (tab == FolioNav.LISTS) R.string.ad6_choose_list
+                                    if (chooseList) R.string.ad6_choose_list
                                     else R.string.ad6_choose_book
                                 )
                             )
@@ -150,8 +151,9 @@ internal fun FoldListsPreview() = TabletLists(hinge = true)
 private fun TabletLists(hinge: Boolean) {
     val library = listSampleLibrary()
     PreviewFrame(
-        FolioNav.LISTS,
+        FolioNav.LIBRARY,
         hinge,
+        chooseList = true,
         detail = {
             ListDetailScreen(
                 listCard("slow", listSampleShelves, library)!!,
@@ -168,13 +170,7 @@ private fun TabletLists(hinge: Boolean) {
             )
         },
     ) {
-        ListsScreen(
-            listCards(listSampleShelves, library),
-            busy = false,
-            onOpen = {},
-            onNew = {},
-            onScan = {},
-        )
+        ListsInLibrary(listCards(listSampleShelves, library))
     }
 }
 

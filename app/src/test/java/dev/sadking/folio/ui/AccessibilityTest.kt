@@ -83,9 +83,9 @@ class AccessibilityTest {
             Triple(
                 "ListsFirstRunPreview",
                 { ListsFirstRunPreview() },
-                listOf(R.string.lists_title),
+                listOf(R.string.library_title),
             ),
-            Triple("ListsPreview", { ListsPreview() }, listOf(R.string.lists_title)),
+            Triple("ListsPreview", { ListsPreview() }, listOf(R.string.library_title)),
             Triple("LookupPreview", { LookupPreview() }, emptyList()),
             Triple("LookupResultsPreview", { LookupResultsPreview() }, emptyList()),
             Triple("PairingFirstRunPreview", { PairingFirstRunPreview() }, emptyList()),
@@ -139,7 +139,7 @@ class AccessibilityTest {
                 { TabletLibraryEmptyPreview() },
                 listOf(R.string.library_title),
             ),
-            Triple("TabletListsPreview", { TabletListsPreview() }, listOf(R.string.lists_title)),
+            Triple("TabletListsPreview", { TabletListsPreview() }, listOf(R.string.library_title)),
             Triple(
                 "TabletSettingsPreview",
                 { TabletSettingsPreview() },
@@ -169,7 +169,7 @@ class AccessibilityTest {
                     { FoldLibraryPreview() },
                     listOf(R.string.library_title),
                 ),
-                Triple("FoldListsPreview", { FoldListsPreview() }, listOf(R.string.lists_title)),
+                Triple("FoldListsPreview", { FoldListsPreview() }, listOf(R.string.library_title)),
                 Triple(
                     "FoldSettingsPreview",
                     { FoldSettingsPreview() },

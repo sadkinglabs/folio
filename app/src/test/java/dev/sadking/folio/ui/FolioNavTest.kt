@@ -39,9 +39,12 @@ class FolioNavTest {
     }
 
     @Test
-    fun listDetailIsARouteAboveTheListsTabAndABookAboveIt() {
+    fun listDetailIsARouteAboveTheLibrarysListsTabAndABookAboveIt() {
         val nav = FolioNav()
         nav.root(FolioNav.LISTS)
+        assertEquals(FolioNav.LIBRARY, nav.tab)
+        assertTrue(nav.listsRequested)
+        nav.listsShown()
         nav.open(Route.List("reading:FINISHED"))
         assertEquals("reading:FINISHED", nav.listId)
         assertNull(nav.bookId)
@@ -50,16 +53,43 @@ class FolioNavTest {
         assertEquals("a", nav.bookId)
         assertTrue(nav.back())
         assertEquals("reading:FINISHED", nav.listId)
-        // A tab tap returns Lists to its overview; nothing else is remembered.
+        // A tap on Lists returns to its overview; nothing else is remembered.
         nav.root(FolioNav.LISTS)
         assertNull(nav.listId)
         assertTrue(nav.stack.isEmpty())
+        assertEquals(FolioNav.LIBRARY, nav.tab)
+        assertTrue(nav.listsRequested)
     }
 
     @Test
-    fun fourTabsWithSettingsLast() {
+    fun rootingAnotherTabClearsTheListsRequestAndListsShownClearsIt() {
+        val nav = FolioNav()
+        assertFalse(nav.listsRequested)
+        nav.root(FolioNav.LISTS)
+        assertTrue(nav.listsRequested)
+        nav.listsShown()
+        assertFalse(nav.listsRequested)
+        nav.root(FolioNav.LISTS)
+        nav.root(FolioNav.DEVICE)
+        assertFalse(nav.listsRequested)
+        assertEquals(FolioNav.DEVICE, nav.tab)
+    }
+
+    @Test
+    fun anOldSavedListsTabRestoresToTheLibraryWithListsAndSavesAsLibrary() {
+        val restored = FolioNav.saver.restore(listOf("1", "list:l"))!!
+        assertEquals(FolioNav.LIBRARY, restored.tab)
+        assertTrue(restored.listsRequested)
+        assertEquals(listOf<Route>(Route.List("l")), restored.stack.toList())
+        val saved = with(FolioNav.saver) { SaverScope { true }.save(restored) }!!
+        assertEquals(listOf("0", "list:l"), saved)
+    }
+
+    @Test
+    fun fourBarItemsWithSettingsLastAndListsInsideTheLibrary() {
         assertEquals(4, FolioNav.TABS)
         assertEquals(0, FolioNav.LIBRARY)
+        // The bar's second item still asks for 1, which shows the Library's Lists tab.
         assertEquals(1, FolioNav.LISTS)
         assertEquals(2, FolioNav.DEVICE)
         assertEquals(3, FolioNav.SETTINGS)

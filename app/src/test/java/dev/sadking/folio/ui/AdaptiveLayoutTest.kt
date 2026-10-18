@@ -109,6 +109,8 @@ class AdaptiveLayoutTest {
         nav.open(Route.Record("w"))
         assertEquals(Route.Record("w"), nav.detail)
         nav.root(FolioNav.LISTS)
+        assertEquals(FolioNav.LIBRARY, nav.tab)
+        assertTrue(nav.listsRequested)
         nav.open(Route.List("l"))
         assertEquals(Route.List("l"), nav.detail)
         assertNull(nav.listBeside)
@@ -126,6 +128,8 @@ class AdaptiveLayoutTest {
     @Test
     fun aBookOpenedFromAListKeepsTheListOnTheLeft() {
         val nav = FolioNav(FolioNav.LISTS)
+        assertEquals(FolioNav.LIBRARY, nav.tab)
+        assertTrue(nav.listsRequested)
         nav.open(Route.List("l"))
         nav.open(Route.Book("a"))
         assertEquals(Route.Book("a"), nav.detail)
@@ -156,7 +160,8 @@ class AdaptiveLayoutTest {
         // A base that is not open clears everything.
         nav.clearAbove(Route.List("gone"))
         assertTrue(nav.stack.isEmpty())
-        assertEquals(FolioNav.LISTS, nav.tab)
+        assertEquals(FolioNav.LIBRARY, nav.tab)
+        assertTrue(nav.listsRequested)
     }
 
     @Test
@@ -167,7 +172,8 @@ class AdaptiveLayoutTest {
         val scope = androidx.compose.runtime.saveable.SaverScope { true }
         val saved = with(FolioNav.saver) { scope.save(nav) }!!
         val restored = FolioNav.saver.restore(saved)!!
-        assertEquals(FolioNav.LISTS, restored.tab)
+        // Lists is saved as the Library; the Library itself remembers its Lists top tab.
+        assertEquals(FolioNav.LIBRARY, restored.tab)
         assertEquals(Route.Book("a"), restored.detail)
         assertEquals("l", restored.listBeside)
     }

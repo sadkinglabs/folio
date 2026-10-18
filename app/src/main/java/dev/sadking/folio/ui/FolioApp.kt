@@ -400,6 +400,10 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                     mutableStateOf(setOf<String>())
                 }
             var requestedList by rememberSaveable { mutableStateOf<String?>(null) }
+            // The Library's top tab on screen, and one asked for from elsewhere (picking books for
+            // a list always starts on the Library tab).
+            var libraryTab by rememberSaveable { mutableStateOf(LibraryTab.LIBRARY.name) }
+            var requestedLibraryTab by rememberSaveable { mutableStateOf<String?>(null) }
             // A list's "Add from Library": the Library picks books for it until added or cancelled.
             var pickingListId by rememberSaveable { mutableStateOf<String?>(null) }
             val pickingShelf = pickingListId?.let { id -> shelves.firstOrNull { it.id == id } }
@@ -528,10 +532,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
             val detailOpen = book != null || catalogue != null
             // The Library and Lists show a list beside the chosen item; Device and Settings lay
             // themselves out. The scan screen always fills the window.
-            val twoPane =
-                frame.twoPane &&
-                    (tab == FolioNav.LIBRARY || tab == FolioNav.LISTS) &&
-                    !nav.discovering
+            val twoPane = frame.twoPane && tab == FolioNav.LIBRARY && !nav.discovering
             // A list stays on the left while one of its books is open on the right.
             val listBeside =
                 if (twoPane && detailOpen)
@@ -819,6 +820,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                         onAddFromLibrary = {
                             selection = emptySet()
                             pickingListId = card.id
+                            requestedLibraryTab = LibraryTab.LIBRARY.name
                             nav.root(FolioNav.LIBRARY)
                         },
                         onEdit = {
@@ -832,6 +834,10 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                         onContext = { actionsId = it.id },
                     )
                 }
+            val newList = {
+                model.managementError.value = null
+                editingShelfId = "new"
+            }
             // The four tabs, each keeping its own saved state while another is shown.
             val tabs: @Composable (Dp) -> Unit = { bottom ->
                 AnimatedContent(
@@ -888,10 +894,19 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                         },
                                         onScan = { nav.open(Route.Discover) },
                                         requestedTab =
-                                            if (requestedList == ReadingList.WANT_TO_READ.name)
-                                                LibraryTab.WANT_TO_READ
-                                            else null,
-                                        onRequestHandled = { requestedList = null },
+                                            when {
+                                                nav.listsRequested -> LibraryTab.LISTS
+                                                requestedLibraryTab != null ->
+                                                    LibraryTab.valueOf(requestedLibraryTab!!)
+                                                requestedList == ReadingList.WANT_TO_READ.name ->
+                                                    LibraryTab.WANT_TO_READ
+                                                else -> null
+                                            },
+                                        onRequestHandled = {
+                                            requestedList = null
+                                            requestedLibraryTab = null
+                                            nav.listsShown()
+                                        },
                                         pickingFor = pickingShelf?.name,
                                         onCancelPicking = {
                                             selection = emptySet()
@@ -899,26 +914,30 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                         },
                                         onRefresh = { model.refreshFolder(force = true) },
                                         refreshing = folderRefreshing,
-                                    )
-                                FolioNav.LISTS ->
-                                    ListsScreen(
-                                        cards,
-                                        busy = op.busy,
-                                        onOpen = {
-                                            // Beside the lists, a list replaces the one shown.
-                                            if (twoPane) nav.clearAbove(null)
-                                            nav.open(Route.List(it))
+                                        lists = {
+                                            ListsScreen(
+                                                cards,
+                                                busy = op.busy,
+                                                onOpen = {
+                                                    // Beside the lists, a list replaces the one
+                                                    // shown.
+                                                    if (twoPane) nav.clearAbove(null)
+                                                    nav.open(Route.List(it))
+                                                },
+                                                onNew = newList,
+                                                onEdit = {
+                                                    model.managementError.value = null
+                                                    editingShelfId = it.id
+                                                },
+                                                onDelete = { deletingShelfId = it.id },
+                                                showTitle = false,
+                                            )
                                         },
-                                        onNew = {
-                                            model.managementError.value = null
-                                            editingShelfId = "new"
+                                        onNewList = newList,
+                                        onTabChange = {
+                                            libraryTab = it.name
+                                            if (it == LibraryTab.LISTS) selection = emptySet()
                                         },
-                                        onEdit = {
-                                            model.managementError.value = null
-                                            editingShelfId = it.id
-                                        },
-                                        onDelete = { deletingShelfId = it.id },
-                                        onScan = { nav.open(Route.Discover) },
                                     )
                                 FolioNav.DEVICE ->
                                     DeviceTab(
@@ -1226,7 +1245,7 @@ private fun FolioAppBody(model: LibraryViewModel, space: DpSize) {
                                                 empty = {
                                                     EmptyPane(
                                                         stringResource(
-                                                            if (tab == FolioNav.LISTS)
+                                                            if (libraryTab == LibraryTab.LISTS.name)
                                                                 R.string.ad6_choose_list
                                                             else R.string.ad6_choose_book
                                                         )

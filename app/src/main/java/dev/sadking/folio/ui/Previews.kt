@@ -249,6 +249,20 @@ internal fun listSampleLibrary() =
         ),
     )
 
+/** The Library on its Lists top tab, as the phone shows it. */
+@Composable
+internal fun ListsInLibrary(cards: List<ListCard>) {
+    LibraryScreen(
+        sampleBooks,
+        emptySet(),
+        onOpen = {},
+        onSelect = {},
+        missingFiles = emptySet(),
+        initialTab = LibraryTab.LISTS,
+        lists = { ListsScreen(cards, busy = false, onOpen = {}, onNew = {}, showTitle = false) },
+    )
+}
+
 @Preview(name = "Lists · light", widthDp = 412, heightDp = 892)
 @Preview(
     name = "Lists · dark",
@@ -260,13 +274,7 @@ internal fun listSampleLibrary() =
 internal fun ListsPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            ListsScreen(
-                listCards(listSampleShelves, listSampleLibrary()),
-                busy = false,
-                onOpen = {},
-                onNew = {},
-                onScan = {},
-            )
+            ListsInLibrary(listCards(listSampleShelves, listSampleLibrary()))
         }
     }
 }
@@ -276,13 +284,7 @@ internal fun ListsPreview() {
 internal fun ListsFirstRunPreview() {
     FolioTheme(dynamic = false) {
         Surface(Modifier.fillMaxSize()) {
-            ListsScreen(
-                listCards(emptyList(), listSampleLibrary()),
-                busy = false,
-                onOpen = {},
-                onNew = {},
-                onScan = {},
-            )
+            ListsInLibrary(listCards(emptyList(), listSampleLibrary()))
         }
     }
 }

@@ -123,7 +123,7 @@ class LargeFontUiTest {
                 compose.onAllNodes(share).fetchSemanticsNodes().isEmpty()
             }
             // Lists: the reading lists and New list stay reachable, names not cut mid-word.
-            compose.onNode(hasText("Lists") and hasClickAction()).performClick()
+            compose.onNodeWithTag(LIBRARY_TAB_LISTS_TAG).performClick()
             compose.waitForIdle()
             compose.onNodeWithTag(LISTS_NEW_TAG).assertIsDisplayed()
             compose

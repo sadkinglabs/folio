@@ -66,41 +66,44 @@ internal fun ListsScreen(
     onEdit: (Shelf) -> Unit = {},
     onDelete: (Shelf) -> Unit = {},
     onScan: (() -> Unit)? = null,
+    /** False inside the Library's Lists tab, whose header already has the title and New list. */
+    showTitle: Boolean = true,
 ) {
     val large = LocalDensity.current.fontScale > 1.5f
     val userLists = cards.any { it.shelf != null }
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth()
-                .padding(start = FolioSpace.page, end = FolioSpace.gap, top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                stringResource(R.string.lists_title),
-                style =
-                    if (large) MaterialTheme.typography.headlineSmall
-                    else MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f).semantics { heading() },
-            )
-            if (onScan != null) {
-                val scan = stringResource(R.string.library_wanted_empty_scan)
-                Tooltipped(scan) {
-                    IconButton(onClick = onScan, enabled = !busy) {
-                        Icon(Icons.Outlined.PhotoCamera, scan)
+        if (showTitle)
+            Row(
+                Modifier.fillMaxWidth()
+                    .padding(start = FolioSpace.page, end = FolioSpace.gap, top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.lists_title),
+                    style =
+                        if (large) MaterialTheme.typography.headlineSmall
+                        else MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                if (onScan != null) {
+                    val scan = stringResource(R.string.library_wanted_empty_scan)
+                    Tooltipped(scan) {
+                        IconButton(onClick = onScan, enabled = !busy) {
+                            Icon(Icons.Outlined.PhotoCamera, scan)
+                        }
+                    }
+                }
+                val new = stringResource(R.string.lists_new_title)
+                Tooltipped(new) {
+                    FilledTonalIconButton(
+                        onClick = onNew,
+                        enabled = !busy,
+                        modifier = Modifier.testTag(LISTS_NEW_TAG),
+                    ) {
+                        Icon(Icons.Outlined.Add, new)
                     }
                 }
             }
-            val new = stringResource(R.string.lists_new_title)
-            Tooltipped(new) {
-                FilledTonalIconButton(
-                    onClick = onNew,
-                    enabled = !busy,
-                    modifier = Modifier.testTag(LISTS_NEW_TAG),
-                ) {
-                    Icon(Icons.Outlined.Add, new)
-                }
-            }
-        }
         // Two columns on a phone; one at large text sizes, so names never break mid-word.
         val fontScale = LocalDensity.current.fontScale
         LazyVerticalGrid(
