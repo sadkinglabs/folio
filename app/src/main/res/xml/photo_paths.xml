@@ -1,1 +1,1 @@
-<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="photos" path="photos/" /><cache-path name="epub_share" path="epub-share/" /></paths>
+<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="photos" path="photos/" /><cache-path name="epub_share" path="epub-share/" /><cache-path name="share" path="share/" /></paths>

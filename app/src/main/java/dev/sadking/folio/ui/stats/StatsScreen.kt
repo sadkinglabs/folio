@@ -1440,6 +1440,8 @@ internal fun YearReviewScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     onBook: (Book) -> Unit = {},
+    /** True while the image is made: both Share controls are off and the button shows progress. */
+    sharing: Boolean = false,
 ) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -1452,7 +1454,9 @@ internal fun YearReviewScreen(
             actions = {
                 val share = stringResource(R.string.stats_share)
                 Tooltipped(share) {
-                    IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, share) }
+                    IconButton(onClick = onShare, enabled = !sharing) {
+                        Icon(Icons.Outlined.Share, share)
+                    }
                 }
             },
         )
@@ -1471,8 +1475,9 @@ internal fun YearReviewScreen(
                     Modifier.align(Alignment.Center).then(lift(FolioSpace.panelShape)),
                 )
             }
-            Button(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.Share, null)
+            Button(onClick = onShare, enabled = !sharing, modifier = Modifier.fillMaxWidth()) {
+                if (sharing) LoadingIndicator(Modifier.size(20.dp))
+                else Icon(Icons.Outlined.Share, null)
                 Spacer(Modifier.width(FolioSpace.small))
                 Text(stringResource(R.string.stats_share_image))
             }
